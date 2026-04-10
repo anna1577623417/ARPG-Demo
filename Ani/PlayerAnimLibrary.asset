@@ -1,0 +1,71 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0a428cd7d3a86f44aa3e7991cf7fcc68, type: 3}
+  m_Name: PlayerAnimLibrary
+  m_EditorClassIdentifier: 
+  entries:
+  - StateName: PlayerIdleState
+    Clip: {fileID: 8324860437086164814, guid: c334125d0dbc3a544a089e659a9370d4, type: 3}
+    TransitionDuration: 0.15
+    Speed: 1.2
+    IsLooping: 1
+    HitFrameNormalized: 0
+    ApplyRootMotion: 0
+    Layer: 0
+  - StateName: PlayerWalkState
+    Clip: {fileID: -7003542030617561338, guid: c334125d0dbc3a544a089e659a9370d4, type: 3}
+    TransitionDuration: 0.15
+    Speed: 1
+    IsLooping: 1
+    HitFrameNormalized: 0
+    ApplyRootMotion: 0
+    Layer: 0
+  - StateName: PlayerRunState
+    Clip: {fileID: -4950333804767787469, guid: c334125d0dbc3a544a089e659a9370d4, type: 3}
+    TransitionDuration: 0.15
+    Speed: 1.1
+    IsLooping: 1
+    HitFrameNormalized: 0
+    ApplyRootMotion: 0
+    Layer: 0
+  - StateName: PlayerJumpState
+    Clip: {fileID: 8324860437086164814, guid: c334125d0dbc3a544a089e659a9370d4, type: 3}
+    TransitionDuration: 0.05
+    Speed: 1
+    IsLooping: 0
+    HitFrameNormalized: 0
+    ApplyRootMotion: 0
+    Layer: 0
+  - StateName: PlayerAttackState
+    Clip: {fileID: -2807887025256620907, guid: c334125d0dbc3a544a089e659a9370d4, type: 3}
+    TransitionDuration: 0.05
+    Speed: 1
+    IsLooping: 0
+    HitFrameNormalized: 0.45
+    ApplyRootMotion: 0
+    Layer: 0
+  - StateName: PlayerDodgeState
+    Clip: {fileID: 3031411921458128146, guid: c334125d0dbc3a544a089e659a9370d4, type: 3}
+    TransitionDuration: 0.05
+    Speed: 1.15
+    IsLooping: 0
+    HitFrameNormalized: 0
+    ApplyRootMotion: 0
+    Layer: 0
+  - StateName: DiePlayerState
+    Clip: {fileID: 8324860437086164814, guid: c334125d0dbc3a544a089e659a9370d4, type: 3}
+    TransitionDuration: 0.2
+    Speed: 1
+    IsLooping: 0
+    HitFrameNormalized: 0
+    ApplyRootMotion: 0
+    Layer: 0
