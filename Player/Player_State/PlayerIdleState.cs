@@ -1,10 +1,9 @@
 /// <summary>
 /// 待机状态。
-/// 数据流：
-/// - 连续型（移动）：轮询 InputReader.MoveInput → 有输入则切换到 RunState
-/// - 离散型（跳跃/攻击/闪避）：通过 EventBus 监听 → 立即打断 Idle
-///
-/// 动画：不在此处操作 Animator，PlayerAnimManager 监听 EntityStateEnterEvent 自动播放。
+/// - 连续型（移动）：轮询 HasMovementIntent → 切换到 Walk/Run
+/// - 离散型（跳跃/攻击/闪避）：通过 EventBus 监听 → 立即打断
+/// - 跳跃缓冲：收到 JumpInput 时写入缓冲，每帧检查 CanBufferedJump
+/// - 土狼时间：由 TickJumpTimers 自动维护
 /// </summary>
 public class PlayerIdleState : PlayerState
 {
@@ -36,6 +35,16 @@ public class PlayerIdleState : PlayerState
             return;
         }
 
+        player.TickJumpTimers();
+        player.TickDodgeCooldown();
+
+        // 跳跃缓冲触发（玩家在落地前按过跳跃，现在刚落地）
+        if (player.CanBufferedJump)
+        {
+            player.States.Change<PlayerJumpState>();
+            return;
+        }
+
         if (player.HasMovementIntent)
         {
             if (player.WantsRun)
@@ -47,13 +56,13 @@ public class PlayerIdleState : PlayerState
 
         player.StopMove();
         player.ApplyMotor();
-        player.TickDodgeCooldown();
     }
 
     private void OnJumpInput(JumpInputEvent evt)
     {
         if (_player == null || !evt.IsPressed) return;
-        if (_player.IsGrounded)
+        _player.BufferJumpInput();
+        if (_player.IsGrounded || _player.HasCoyoteTime)
             _player.States.Change<PlayerJumpState>();
     }
 

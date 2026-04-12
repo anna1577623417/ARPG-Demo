@@ -38,8 +38,18 @@ public class PlayerController : EntityController
     [SerializeField] private bool holdShiftToRun = true;
     [SerializeField, Range(0f, 1f)] private float runMagnitudeThreshold = 0.85f;
 
+    [Header("Input Filtering")]
+    [Tooltip("移动启动阈值（秒）。\n玩家必须持续按住方向键超过此时间才确认移动意图。\n过滤误触和抖动式点按。\n0 = 无过滤（立即响应）。")]
+    [SerializeField, Range(0f, 0.3f)] private float moveStartupThreshold = 0.08f;
+
+    [Tooltip("移动松手宽容时间（秒）。\n松手后在此窗口内重新按下，不会中断移动。\n防止快速换方向时角色卡顿。")]
+    [SerializeField, Range(0f, 0.2f)] private float moveReleaseTolerance = 0.06f;
+
     private GameModeManager _gameModeManager;
     private bool _isInitialized;
+    private float _moveHoldTime;
+    private float _moveReleaseTime;
+    private bool _moveConfirmed;
 
     // ─── 生命周期 ───
 
@@ -95,8 +105,43 @@ public class PlayerController : EntityController
         }
 
         var rawInput = inputReader.MoveInput;
-        var worldDirection = ResolveWorldDirection(rawInput);
-        var wantsRun = ResolveRunIntent(rawInput);
+        var hasRawInput = rawInput.sqrMagnitude > 0.0001f;
+
+        // ─── 输入启动过滤（防抖动/误触）───
+        // 原始输入必须持续 moveStartupThreshold 才确认移动意图。
+        // 松手后有 moveReleaseTolerance 的宽容窗口，防止换方向时卡顿。
+        if (hasRawInput)
+        {
+            _moveHoldTime += Time.deltaTime;
+            _moveReleaseTime = 0f;
+
+            if (_moveHoldTime >= moveStartupThreshold)
+                _moveConfirmed = true;
+        }
+        else
+        {
+            _moveHoldTime = 0f;
+            _moveReleaseTime += Time.deltaTime;
+
+            if (_moveReleaseTime > moveReleaseTolerance)
+                _moveConfirmed = false;
+        }
+
+        // 只有确认了移动意图才输出方向，否则输出零向量
+        Vector3 worldDirection;
+        bool wantsRun;
+
+        if (_moveConfirmed && hasRawInput)
+        {
+            worldDirection = ResolveWorldDirection(rawInput);
+            wantsRun = ResolveRunIntent(rawInput);
+        }
+        else
+        {
+            worldDirection = Vector3.zero;
+            wantsRun = false;
+        }
+
         player.SetMovementIntent(worldDirection, wantsRun);
     }
 

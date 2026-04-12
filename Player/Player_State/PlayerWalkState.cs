@@ -30,6 +30,15 @@ public class PlayerWalkState : PlayerState
             return;
         }
 
+        player.TickJumpTimers();
+        player.TickDodgeCooldown();
+
+        if (player.CanBufferedJump)
+        {
+            player.States.Change<PlayerJumpState>();
+            return;
+        }
+
         if (!player.HasMovementIntent)
         {
             player.States.Change<PlayerIdleState>();
@@ -44,13 +53,13 @@ public class PlayerWalkState : PlayerState
 
         player.MoveByInput(player.WalkSpeedMultiplier);
         player.ApplyMotor();
-        player.TickDodgeCooldown();
     }
 
     private void OnJumpInput(JumpInputEvent evt)
     {
         if (_player == null || !evt.IsPressed) return;
-        if (_player.IsGrounded)
+        _player.BufferJumpInput();
+        if (_player.IsGrounded || _player.HasCoyoteTime)
             _player.States.Change<PlayerJumpState>();
     }
 

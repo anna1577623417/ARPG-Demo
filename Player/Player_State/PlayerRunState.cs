@@ -1,7 +1,6 @@
 /// <summary>
 /// 奔跑状态。
-/// 进入条件：有移动输入。
-/// 退出条件：无输入→Idle / 跳跃→Jump / 攻击→Attack / 闪避→Dodge / 死亡→Die
+/// 进入条件：有移动意图 + 冲刺。
 /// </summary>
 public class PlayerRunState : PlayerState
 {
@@ -31,6 +30,15 @@ public class PlayerRunState : PlayerState
             return;
         }
 
+        player.TickJumpTimers();
+        player.TickDodgeCooldown();
+
+        if (player.CanBufferedJump)
+        {
+            player.States.Change<PlayerJumpState>();
+            return;
+        }
+
         if (!player.HasMovementIntent)
         {
             player.States.Change<PlayerIdleState>();
@@ -45,13 +53,13 @@ public class PlayerRunState : PlayerState
 
         player.MoveByInput();
         player.ApplyMotor();
-        player.TickDodgeCooldown();
     }
 
     private void OnJumpInput(JumpInputEvent evt)
     {
         if (_player == null || !evt.IsPressed) return;
-        if (_player.IsGrounded)
+        _player.BufferJumpInput();
+        if (_player.IsGrounded || _player.HasCoyoteTime)
             _player.States.Change<PlayerJumpState>();
     }
 

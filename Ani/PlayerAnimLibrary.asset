@@ -37,8 +37,24 @@ MonoBehaviour:
     HitFrameNormalized: 0
     ApplyRootMotion: 0
     Layer: 0
-  - StateName: PlayerJumpState
-    Clip: {fileID: 8324860437086164814, guid: c334125d0dbc3a544a089e659a9370d4, type: 3}
+  - StateName: PlayerJumpStartPhase
+    Clip: {fileID: -1862932125039169580, guid: c334125d0dbc3a544a089e659a9370d4, type: 3}
+    TransitionDuration: 0.05
+    Speed: 1
+    IsLooping: 0
+    HitFrameNormalized: 0
+    ApplyRootMotion: 0
+    Layer: 0
+  - StateName: PlayerJumpAirPhase
+    Clip: {fileID: -3659967873887649963, guid: c334125d0dbc3a544a089e659a9370d4, type: 3}
+    TransitionDuration: 0.1
+    Speed: 1
+    IsLooping: 1
+    HitFrameNormalized: 0
+    ApplyRootMotion: 0
+    Layer: 0
+  - StateName: PlayerJumpLandPhase
+    Clip: {fileID: 4832780573735333345, guid: c334125d0dbc3a544a089e659a9370d4, type: 3}
     TransitionDuration: 0.05
     Speed: 1
     IsLooping: 0
@@ -61,7 +77,7 @@ MonoBehaviour:
     HitFrameNormalized: 0
     ApplyRootMotion: 0
     Layer: 0
-  - StateName: DiePlayerState
+  - StateName: PlayerDeadState
     Clip: {fileID: 8324860437086164814, guid: c334125d0dbc3a544a089e659a9370d4, type: 3}
     TransitionDuration: 0.2
     Speed: 1
