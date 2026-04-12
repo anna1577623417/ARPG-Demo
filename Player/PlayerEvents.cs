@@ -109,3 +109,22 @@ public readonly struct PlayerDodgeEndedEvent : IGameEvent
         PlayerName = playerName;
     }
 }
+
+// ─── 表现层（Playables）请求：逻辑状态不直接引用 Animator ───
+
+/// <summary>
+/// Action 支柱请求播放某条动作资产；PlayerAnimController 监听后走 Playables。
+/// </summary>
+public readonly struct PlayerActionPresentationRequestEvent : IGameEvent
+{
+    public readonly int PlayerInstanceId;
+    public readonly GameplayIntentKind Kind;
+    public readonly ActionDataSO Action;
+
+    public PlayerActionPresentationRequestEvent(int playerInstanceId, GameplayIntentKind kind, ActionDataSO action)
+    {
+        PlayerInstanceId = playerInstanceId;
+        Kind = kind;
+        Action = action;
+    }
+}

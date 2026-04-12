@@ -15,4 +15,13 @@ public abstract class EntityState<T> : State<T> where T : Entity<T>
 {
     /// <summary>碰撞回调，由 EntityStateManager 转发。</summary>
     public virtual void OnContact(T entity, Collider other) { }
+
+    /// <summary>
+    /// 由状态机在意图管线中调用：当前状态决定是否消耗该意图并迁移 FSM。
+    /// 返回 true 表示意图已被消费（队列会弹出）；false 则保留意图供后续帧再试。
+    /// </summary>
+    public virtual bool TryConsumeGameplayIntent(T entity, in FrameContext ctx, in GameplayIntent intent)
+    {
+        return false;
+    }
 }

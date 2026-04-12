@@ -37,6 +37,7 @@ public class PlayerAnimController : EntityAnimController
         if (_entity != null)
         {
             _entity.EventBus.Subscribe<EntityStateEnterEvent>(OnStateEnter);
+            _entity.EventBus.Subscribe<PlayerActionPresentationRequestEvent>(OnActionPresentationRequest);
         }
     }
 
@@ -45,6 +46,7 @@ public class PlayerAnimController : EntityAnimController
         if (_entity != null)
         {
             _entity.EventBus.Unsubscribe<EntityStateEnterEvent>(OnStateEnter);
+            _entity.EventBus.Unsubscribe<PlayerActionPresentationRequestEvent>(OnActionPresentationRequest);
         }
     }
 
@@ -56,9 +58,44 @@ public class PlayerAnimController : EntityAnimController
     {
         if (animLibrary == null) return;
 
+        // Action 支柱由 PlayerActionPresentationRequestEvent 统一驱动，避免与数据资产双播。
+        if (evt.StateName == nameof(PlayerActionState))
+        {
+            return;
+        }
+
         // 用状态名匹配动画条目
         var entry = animLibrary.GetEntry(evt.StateName);
         if (entry == null || entry.Clip == null) return;
+
+        Play(entry.Clip, entry.TransitionDuration, entry.Speed, entry.IsLooping);
+    }
+
+    /// <summary>
+    /// Action 支柱显式请求：优先播放 <see cref="ActionDataSO.MainClip"/>，否则回退到状态名映射。
+    /// </summary>
+    private void OnActionPresentationRequest(PlayerActionPresentationRequestEvent evt)
+    {
+        if (animLibrary == null)
+        {
+            return;
+        }
+
+        if (evt.Action != null && evt.Action.MainClip != null)
+        {
+            Play(evt.Action.MainClip, 0.08f, 1f, evt.Action.MainClip.isLooping);
+            return;
+        }
+
+        var libraryKey = evt.Kind == GameplayIntentKind.Dodge
+            ? "PlayerActionDodge"
+            : nameof(PlayerActionState);
+
+        var entry = animLibrary.GetEntry(libraryKey);
+        if (entry == null || entry.Clip == null)
+        {
+            return;
+        }
 
         Play(entry.Clip, entry.TransitionDuration, entry.Speed, entry.IsLooping);
     }

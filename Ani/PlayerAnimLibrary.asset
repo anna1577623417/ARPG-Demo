@@ -13,39 +13,23 @@ MonoBehaviour:
   m_Name: PlayerAnimLibrary
   m_EditorClassIdentifier: 
   entries:
-  - StateName: PlayerIdleState
+  - StateName: PlayerLocomotionState
     Clip: {fileID: 8324860437086164814, guid: c334125d0dbc3a544a089e659a9370d4, type: 3}
-    TransitionDuration: 0.15
-    Speed: 1.2
-    IsLooping: 1
-    HitFrameNormalized: 0
-    ApplyRootMotion: 0
-    Layer: 0
-  - StateName: PlayerWalkState
-    Clip: {fileID: -7003542030617561338, guid: c334125d0dbc3a544a089e659a9370d4, type: 3}
-    TransitionDuration: 0.15
-    Speed: 1
-    IsLooping: 1
-    HitFrameNormalized: 0
-    ApplyRootMotion: 0
-    Layer: 0
-  - StateName: PlayerRunState
-    Clip: {fileID: -4950333804767787469, guid: c334125d0dbc3a544a089e659a9370d4, type: 3}
     TransitionDuration: 0.15
     Speed: 1.1
     IsLooping: 1
     HitFrameNormalized: 0
     ApplyRootMotion: 0
     Layer: 0
-  - StateName: PlayerJumpState
+  - StateName: PlayerAirborneState
     Clip: {fileID: 8324860437086164814, guid: c334125d0dbc3a544a089e659a9370d4, type: 3}
     TransitionDuration: 0.05
     Speed: 1
     IsLooping: 0
-    HitFrameNormalized: 0
+    HitFrameNormalized: 0.5
     ApplyRootMotion: 0
     Layer: 0
-  - StateName: PlayerAttackState
+  - StateName: PlayerActionState
     Clip: {fileID: -2807887025256620907, guid: c334125d0dbc3a544a089e659a9370d4, type: 3}
     TransitionDuration: 0.05
     Speed: 1
@@ -53,7 +37,7 @@ MonoBehaviour:
     HitFrameNormalized: 0.45
     ApplyRootMotion: 0
     Layer: 0
-  - StateName: PlayerDodgeState
+  - StateName: PlayerActionDodge
     Clip: {fileID: 3031411921458128146, guid: c334125d0dbc3a544a089e659a9370d4, type: 3}
     TransitionDuration: 0.05
     Speed: 1.15
@@ -61,7 +45,7 @@ MonoBehaviour:
     HitFrameNormalized: 0
     ApplyRootMotion: 0
     Layer: 0
-  - StateName: DiePlayerState
+  - StateName: PlayerDeadState
     Clip: {fileID: 8324860437086164814, guid: c334125d0dbc3a544a089e659a9370d4, type: 3}
     TransitionDuration: 0.2
     Speed: 1

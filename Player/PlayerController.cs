@@ -15,8 +15,12 @@ using UnityEngine;
 /// InputReader.MoveInput (Vector2)
 ///   → PlayerController.ResolveWorldDirection() → 相机相对 or 世界坐标
 ///   → PlayerController.ResolveRunIntent() → 走/跑意图
-///   → Player.SetMovementIntent(worldDir, wantsRun)
-///   → StateMachine 消费意图
+///   → Player.SetMovementIntent(worldDir, wantsRun)（连续量，每帧写入）
+///
+/// 离散输入（Jump / Attack / Dodge）：
+///   → GlobalEventBus 上的输入事件
+///   → PlayerController 转为 GameplayIntent 入队（Player.IntentBuffer）
+///   → PlayerStateManager.OnPreLogicUpdate：TransitionResolver（只认标签）+ 当前状态 TryConsumeGameplayIntent（决定是否切状态）
 ///
 /// ═══ 多模式支持 ═══
 ///
@@ -78,11 +82,15 @@ public class PlayerController : EntityController
     {
         Init();
         GlobalEventBus.Subscribe<AttackInputEvent>(OnAttackInput);
+        GlobalEventBus.Subscribe<JumpInputEvent>(OnJumpInput);
+        GlobalEventBus.Subscribe<DodgeInputEvent>(OnDodgeInput);
     }
 
     private void OnDisable()
     {
         GlobalEventBus.Unsubscribe<AttackInputEvent>(OnAttackInput);
+        GlobalEventBus.Unsubscribe<JumpInputEvent>(OnJumpInput);
+        GlobalEventBus.Unsubscribe<DodgeInputEvent>(OnDodgeInput);
     }
 
     // ─── 每帧驱动 ───
@@ -186,7 +194,7 @@ public class PlayerController : EntityController
         return inputReader.IsSprintHeld || byMagnitude;
     }
 
-    // ─── 攻击意图 ───
+    // ─── 离散意图 → 语义队列（由状态机 + 标签仲裁消费，不再直驱状态）───
 
     private void OnAttackInput(AttackInputEvent evt)
     {
@@ -195,6 +203,26 @@ public class PlayerController : EntityController
             return;
         }
 
-        player.SetAttackIntent(true);
+        player.EnqueueGameplayIntent(PlayerIntentCatalog.LightAttack(Time.time));
+    }
+
+    private void OnJumpInput(JumpInputEvent evt)
+    {
+        if (player == null || !evt.IsPressed)
+        {
+            return;
+        }
+
+        player.EnqueueGameplayIntent(PlayerIntentCatalog.Jump(Time.time));
+    }
+
+    private void OnDodgeInput(DodgeInputEvent evt)
+    {
+        if (player == null)
+        {
+            return;
+        }
+
+        player.EnqueueGameplayIntent(PlayerIntentCatalog.Dodge(Time.time));
     }
 }

@@ -6,6 +6,10 @@ public class PlayerDeadState : PlayerState
 {
     protected override void OnEnter(Player player)
     {
+        player.GameplayTags.Clear();
+        player.GameplayTags.Add((ulong)StateTag.Dead);
+        player.IntentBuffer.Clear();
+
         player.StopMove();
         if (player.InputReader != null)
             player.InputReader.DisableAllInput();
@@ -13,6 +17,7 @@ public class PlayerDeadState : PlayerState
 
     protected override void OnExit(Player player)
     {
+        player.GameplayTags.Remove((ulong)StateTag.Dead);
         if (player.InputReader != null)
             player.InputReader.EnableInput();
     }

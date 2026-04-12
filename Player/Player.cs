@@ -76,6 +76,23 @@ public class Player : Entity<Player>, IDamageable {
     private bool m_attackIntent;
     private bool m_isInitialized;
 
+    // ─── ARPG 决策链：标签 + 意图缓冲（零 GC 路径，仅 struct 入队）───
+
+    /// <summary>当前帧用于仲裁与窗口判定的标签快照（各状态在 OnLogicUpdate 内维护）。</summary>
+    public GameplayTagMask GameplayTags;
+
+    /// <summary>离散意图队列（输入经语义化后入队，由状态机与状态消费）。</summary>
+    public readonly GameplayIntentBuffer IntentBuffer = new GameplayIntentBuffer(16);
+
+    [Header("Resources")]
+    [SerializeField] private float maxStamina = 100f;
+
+    private float m_stamina;
+    private GameplayIntentKind m_pendingActionKind;
+    private ActionDataSO m_pendingAction;
+    private bool m_pendingActionArmed;
+    private bool m_jumpRequestedByIntent;
+
     // ─── 公开属性 ───
 
     public InputReader InputReader => inputReader;
@@ -84,6 +101,9 @@ public class Player : Entity<Player>, IDamageable {
     public Vector3 PlanarVelocity => m_planarVelocity;
     public bool IsGrounded { get; private set; }
     public bool IsAttacking => m_attackTimer > 0f;
+
+    public float Stamina => m_stamina;
+    public float StaminaMax => maxStamina;
     public bool CanDodge => m_dodgeCooldownTimer <= 0f;
     public float AttackDuration => attackDuration;
     public float DodgeSpeed => dodgeSpeed;
@@ -113,7 +133,68 @@ public class Player : Entity<Player>, IDamageable {
         m_isInitialized = true;
         m_stateManager = GetComponent<PlayerStateManager>();
 
+        m_stamina = maxStamina;
         RefreshGroundedState();
+    }
+
+    /// <summary>构建本帧只读上下文，供意图仲裁与状态查询。</summary>
+    public FrameContext BuildFrameContext(float deltaTime)
+    {
+        return new FrameContext
+        {
+            Time = Time.time,
+            DeltaTime = deltaTime,
+            IsGrounded = IsGrounded,
+            PlanarVelocity = m_planarVelocity,
+            VerticalSpeed = m_verticalSpeed,
+            CurrentTags = GameplayTags,
+            StaminaCurrent = m_stamina,
+            StaminaMax = maxStamina,
+        };
+    }
+
+    public void EnqueueGameplayIntent(in GameplayIntent intent)
+    {
+        IntentBuffer.Enqueue(intent);
+    }
+
+    /// <summary>由 Locomotion / Airborne 在切换 Action 支柱前写入待播动作。</summary>
+    public void ArmPendingAction(GameplayIntentKind kind, ActionDataSO action)
+    {
+        m_pendingActionArmed = true;
+        m_pendingActionKind = kind;
+        m_pendingAction = action;
+    }
+
+    public bool TryTakePendingAction(out GameplayIntentKind kind, out ActionDataSO action)
+    {
+        if (!m_pendingActionArmed)
+        {
+            kind = GameplayIntentKind.None;
+            action = null;
+            return false;
+        }
+
+        m_pendingActionArmed = false;
+        kind = m_pendingActionKind;
+        action = m_pendingAction;
+        return true;
+    }
+
+    public void RequestJumpFromIntent()
+    {
+        m_jumpRequestedByIntent = true;
+    }
+
+    public bool ConsumeJumpFromIntent()
+    {
+        if (!m_jumpRequestedByIntent)
+        {
+            return false;
+        }
+
+        m_jumpRequestedByIntent = false;
+        return true;
     }
 
     // ─── IDamageable ───
@@ -196,8 +277,10 @@ public class Player : Entity<Player>, IDamageable {
     public void StartDodgeCooldown() => m_dodgeCooldownTimer = dodgeCooldown;
     public void TickDodgeCooldown() { if (m_dodgeCooldownTimer > 0f) m_dodgeCooldownTimer -= Time.deltaTime; }
 
-    public void BeginAttack() {
-        m_attackTimer = attackDuration;
+    /// <param name="durationOverride">小于 0 时使用 Inspector 中的 attackDuration。</param>
+    public void BeginAttack(float durationOverride = -1f)
+    {
+        m_attackTimer = durationOverride > 0f ? durationOverride : attackDuration;
         PublishEvent(new PlayerAttackStartedEvent(GetInstanceID(), name));
     }
 
@@ -208,6 +291,18 @@ public class Player : Entity<Player>, IDamageable {
             m_attackTimer = 0f;
             PublishEvent(new PlayerAttackEndedEvent(GetInstanceID(), name));
         }
+    }
+
+    /// <summary>被外部打断（如死亡切状态）时强制结束攻击段并补发结束事件。</summary>
+    public void ForceEndAttackIfActive()
+    {
+        if (m_attackTimer <= 0f)
+        {
+            return;
+        }
+
+        m_attackTimer = 0f;
+        PublishEvent(new PlayerAttackEndedEvent(GetInstanceID(), name));
     }
 
     // ─── 物理驱动 ───

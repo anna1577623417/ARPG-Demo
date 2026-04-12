@@ -18,7 +18,7 @@ public class PlayerAnimManagerSO : ScriptableObject
     [Serializable]
     public class AnimClipEntry
     {
-        [Tooltip("状态名（必须和状态类的 StateId 一致，如 PlayerIdleState）")]
+        [Tooltip("状态名（与状态类名一致，如 PlayerLocomotionState、PlayerAirborneState）")]
         public string StateName;
 
         [Tooltip("动画片段")]

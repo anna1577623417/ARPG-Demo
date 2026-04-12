@@ -51,7 +51,15 @@ public abstract class EntityStateManager<T> : EntityStateManager where T : Entit
 
     protected virtual void Update()
     {
+        OnPreLogicUpdate(Time.deltaTime);
         _machine.LogicUpdate(Time.deltaTime);
+    }
+
+    /// <summary>
+    /// 在 LogicUpdate 之前执行：供子类实现意图缓冲、帧上下文构建等。
+    /// </summary>
+    protected virtual void OnPreLogicUpdate(float deltaTime)
+    {
     }
 
     protected virtual void FixedUpdate()
