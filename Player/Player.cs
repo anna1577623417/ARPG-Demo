@@ -1,8 +1,23 @@
 using UnityEngine;
 
 /// <summary>
-/// 玩家实体。
-/// 纯 Transform 驱动的移动系统。逻辑（状态机）与表现（动画管理器）解耦。
+/// 玩家实体（"士兵肉体"层）— 纯能力执行器。
+///
+/// ═══ 2.0 职责 ═══
+///
+/// Player 只负责"做"：移动、跳跃、重力、地面检测等物理能力。
+/// "何时做"由 4 支柱状态机（Locomotion / Airborne / Action / Dead）决定。
+/// "做什么"由 ActionDataSO 数据资产驱动。
+///
+/// ═══ 决策链路 ═══
+///
+/// InputReader → PlayerController（语义意图）→ IntentBuffer（环形队列）
+///   → TransitionResolver（标签仲裁）→ 当前状态.TryConsumeGameplayIntent
+///   → ArmPendingAction → PlayerActionState.OnEnter → 读取 ActionDataSO → 推进时间轴 + 抛标签
+///
+/// ═══ 表现解耦 ═══
+///
+/// Player 不持有 Animator 引用。动画由 PlayerAnimController 监听 LocalEventBus 事件驱动。
 /// </summary>
 [RequireComponent(typeof(PlayerStateManager))]
 [RequireComponent(typeof(PlayerController))]
@@ -42,17 +57,22 @@ public class Player : Entity<Player>, IDamageable {
     [Tooltip("哪些层级被判定为地面。必须正确设置，否则永远浮空！")]
     [SerializeField] private LayerMask groundLayers = ~0;
 
-    // ─── 闪避参数 ───
+    // ─── 闪避 / 剑冲：仅当 WeaponMoveset 对应 ActionDataSO 未配置时的兜底（权威数据在 SO）───
 
-    [Header("Dodge")]
-    [Tooltip("闪避时的移动速度。\n增大：闪避位移更远、更迅猛。\n减小：闪避位移短，像碎步。")]
-    [SerializeField] private float dodgeSpeed = 15f;
+    [Header("Fallback — Dodge (no ActionDataSO)")]
+    [SerializeField] private float fallbackDodgePlanarSpeed = 6f;
 
-    [Tooltip("闪避动作的持续时间（秒）。\n增大：无敌帧或位移时间变长，动作变慢。\n减小：闪避极其短促。")]
-    [SerializeField] private float dodgeDuration = 0.3f;
+    [SerializeField] private float fallbackDodgeDurationSeconds = 0.35f;
 
-    [Tooltip("连续两次闪避之间的冷却时间。\n增大：无法连续频繁翻滚，限制机动性。\n减小：可以疯狂连续翻滚。")]
+    [Tooltip("翻滚冷却（全局平衡，可保留在 Player）。")]
     [SerializeField] private float dodgeCooldown = 0.8f;
+
+    [Header("Fallback — SwordDash (no ActionDataSO)")]
+    [SerializeField] private float fallbackSwordDashPlanarSpeed = 10f;
+
+    [SerializeField] private float fallbackSwordDashDurationSeconds = 0.35f;
+
+    [SerializeField] private float swordDashCooldown = 1.1f;
 
     // ─── 攻击参数 ───
 
@@ -63,6 +83,10 @@ public class Player : Entity<Player>, IDamageable {
     [Tooltip("攻击或潜行时的移动速度衰减倍率。\n增大：攻击时仍能保持高速移动。\n减小：攻击时几乎原地站桩。")]
     [SerializeField, Range(0f, 1f)] private float walkSpeedMultiplier = 0.55f;
 
+    [Header("Debug")]
+    [Tooltip("在 Console 打印蓄力相关：输入按住、Action 是否启用 CanCharge、蓄力微阶段与归一化进度。")]
+    [SerializeField] private bool debugChargeAttackFlow;
+
     // ─── 运行时状态 ───
 
     private PlayerStateManager m_stateManager;
@@ -70,10 +94,11 @@ public class Player : Entity<Player>, IDamageable {
     private float m_verticalSpeed;
     private float m_attackTimer;
     private float m_dodgeCooldownTimer;
+    private float m_swordDashCooldownTimer;
     private bool m_isMoving;
     private Vector3 m_movementIntent;
     private bool m_runIntent;
-    private bool m_attackIntent;
+    private float m_runLatchEndTime;
     private bool m_isInitialized;
 
     // ─── ARPG 决策链：标签 + 意图缓冲（零 GC 路径，仅 struct 入队）───
@@ -87,7 +112,14 @@ public class Player : Entity<Player>, IDamageable {
     [Header("Resources")]
     [SerializeField] private float maxStamina = 100f;
 
+    [Header("Combat Data")]
+    [Tooltip("当前武器招式表；轻/重/蓄力/翻滚/剑冲动作数据均从此注入。")]
+    [SerializeField] private WeaponMovesetSO weaponMoveset;
+
     private float m_stamina;
+    private int m_lightComboIndex;
+    private int m_heavyComboIndex;
+    private int m_chargedComboIndex;
     private GameplayIntentKind m_pendingActionKind;
     private ActionDataSO m_pendingAction;
     private bool m_pendingActionArmed;
@@ -99,31 +131,52 @@ public class Player : Entity<Player>, IDamageable {
     public PlayerStateManager States => m_stateManager;
 
     public Vector3 PlanarVelocity => m_planarVelocity;
+    public float VerticalSpeed => m_verticalSpeed;
     public bool IsGrounded { get; private set; }
     public bool IsAttacking => m_attackTimer > 0f;
 
     public float Stamina => m_stamina;
     public float StaminaMax => maxStamina;
     public bool CanDodge => m_dodgeCooldownTimer <= 0f;
+    public bool CanSwordDash => m_swordDashCooldownTimer <= 0f;
+    public WeaponMovesetSO WeaponMoveset => weaponMoveset;
     public float AttackDuration => attackDuration;
-    public float DodgeSpeed => dodgeSpeed;
-    public float DodgeDuration => dodgeDuration;
+    public float FallbackDodgePlanarSpeed => fallbackDodgePlanarSpeed;
+    public float FallbackDodgeDurationSeconds => fallbackDodgeDurationSeconds;
+    public float FallbackSwordDashPlanarSpeed => fallbackSwordDashPlanarSpeed;
+    public float FallbackSwordDashDurationSeconds => fallbackSwordDashDurationSeconds;
     public float JumpForce => jumpForce;
     public float AirMoveMultiplier => airMoveMultiplier;
     public float WalkSpeedMultiplier => walkSpeedMultiplier;
     public bool HasMovementIntent => m_movementIntent.sqrMagnitude > 0.0001f;
     public bool WantsRun => m_runIntent;
+
+    /// <summary>双击 W 等触发的短时跑步锁，与离散剑冲无关。</summary>
+    public bool RunLatchActive => Time.time < m_runLatchEndTime;
+
+    public void ActivateRunLatch(float durationSeconds)
+    {
+        m_runLatchEndTime = Time.time + Mathf.Max(0.01f, durationSeconds);
+    }
     public bool WantsWalk => HasMovementIntent && !m_runIntent;
     public Vector3 MovementIntent => m_movementIntent;
 
-    public float NormalizedSpeed => BaseMoveSpeed > 0.01f
-        ? m_planarVelocity.magnitude / BaseMoveSpeed
-        : 0f;
+    public float NormalizedSpeed
+    {
+        get
+        {
+            var cap = RuntimeStats.RunSpeed;
+            return cap > 0.01f ? Mathf.Clamp01(m_planarVelocity.magnitude / cap) : 0f;
+        }
+    }
 
     // ─── 生命周期 ───
 
     protected override void Awake() {
         base.Awake();
+        if (statsBlueprint is PlayerStatsSO ps) {
+            maxStamina = Mathf.Max(1f, ps.MaxStamina);
+        }
         Init();
     }
 
@@ -137,19 +190,30 @@ public class Player : Entity<Player>, IDamageable {
         RefreshGroundedState();
     }
 
+    void OnEnable()
+    {
+        ChargeAttackDiagnostics.Enabled = debugChargeAttackFlow;
+    }
+
     /// <summary>构建本帧只读上下文，供意图仲裁与状态查询。</summary>
     public FrameContext BuildFrameContext(float deltaTime)
     {
+        ChargeAttackDiagnostics.Enabled = debugChargeAttackFlow;
+
+        var attackHeld = inputReader != null && inputReader.IsAttackHeld;
+
         return new FrameContext
         {
             Time = Time.time,
             DeltaTime = deltaTime,
             IsGrounded = IsGrounded,
             PlanarVelocity = m_planarVelocity,
+            CurrentPlanarSpeed = m_planarVelocity.magnitude,
             VerticalSpeed = m_verticalSpeed,
             CurrentTags = GameplayTags,
             StaminaCurrent = m_stamina,
             StaminaMax = maxStamina,
+            IsPrimaryAttackHeld = attackHeld,
         };
     }
 
@@ -220,37 +284,29 @@ public class Player : Entity<Player>, IDamageable {
         return HasMovementIntent ? m_movementIntent.normalized : Forward;
     }
 
-    public void SetAttackIntent(bool pressed) {
-        if (pressed) m_attackIntent = true;
-    }
-
-    public bool ConsumeAttackIntent() {
-        if (!m_attackIntent) return false;
-        m_attackIntent = false;
-        return true;
-    }
-
     // ─── 移动能力 ───
 
-    public void MoveByInput(float speedMultiplier = 1f) {
+    /// <summary>
+    /// 地面/空中通用：按 <see cref="RuntimeEntityStats"/> 的走跑上限与输入幅度求目标速，再经加速度曲线逼近。
+    /// </summary>
+    /// <param name="externalSpeedMultiplier">空中控制、攻击减速等额外乘子。</param>
+    /// <param name="wantsRun">为真使用 RunSpeed 上限，否则 WalkSpeed。</param>
+    public void MoveByLocomotionIntent(float externalSpeedMultiplier, bool wantsRun) {
         var input = m_movementIntent;
         var hasInput = input.sqrMagnitude > 0.0001f;
-        var targetSpeed = hasInput ? BaseMoveSpeed * Mathf.Max(0f, speedMultiplier) : 0f;
+        var inputMag = hasInput ? Mathf.Clamp01(input.magnitude) : 0f;
+        var speedCap = wantsRun ? RuntimeStats.RunSpeed : RuntimeStats.WalkSpeed;
+        var targetSpeed = hasInput ? speedCap * inputMag * Mathf.Max(0f, externalSpeedMultiplier) : 0f;
         var accel = hasInput ? moveAcceleration : moveDeceleration;
 
-        // ─── 速度大小：平滑插值（起步/刹车有惯性感）───
         var currentSpeed = m_planarVelocity.magnitude;
         var newSpeed = Mathf.MoveTowards(currentSpeed, targetSpeed, accel * Time.deltaTime);
 
-        // ─── 移动方向：立即跟随输入（不做方向延迟）───
-        // 转向视觉由 LookAtDirection 的 RotateTowards 平滑处理，
-        // 但实际位移方向立即响应，避免"身体朝左、脚往斜前滑"的割裂感。
         if (hasInput) {
             m_planarVelocity = input.normalized * newSpeed;
             SetMoveDirection(input);
             LookAtDirection(input);
         } else {
-            // 无输入：保持当前方向匀减速（自然滑停）
             var dir = currentSpeed > 0.01f ? m_planarVelocity.normalized : Vector3.zero;
             m_planarVelocity = dir * newSpeed;
         }
@@ -275,12 +331,105 @@ public class Player : Entity<Player>, IDamageable {
     // ─── 闪避与攻击能力 (略去重复的 Timer 代码，保持不变) ───
 
     public void StartDodgeCooldown() => m_dodgeCooldownTimer = dodgeCooldown;
-    public void TickDodgeCooldown() { if (m_dodgeCooldownTimer > 0f) m_dodgeCooldownTimer -= Time.deltaTime; }
+
+    public void StartSwordDashCooldown() => m_swordDashCooldownTimer = swordDashCooldown;
+
+    /// <summary>翻滚与剑冲冷却在同一帧递减，避免状态里重复写计时逻辑。</summary>
+    public void TickMobilityCooldowns()
+    {
+        if (m_dodgeCooldownTimer > 0f)
+        {
+            m_dodgeCooldownTimer -= Time.deltaTime;
+        }
+
+        if (m_swordDashCooldownTimer > 0f)
+        {
+            m_swordDashCooldownTimer -= Time.deltaTime;
+        }
+    }
+
+    public ActionDataSO ResolveDodgeActionFromMoveset()
+    {
+        return weaponMoveset != null ? weaponMoveset.DodgeAction : null;
+    }
+
+    public ActionDataSO ResolveSwordDashActionFromMoveset()
+    {
+        return weaponMoveset != null ? weaponMoveset.SwordDashAction : null;
+    }
+
+    public ActionDataSO ResolveLightAttackForCombo()
+    {
+        if (weaponMoveset == null || weaponMoveset.LightAttacks == null || weaponMoveset.LightAttacks.Length == 0)
+        {
+            return null;
+        }
+
+        return weaponMoveset.LightAttacks[m_lightComboIndex % weaponMoveset.LightAttacks.Length];
+    }
+
+    public ActionDataSO ResolveHeavyAttackForCombo()
+    {
+        if (weaponMoveset == null || weaponMoveset.HeavyAttacks == null || weaponMoveset.HeavyAttacks.Length == 0)
+        {
+            return null;
+        }
+
+        return weaponMoveset.HeavyAttacks[m_heavyComboIndex % weaponMoveset.HeavyAttacks.Length];
+    }
+
+    public ActionDataSO ResolveChargedAttackForCombo()
+    {
+        if (weaponMoveset == null || weaponMoveset.ChargedAttacks == null || weaponMoveset.ChargedAttacks.Length == 0)
+        {
+            return null;
+        }
+
+        return weaponMoveset.ChargedAttacks[m_chargedComboIndex % weaponMoveset.ChargedAttacks.Length];
+    }
+
+    /// <summary>轻攻击完整播完后调用以推进连段索引。</summary>
+    public void AdvanceLightComboIndex()
+    {
+        if (weaponMoveset == null || weaponMoveset.LightAttacks == null || weaponMoveset.LightAttacks.Length == 0)
+        {
+            return;
+        }
+
+        m_lightComboIndex = (m_lightComboIndex + 1) % weaponMoveset.LightAttacks.Length;
+    }
+
+    /// <summary>蓄力攻击完整播完后推进连段索引。</summary>
+    public void AdvanceChargedComboIndex()
+    {
+        if (weaponMoveset == null || weaponMoveset.ChargedAttacks == null || weaponMoveset.ChargedAttacks.Length == 0)
+        {
+            return;
+        }
+
+        m_chargedComboIndex = (m_chargedComboIndex + 1) % weaponMoveset.ChargedAttacks.Length;
+    }
+
+    public void ResetComboIndices()
+    {
+        m_lightComboIndex = 0;
+        m_heavyComboIndex = 0;
+        m_chargedComboIndex = 0;
+    }
 
     /// <param name="durationOverride">小于 0 时使用 Inspector 中的 attackDuration。</param>
     public void BeginAttack(float durationOverride = -1f)
     {
         m_attackTimer = durationOverride > 0f ? durationOverride : attackDuration;
+        PublishEvent(new PlayerAttackStartedEvent(GetInstanceID(), name));
+    }
+
+    /// <summary>
+    /// 攻击结束由逻辑层（如归一化时间到 1）调用 <see cref="ForceEndAttackIfActive"/>；本帧不跑 <see cref="TickAttackTimer"/>。
+    /// </summary>
+    public void BeginAttackWithManualCompletion()
+    {
+        m_attackTimer = float.MaxValue;
         PublishEvent(new PlayerAttackStartedEvent(GetInstanceID(), name));
     }
 
@@ -326,9 +475,17 @@ public class Player : Entity<Player>, IDamageable {
         RefreshGroundedState();
     }
 
-    public void ApplyDodgeMotor(Vector3 direction) {
+    public void ApplyDodgeMotor(Vector3 direction)
+    {
+        ApplyPlanarBurstMotor(direction, fallbackDodgePlanarSpeed);
+    }
+
+    /// <summary>通用平面爆发位移（翻滚、剑冲、数据驱动 Burst）。</summary>
+    public void ApplyPlanarBurstMotor(Vector3 direction, float planarSpeed)
+    {
         ApplySimpleGravity();
-        var velocity = direction * dodgeSpeed + Vector3.up * m_verticalSpeed;
+        var planar = direction.sqrMagnitude > 0.0001f ? direction.normalized : Vector3.zero;
+        var velocity = planar * planarSpeed + Vector3.up * m_verticalSpeed;
         transform.position += velocity * Time.deltaTime;
         RefreshGroundedState();
     }

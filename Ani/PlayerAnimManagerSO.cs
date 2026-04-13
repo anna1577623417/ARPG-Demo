@@ -3,14 +3,19 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// 玩家动画切片库（ScriptableObject 资产）。
-/// 在 Inspector 中配置每个状态对应的 AnimationClip 及参数。
+/// 基础状态动画映射库（ScriptableObject 资产）。
 ///
-/// 使用方式：
-/// 1. 右键 Create → GameMain → Animation → PlayerAnimManagerSO
-/// 2. 在 Inspector 中为每个状态拖入对应的 AnimationClip
-/// 3. 调整 transitionDuration、speed 等参数调手感
-/// 4. 将资产拖到 PlayerAnimManager 的 AnimClipEntry 字段
+/// ═══ 2.0 职责 ═══
+///
+/// 仅用于 4 支柱中非 Action 的基础状态（Locomotion / Airborne / Dead）的动画映射。
+/// Action 支柱的动画由 ActionDataSO.MainClip 直接携带，不经过本库。
+///
+/// ═══ 使用方式 ═══
+///
+/// 1. Create → GameMain → Animation → Player Anim Manager
+/// 2. 配置条目：StateName 填状态类名（如 "PlayerLocomotionState"）
+/// 3. 拖入对应 Clip，调整过渡时长和速度
+/// 4. 将资产拖到 PlayerAnimController.animLibrary 字段
 /// </summary>
 [CreateAssetMenu(fileName = "PlayerAnimLibrary", menuName = "GameMain/Animation/Player Anim Manager")]
 public class PlayerAnimManagerSO : ScriptableObject
@@ -18,7 +23,7 @@ public class PlayerAnimManagerSO : ScriptableObject
     [Serializable]
     public class AnimClipEntry
     {
-        [Tooltip("状态名（与状态类名一致，如 PlayerLocomotionState、PlayerAirborneState）")]
+        [Tooltip("状态名（与状态类名一致，如 PlayerLocomotionState、PlayerAirborneState、PlayerDeadState）")]
         public string StateName;
 
         [Tooltip("动画片段")]
@@ -32,18 +37,11 @@ public class PlayerAnimManagerSO : ScriptableObject
         [Range(0.1f, 20f)]
         public float Speed = 1f;
 
-        [Tooltip("是否循环播放（Idle/Run 循环，Attack/Jump/Dodge 单次）")]
+        [Tooltip("步幅匹配：动画按该参考速度（m/s）制作；0=关闭，仅用 Speed。实际倍率≈当前平面速/参考速×Speed。")]
+        public float ReferenceLocomotionSpeed;
+
+        [Tooltip("是否循环播放（Locomotion 循环，Dead 单次）")]
         public bool IsLooping = true;
-
-        [Tooltip("攻击动画的命中帧位置（0~1 归一化时间），用于伤害判定时机")]
-        [Range(0f, 1f)]
-        public float HitFrameNormalized = 0.5f;
-
-        [Tooltip("是否启用根运动（Root Motion）")]
-        public bool ApplyRootMotion;
-
-        [Tooltip("动画混合的层级（0=全身，1=上半身覆盖等），预留分层动画扩展")]
-        public int Layer;
     }
 
     [SerializeField] private AnimClipEntry[] entries;

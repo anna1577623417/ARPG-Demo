@@ -1,6 +1,10 @@
 /// <summary>
-/// 地面运动支柱：走/跑/停的合一状态（原 Idle/Walk/Run 收敛）。
-/// 仅在此状态与 <see cref="PlayerAirborneState"/> 中调用常规位移结算（重力 + 平面加速）。
+/// 地面运动支柱（Locomotion Pillar）— Idle/Walk/Run 的合一状态。
+///
+/// 职责：
+/// 1. 维护地面标签（Grounded + 能力窗口 CanJump/CanAttack/CanDodge）
+/// 2. 消费意图：Jump → Airborne, Attack/Dodge → Action
+/// 3. 驱动移动结算（MoveByLocomotionIntent + ApplyMotor）
 /// </summary>
 public sealed class PlayerLocomotionState : PlayerState
 {
@@ -14,13 +18,27 @@ public sealed class PlayerLocomotionState : PlayerState
                 return true;
 
             case GameplayIntentKind.LightAttack:
+                player.ArmPendingAction(intent.Kind, player.ResolveLightAttackForCombo());
+                player.States.Change<PlayerActionState>();
+                return true;
+
             case GameplayIntentKind.HeavyAttack:
-                player.ArmPendingAction(intent.Kind, intent.Action);
+                player.ArmPendingAction(intent.Kind, player.ResolveHeavyAttackForCombo());
+                player.States.Change<PlayerActionState>();
+                return true;
+
+            case GameplayIntentKind.ChargedAttack:
+                player.ArmPendingAction(intent.Kind, player.ResolveChargedAttackForCombo());
                 player.States.Change<PlayerActionState>();
                 return true;
 
             case GameplayIntentKind.Dodge:
-                player.ArmPendingAction(intent.Kind, intent.Action);
+                player.ArmPendingAction(intent.Kind, player.ResolveDodgeActionFromMoveset());
+                player.States.Change<PlayerActionState>();
+                return true;
+
+            case GameplayIntentKind.SwordDash:
+                player.ArmPendingAction(intent.Kind, player.ResolveSwordDashActionFromMoveset());
                 player.States.Change<PlayerActionState>();
                 return true;
         }
@@ -55,7 +73,7 @@ public sealed class PlayerLocomotionState : PlayerState
 
         if (player.HasMovementIntent)
         {
-            player.MoveByInput(1f);
+            player.MoveByLocomotionIntent(1f, player.WantsRun);
         }
         else
         {
@@ -63,7 +81,7 @@ public sealed class PlayerLocomotionState : PlayerState
         }
 
         player.ApplyMotor();
-        player.TickDodgeCooldown();
+        player.TickMobilityCooldowns();
     }
 
     private static void RefreshLocomotionTags(Player player)
@@ -77,6 +95,11 @@ public sealed class PlayerLocomotionState : PlayerState
         if (player.CanDodge)
         {
             player.GameplayTags.Add((ulong)StateTag.CanDodge);
+        }
+
+        if (player.CanSwordDash)
+        {
+            player.GameplayTags.Add((ulong)StateTag.CanSwordDash);
         }
     }
 }

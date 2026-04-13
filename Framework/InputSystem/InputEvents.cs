@@ -37,6 +37,9 @@ public readonly struct AttackInputEvent : IGameEvent
 
 public readonly struct DodgeInputEvent : IGameEvent { }
 
+/// <summary>剑道冲刺 / 直线爆发（离散，对应原 Sprint 键位）。</summary>
+public readonly struct SwordDashInputEvent : IGameEvent { }
+
 public readonly struct InteractInputEvent : IGameEvent { }
 
 /// <summary>暂停/菜单键。</summary>

@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pandoc \"C:\\\\Users\\\\15776\\\\Documents\\\\xwechat_files\\\\wxid_7cq03z2ee73v22_29c1\\\\msg\\\\file\\\\2026-04\\\\ARPG 动作系统重构：数据驱动.docx\" -o /tmp/action_design.md)"
+    ]
+  }
+}

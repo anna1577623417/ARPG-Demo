@@ -18,9 +18,13 @@ public abstract class Entity : MonoBehaviour
     [SerializeField] protected string displayName = "Entity";
     [SerializeField] protected int teamId = 0;
 
-    // ─── 基础属性（未来接入属性系统后，这些作为 Base 值，最终值由属性系统计算） ───
+    // ─── 基础属性（无 Stats 蓝图时使用；有蓝图时由 RuntimeEntityStats 覆盖同步） ───
 
-    [Header("Core Attributes")]
+    [Header("Stats Blueprint")]
+    [Tooltip("可选。指定后 MaxHealth / 走跑速 / 旋转等以资产为准，且运行时不改资产。")]
+    [SerializeField] protected EntityStatsSO statsBlueprint;
+
+    [Header("Core Attributes (legacy / fallback)")]
     [SerializeField] protected float maxHealth = 100f;
     [SerializeField] protected float baseMoveSpeed = 5f;
     [SerializeField] protected float baseRotationSpeed = 540f;
@@ -38,6 +42,7 @@ public abstract class Entity : MonoBehaviour
 
     // ─── 运行时状态 ───
 
+    private readonly RuntimeEntityStats m_runtimeStats = new RuntimeEntityStats();
     private float m_health;
     private Vector3 m_lastPosition;
     private Vector3 m_moveDirection = Vector3.forward;
@@ -74,8 +79,12 @@ public abstract class Entity : MonoBehaviour
     public float HealthNormalized => maxHealth <= 0f ? 0f : Mathf.Clamp01(m_health / maxHealth);
     public bool IsDead => m_health <= 0f;
 
-    public float BaseMoveSpeed => baseMoveSpeed;
-    public float BaseRotationSpeed => baseRotationSpeed;
+    /// <summary>兼容旧逻辑：等价于当前奔跑速度上限。</summary>
+    public float BaseMoveSpeed => m_runtimeStats.IsInitialized ? m_runtimeStats.RunSpeed : baseMoveSpeed;
+
+    public float BaseRotationSpeed => m_runtimeStats.IsInitialized ? m_runtimeStats.RotationSpeed : baseRotationSpeed;
+
+    public RuntimeEntityStats RuntimeStats => m_runtimeStats;
     public float BaseAttackPower => baseAttackPower;
     public float BaseDefense => baseDefense;
 
@@ -93,6 +102,28 @@ public abstract class Entity : MonoBehaviour
         maxHealth = Mathf.Max(1f, maxHealth);
         baseMoveSpeed = Mathf.Max(0f, baseMoveSpeed);
         baseRotationSpeed = Mathf.Max(0f, baseRotationSpeed);
+
+        if (statsBlueprint != null)
+        {
+            m_runtimeStats.Initialize(statsBlueprint);
+            maxHealth = m_runtimeStats.MaxHealth;
+            baseRotationSpeed = m_runtimeStats.RotationSpeed;
+            baseMoveSpeed = m_runtimeStats.RunSpeed;
+            baseAttackPower = m_runtimeStats.AttackPower;
+            baseDefense = m_runtimeStats.Defense;
+        }
+        else
+        {
+            var walk = baseMoveSpeed * 0.5f;
+            var run = baseMoveSpeed;
+            m_runtimeStats.InitializeLegacy(
+                maxHealth,
+                walk,
+                run,
+                baseRotationSpeed,
+                baseAttackPower,
+                baseDefense);
+        }
 
         m_health = maxHealth;
         m_lastPosition = transform.position;
@@ -118,14 +149,15 @@ public abstract class Entity : MonoBehaviour
         if (worldDirection.sqrMagnitude <= 0.0001f) return;
 
         var target = Quaternion.LookRotation(worldDirection.normalized, Vector3.up);
-        if (immediate || baseRotationSpeed <= 0f)
+        var rotSpeed = BaseRotationSpeed;
+        if (immediate || rotSpeed <= 0f)
         {
             transform.rotation = target;
             return;
         }
 
         transform.rotation = Quaternion.RotateTowards(
-            transform.rotation, target, baseRotationSpeed * Time.deltaTime);
+            transform.rotation, target, rotSpeed * Time.deltaTime);
     }
 
     // ─── 生命值 ───

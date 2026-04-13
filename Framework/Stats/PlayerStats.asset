@@ -9,7 +9,13 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f8bcdb87d11fe6f4ebc8736457981dfb, type: 3}
-  m_Name: InputReader
+  m_Script: {fileID: 11500000, guid: 4c033306babc5a2439e249b4fce1a61c, type: 3}
+  m_Name: PlayerStats
   m_EditorClassIdentifier: 
-  moveDeadZone: 0.3
+  MaxHealth: 100
+  BaseWalkSpeed: 2.4
+  BaseRunSpeed: 5.5
+  BaseRotationSpeed: 540
+  BaseAttackPower: 10
+  BaseDefense: 0
+  MaxStamina: 100

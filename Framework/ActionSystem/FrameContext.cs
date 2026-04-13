@@ -17,6 +17,9 @@ public struct FrameContext
 
     public Vector3 PlanarVelocity;
 
+    /// <summary>平面速度标量（m/s），供表现层步幅匹配等只读查询。</summary>
+    public float CurrentPlanarSpeed;
+
     public float VerticalSpeed;
 
     /// <summary>当前帧用于仲裁的标签快照（只读语义，调用方勿改掩码对象引用）。</summary>
@@ -25,4 +28,7 @@ public struct FrameContext
     public float StaminaCurrent;
 
     public float StaminaMax;
+
+    /// <summary>主攻击键（如鼠标左键）本帧是否仍按住；轻击与蓄力攻击的蓄力段均读此快照。</summary>
+    public bool IsPrimaryAttackHeld;
 }

@@ -1,49 +1,63 @@
 using UnityEngine;
 
 /// <summary>
-/// 玩家控制器（"大脑"层）。
-///
-/// ═══ 职责 ═══
-///
-/// InputReader = "硬件翻译官"（原始信号：W 键按下、摇杆推到 0.7）
-/// PlayerController = "战场指挥官"（语义意图：向相机前方移动、跑步）
-/// Player = "士兵肉体"（执行能力：加速、跳跃、攻击）
-/// StateMachine = "决策中枢"（状态逻辑：何时用什么能力）
-///
-/// ═══ 数据流 ═══
-///
-/// InputReader.MoveInput (Vector2)
-///   → PlayerController.ResolveWorldDirection() → 相机相对 or 世界坐标
-///   → PlayerController.ResolveRunIntent() → 走/跑意图
-///   → Player.SetMovementIntent(worldDir, wantsRun)（连续量，每帧写入）
-///
-/// 离散输入（Jump / Attack / Dodge）：
-///   → GlobalEventBus 上的输入事件
-///   → PlayerController 转为 GameplayIntent 入队（Player.IntentBuffer）
-///   → PlayerStateManager.OnPreLogicUpdate：TransitionResolver（只认标签）+ 当前状态 TryConsumeGameplayIntent（决定是否切状态）
-///
-/// ═══ 多模式支持 ═══
-///
-/// 监听 GameModeChangedEvent，在不同模式下：
-/// - Action: 相机相对移动 + WASD + Shift 跑步
-/// - FPS: 相机相对移动 + WASD + 角色朝向跟随相机
-/// - MOBA: 世界坐标移动 + 右键点击移动（预留）
+/// 玩家控制器：连续移动采样 + 离散意图入队。
+/// 跑步（Run）：摇杆高幅度 **或** **同一 WASD 方向双击** 进入「粘性跑步」——有移动输入期间保持 Run，可任意变向，松手后退出。
 /// </summary>
 [DefaultExecutionOrder(-50)]
 [RequireComponent(typeof(Player))]
 [AddComponentMenu("GameMain/Player/Player Controller")]
 public class PlayerController : EntityController
 {
+    private enum MoveTapCardinal : byte
+    {
+        None = 0,
+        Up = 1,
+        Down = 2,
+        Left = 3,
+        Right = 4,
+    }
+
     [Header("References")]
     [SerializeField] private Player player;
     [SerializeField] private InputReader inputReader;
 
-    [Header("Run Tuning")]
-    [SerializeField] private bool holdShiftToRun = true;
+    [Header("Continuous locomotion — Run")]
+    [Tooltip("仅手柄：左摇杆幅度超过该阈值视为 Run。键盘 WASD 模长常为 1，不会走此分支；键盘 Run 只靠双击粘性。")]
     [SerializeField, Range(0f, 1f)] private float runMagnitudeThreshold = 0.85f;
+
+    [Header("Double-tap WASD → sticky run")]
+    [Tooltip("同一方向（W/A/S/D 主导）两次「按下边沿」之间的最大间隔（秒），小于此值则进入粘性跑步。")]
+    [SerializeField, Range(0.05f, 0.8f)] private float doubleTapCardinalWindow = 0.35f;
+
+    [Tooltip("判定「主导方向」时，合成向量模长低于此值视为无输入（用于松手退出粘性跑步）。")]
+    [SerializeField, Range(0.01f, 0.3f)] private float moveReleaseThreshold = 0.12f;
+
+    [Tooltip("判定 W/A/S/D 主导轴时，主分量需比另一轴大多少（避免斜向误判）。")]
+    [SerializeField, Range(0f, 0.3f)] private float tapAxisSeparation = 0.06f;
+
+    [Header("Debug")]
+    [SerializeField] private bool debugRunLogs = true;
+
+    [Header("Primary attack — tap vs hold")]
+    [Tooltip("左键（Attack）短按派发轻击，长按达到阈值派发蓄力意图；与 WeaponMoveset 中 LightAttacks / ChargedAttacks 对应。")]
+    [SerializeField] private PrimaryAttackSplitPolicy primaryAttackSplit = new PrimaryAttackSplitPolicy
+    {
+        HoldSecondsBeforeChargedIntent = 0.18f,
+    };
+
+    private readonly PrimaryAttackPressTracker _primaryAttackPress = new PrimaryAttackPressTracker();
 
     private GameModeManager _gameModeManager;
     private bool _isInitialized;
+
+    private Vector2 _prevMoveInput;
+
+    /// <summary>索引 = MoveTapCardinal。记录该方向上一次「按下边沿」时间。</summary>
+    private readonly float[] _lastCardinalPressTime = new float[5];
+
+    private bool _stickyRunMode;
+    private bool _prevWantsRun;
 
     // ─── 生命周期 ───
 
@@ -76,24 +90,33 @@ public class PlayerController : EntityController
         {
             _gameModeManager = FindFirstObjectByType<GameModeManager>();
         }
+
+        _primaryAttackPress.Configure(in primaryAttackSplit);
     }
 
     private void OnEnable()
     {
         Init();
-        GlobalEventBus.Subscribe<AttackInputEvent>(OnAttackInput);
+        if (inputReader != null)
+        {
+            _primaryAttackPress.SyncInitialHeldState(inputReader.IsAttackHeld);
+        }
+
         GlobalEventBus.Subscribe<JumpInputEvent>(OnJumpInput);
         GlobalEventBus.Subscribe<DodgeInputEvent>(OnDodgeInput);
+        GlobalEventBus.Subscribe<SwordDashInputEvent>(OnSwordDashInput);
     }
 
     private void OnDisable()
     {
-        GlobalEventBus.Unsubscribe<AttackInputEvent>(OnAttackInput);
         GlobalEventBus.Unsubscribe<JumpInputEvent>(OnJumpInput);
         GlobalEventBus.Unsubscribe<DodgeInputEvent>(OnDodgeInput);
+        GlobalEventBus.Unsubscribe<SwordDashInputEvent>(OnSwordDashInput);
+        if (inputReader != null)
+        {
+            _primaryAttackPress.SyncInitialHeldState(inputReader.IsAttackHeld);
+        }
     }
-
-    // ─── 每帧驱动 ───
 
     private void Update()
     {
@@ -102,19 +125,121 @@ public class PlayerController : EntityController
             return;
         }
 
+        _primaryAttackPress.Tick(Time.time, inputReader.IsAttackHeld, player);
+
         var rawInput = inputReader.MoveInput;
+        var releaseSq = moveReleaseThreshold * moveReleaseThreshold;
+
+        if (rawInput.sqrMagnitude < releaseSq)
+        {
+            if (_stickyRunMode)
+            {
+                _stickyRunMode = false;
+                LogRunSticky(false, "input released (below threshold)");
+            }
+        }
+
+        DetectDoubleTapCardinalStickyRun(rawInput, releaseSq);
+
         var worldDirection = ResolveWorldDirection(rawInput);
-        var wantsRun = ResolveRunIntent(rawInput);
+        var wantsRun = ResolveRunIntent(rawInput, releaseSq);
         player.SetMovementIntent(worldDirection, wantsRun);
+
+        if (debugRunLogs && wantsRun != _prevWantsRun)
+        {
+            Debug.Log(
+                $"[PlayerController][Locomotion] WantsRun {(wantsRun ? "TRUE → Run" : "FALSE → Walk/Idle")} | " +
+                $"sticky={_stickyRunMode} | moveMag={rawInput.magnitude:F3} | " +
+                $"threshold={runMagnitudeThreshold:F2}",
+                this);
+        }
+
+        _prevWantsRun = wantsRun;
+        _prevMoveInput = rawInput;
     }
 
-    // ─── 移动方向解算 ───
+    private static MoveTapCardinal GetDominantTapDir(Vector2 v, float separation)
+    {
+        var ax = Mathf.Abs(v.x);
+        var ay = Mathf.Abs(v.y);
+        if (ay > ax + separation)
+        {
+            return v.y > 0f ? MoveTapCardinal.Up : MoveTapCardinal.Down;
+        }
 
-    /// <summary>
-    /// 将原始 2D 输入转换为世界空间 3D 方向。
-    /// Action/FPS 模式：相机相对（W = 相机前方）
-    /// MOBA 模式：世界坐标（W = 世界北方）
-    /// </summary>
+        if (ax > ay + separation)
+        {
+            return v.x > 0f ? MoveTapCardinal.Right : MoveTapCardinal.Left;
+        }
+
+        return MoveTapCardinal.None;
+    }
+
+    private void DetectDoubleTapCardinalStickyRun(Vector2 rawInput, float releaseSq)
+    {
+        if (rawInput.sqrMagnitude < releaseSq)
+        {
+            return;
+        }
+
+        var curr = GetDominantTapDir(rawInput, tapAxisSeparation);
+        var prev = GetDominantTapDir(_prevMoveInput, tapAxisSeparation);
+
+        if (curr == MoveTapCardinal.None || curr == prev)
+        {
+            return;
+        }
+
+        // 主导方向从「非当前键」切到「当前键」：视为一次新的方向按下边沿。
+        var idx = (int)curr;
+        var lastT = _lastCardinalPressTime[idx];
+        if (lastT > 0.001f && Time.time - lastT <= doubleTapCardinalWindow)
+        {
+            if (!_stickyRunMode)
+            {
+                LogRunSticky(true, $"double-tap {curr} within {doubleTapCardinalWindow:F2}s");
+            }
+
+            _stickyRunMode = true;
+        }
+
+        _lastCardinalPressTime[idx] = Time.time;
+    }
+
+    private void LogRunSticky(bool on, string reason)
+    {
+        if (!debugRunLogs)
+        {
+            return;
+        }
+
+        Debug.Log(
+            on
+                ? $"[PlayerController][Run] Sticky RUN **ON** ({reason})"
+                : $"[PlayerController][Run] Sticky RUN **OFF** — {reason}",
+            this);
+    }
+
+    private bool ResolveRunIntent(Vector2 rawInput, float releaseSq)
+    {
+        if (rawInput.sqrMagnitude < releaseSq)
+        {
+            return false;
+        }
+
+        if (_stickyRunMode)
+        {
+            return true;
+        }
+
+        if (inputReader.MoveActuatedByGamepad && rawInput.magnitude >= runMagnitudeThreshold)
+        {
+            return true;
+        }
+
+        return false;
+    }
+
     private Vector3 ResolveWorldDirection(Vector2 rawInput)
     {
         if (rawInput.sqrMagnitude <= 0.0001f)
@@ -124,7 +249,6 @@ public class PlayerController : EntityController
 
         var input = Vector2.ClampMagnitude(rawInput, 1f);
 
-        // ─── 判断是否为世界坐标模式（MOBA）───
         if (_gameModeManager != null)
         {
             var activeCtrl = _gameModeManager.ActiveCameraController;
@@ -134,19 +258,6 @@ public class PlayerController : EntityController
             }
         }
 
-        // ─── 相机相对移动（默认路径）───
-        //
-        // 使用 MovementReferenceRotation（纯鼠标 _yaw 构造的水平旋转）
-        // 而非 Camera.main.transform。
-        //
-        // 为什么不读 Camera.main？
-        //   followTarget 是 Player 子物体。当 Player.LookAtDirection 转身时，
-        //   followTarget 的世界旋转被拖动 → Cinemachine 写入 Camera.main 的朝向被污染
-        //   → 下一帧 PlayerController 读到错误方向 → 角色继续转 → 反馈死循环 → 原地转圈。
-        //
-        //   MovementReferenceRotation 直接从 _yaw 构造（Quaternion.Euler(0, _yaw, 0)），
-        //   _yaw 只受鼠标增量驱动，完全不受角色旋转或 Cinemachine 帧序影响。
-        //
         Quaternion refRotation;
 
         if (_gameModeManager != null)
@@ -155,55 +266,18 @@ public class PlayerController : EntityController
         }
         else
         {
-            // 无 GameModeManager 时回退到 Camera.main（兼容无完整系统的测试场景）
             var mainCam = Camera.main;
-            if (mainCam == null) return new Vector3(input.x, 0f, input.y);
+            if (mainCam == null)
+            {
+                return new Vector3(input.x, 0f, input.y);
+            }
+
             refRotation = Quaternion.Euler(0f, mainCam.transform.eulerAngles.y, 0f);
         }
 
-        // 从参考旋转提取水平 forward 和 right
         var forward = refRotation * Vector3.forward;
         var right = refRotation * Vector3.right;
-
-        // W(+y) = 相机前方, S(-y) = 相机后方, A(-x) = 相机左方, D(+x) = 相机右方
         return forward * input.y + right * input.x;
-    }
-
-    // ─── 跑步意图解算 ───
-
-    /// <summary>
-    /// 判断是否为跑步意图。
-    /// 两种触发方式（可配置）：
-    /// 1. 摇杆幅度超过阈值（适合手柄）
-    /// 2. Shift 按住（适合键盘）
-    /// 所有硬件状态通过 InputReader 读取，不直接访问 Keyboard.current。
-    /// </summary>
-    private bool ResolveRunIntent(Vector2 rawInput)
-    {
-        if (rawInput.sqrMagnitude <= 0.0001f)
-        {
-            return false;
-        }
-
-        var byMagnitude = rawInput.magnitude >= runMagnitudeThreshold;
-        if (!holdShiftToRun)
-        {
-            return byMagnitude;
-        }
-
-        return inputReader.IsSprintHeld || byMagnitude;
-    }
-
-    // ─── 离散意图 → 语义队列（由状态机 + 标签仲裁消费，不再直驱状态）───
-
-    private void OnAttackInput(AttackInputEvent evt)
-    {
-        if (player == null || !evt.IsPressed)
-        {
-            return;
-        }
-
-        player.EnqueueGameplayIntent(PlayerIntentCatalog.LightAttack(Time.time));
     }
 
     private void OnJumpInput(JumpInputEvent evt)
@@ -223,6 +297,23 @@ public class PlayerController : EntityController
             return;
         }
 
-        player.EnqueueGameplayIntent(PlayerIntentCatalog.Dodge(Time.time));
+        player.EnqueueGameplayIntent(PlayerIntentCatalog.Dodge(Time.time, null));
     }
+
+    private void OnSwordDashInput(SwordDashInputEvent evt)
+    {
+        if (player == null)
+        {
+            return;
+        }
+
+        player.EnqueueGameplayIntent(PlayerIntentCatalog.SwordDash(Time.time, null));
+    }
+
+#if UNITY_EDITOR
+    private void OnValidate()
+    {
+        _primaryAttackPress.Configure(in primaryAttackSplit);
+    }
+#endif
 }

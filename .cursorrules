@@ -1,0 +1,34 @@
+动画：禁止依赖 Animator Controller 状态机做战斗/移动主逻辑；本工程以 Playables + 权重混合 为表现主路径。
+位移：禁止把 Rigidbody / CharacterController.Move 当主移动；当前为 自定义 Kinematic（Transform + 地面探测），后续应收口为统一 KCC。
+内存：战斗热路径 struct 事件 + 无 LINQ/无每帧 new 引用类型。
+决策：状态迁移以 FrameContext + Tag 位掩码 与 意图缓冲 为准，禁止状态名硬编码跳转
+定义数据：动作参数等数据只能有唯一一个数据来源，唯一定义，其他地方禁止定义，采用定义数据集中化原则
+代码与编辑器职责：首先指出最新改动的核心逻辑算法实现，突出学习重点
+然后指出编辑器需要怎么配置，必要时给出配置表
+
+### 一、 确立“不可违背的工程宪法” (Contextual Constitution)
+不要每次都重新解释你的架构。在 Cursor 的 Rules 设置中，或者在开启新对话的第一段，你必须把这几根架构支柱像公理一样“砸”给 AI。让它知道，如果违背这些原则，代码就是废纸。
+**你需要明确写出：**
+ 1. **动画驱动**：严禁使用 AnimatorController 状态机。必须且只能使用底层的 Playables API 动态构建 PlayableGraph 并通过权重（Weight）进行混合。
+ 2. **物理系统**：严禁调用 Unity 原生的 Rigidbody 或 CharacterController 的位移方法。一切移动与碰撞结算，必须收口于自定义的 Kinematic Character Controller (KCC)。
+ 3. **内存纪律**：在战斗逻辑更新（如 Update 和 OnLogicUpdate）中，实施严格的 Zero-GC（零垃圾回收）策略。必须使用 struct 传递事件与意图，严禁装箱操作、LINQ 查询或临时实例化类对象。
+ 4. **决策机制**：严禁状态之间的硬编码跳转。状态的切换必须依赖提取 FrameContext 中的 ulong 位掩码标签（Tags）进行位运算仲裁。
+### 二、 采用“骨架先行，血肉延后”的审查机制 (Skeleton-First Prompts)
+MVP 代码的特征就是逻辑全堆在方法体里。要获得工程化代码，你必须强制 AI 先交出数据结构设计图，经过你审批后，才能让它写具体的实现。
+**与 AI 沟通的具体话术：**
+ * “先不要写具体的实现逻辑。请先列出为了实现这个功能，我们需要定义哪些 struct（数据载荷）、interface 或 ScriptableObject 的结构？写明它们的内存布局和字段即可。”
+ * “告诉我数据在这个功能中，是如何从输入层，流经标签系统，最终到达表现层的。请列出数据流转的步骤清单。”
+
+### 三、 滥用“负面清单” (The "Do Not" Directives)
+
+**实战例子：**
+ * “**绝对不要**在 PlayerController 或任何实体组件上直接声明暴露具体的 ActionDataSO 字段（如 public ActionDataSO lightAttack;）。必须通过 WeaponMovesetSO 这样的中间层容器进行调度。”
+ * “**绝对不要**使用字符串（String）或名称匹配作为字典的 Key 去查找动画或状态，必须依靠事件结构体携带的对象引用进行通信。”
+### 实战：工程化约束 Prompt 模板
+下次你想让 Claude 帮你重构或编写新功能时，可以直接复制这套模板作为对话的开头（以我们刚才讨论的 WeaponMovesetSO 为例）：
+> **Role & Objective:**
+> 你现在是一位拥有 10 年经验的顶级技术专家，专注于商业级 3D 动作游戏（ARPG）的数据驱动架构设计。你需要帮我实现 [填写目标：武器招式表 WeaponMovesetSO 模块]。
+> **Strict Engineering Constraints (不可违背):**
+>  1. **架构模式**：必须符合极致的 MVC 解耦。表现层、逻辑层、输入层完全隔离，通过 LocalEventBus 传递纯值类型结构体通信。
+>  2. **数据资产化**：严禁在 Controller 层面硬编码动作数据。必须设计出极具扩展性的中间层（如 ScriptableObject），支持未来无缝挂载技能判定、特效生成等逻辑接口，而无需修改核心代码。
+>  3. **零分配 (Zero-GC)**：运行时的逻辑切片与状态仲裁必须维持 O(1) 性能，杜绝运行时的堆内存分配。

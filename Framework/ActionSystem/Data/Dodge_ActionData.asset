@@ -1,0 +1,95 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dc44221e6d158b148ad988016a948ef4, type: 3}
+  m_Name: Dodge_ActionData
+  m_EditorClassIdentifier: 
+  MainClip: {fileID: 3031411921458128146, guid: c334125d0dbc3a544a089e659a9370d4,
+    type: 3}
+  CrossfadeTime: 0.08
+  AnimSpeed: 1.05
+  Duration: 0.1
+  Windows: []
+  Charge:
+    CanCharge: 0
+    ChargeHoldPoint: 0.32
+    ChargeStartupSpeed: 0.45
+    MaxChargeHoldTime: 2.5
+    ExecutionSpeed: 1.35
+    MinHoldTimeForChargedTag: 0
+    ChargedPayloadTags: 549755813888
+  BurstMovementSeconds: 0
+  BurstTravelDistance: 4
+  BurstPlanarSpeed: 22
+  BurstUseFacingForward: 1
+  UseDisplacementVelocityCurve: 1
+  DisplacementVelocityMultiplier:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.12
+      value: 0.2
+      inSlope: 3.6363637
+      outSlope: 3.6363637
+      tangentMode: 136
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 0.22
+      value: 0.85
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 136
+      weightedMode: 2
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 0.52977294
+      value: 0.7058899
+      inSlope: -1.1834313
+      outSlope: -1.1834313
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 0.76486087
+      value: 0.25883484
+      inSlope: -3.145072
+      outSlope: -3.145072
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: -1.1007731
+      outSlope: 0
+      tangentMode: 5
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  DisplacementPeakForwardSpeed: 7
+  DrivesBurstMovement: 1

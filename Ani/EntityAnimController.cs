@@ -141,6 +141,16 @@ public abstract class EntityAnimController : MonoBehaviour {
         CurrentClipName = clip.name;
     }
 
+    /// <summary>调整当前主输出 Clip 的播放倍率（步幅匹配等）。</summary>
+    protected void SetPrimaryClipPlayableSpeed(float speed)
+    {
+        if (!_graph.IsValid()) return;
+        if (_clips[_currentPort].IsValid())
+        {
+            _clips[_currentPort].SetSpeed(Mathf.Max(0.01f, speed));
+        }
+    }
+
     public void Stop() {
         if (!_graph.IsValid()) return;
 

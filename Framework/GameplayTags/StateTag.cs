@@ -36,6 +36,11 @@ public enum StateTag : ulong
     CanHeavyAttack = 1UL << 35,
     CanCancelToLocomotion = 1UL << 36,
     Invulnerable = 1UL << 37,
+    /// <summary>离散直线爆发（剑冲等），与翻滚冷却可独立配置。</summary>
+    CanSwordDash = 1UL << 38,
+
+    /// <summary>本段攻击带有蓄力完成 payload（伤害倍率等由命中盒读取标签区分）。</summary>
+    AttackCharged = 1UL << 39,
 
     // ─── Reserved (48–63) ───
     Dead = 1UL << 48,

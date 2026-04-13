@@ -39,7 +39,7 @@
                     "id": "523ea5b5-3e65-480d-be5d-362754068245",
                     "expectedControlType": "",
                     "processors": "",
-                    "interactions": "Hold",
+                    "interactions": "",
                     "initialStateCheck": false
                 },
                 {
@@ -64,6 +64,24 @@
                     "name": "Pause",
                     "type": "Button",
                     "id": "8fde7964-42fe-4758-aff7-2f74603dbe97",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "Sprint",
+                    "type": "Button",
+                    "id": "eee324b4-87d5-4acc-929c-7511d457a20d",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "SwitchCamera",
+                    "type": "Button",
+                    "id": "a73d7886-e0d6-48e4-bf0f-88f950d3d7db",
                     "expectedControlType": "",
                     "processors": "",
                     "interactions": "",
@@ -184,7 +202,7 @@
                 {
                     "name": "",
                     "id": "fc73204c-a94f-4bf6-b9b0-c624e29f9646",
-                    "path": "<Keyboard>/space",
+                    "path": "<Keyboard>/f",
                     "interactions": "",
                     "processors": "",
                     "groups": "",
@@ -250,7 +268,7 @@
                 {
                     "name": "",
                     "id": "085e0690-7811-4e49-a6a1-394663e4ae44",
-                    "path": "<Keyboard>/shift",
+                    "path": "<Keyboard>/space",
                     "interactions": "",
                     "processors": "",
                     "groups": "",
@@ -343,6 +361,39 @@
                     "processors": "",
                     "groups": "",
                     "action": "Pause",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "839a7a9d-598b-44ee-9933-f4da5fb8f37f",
+                    "path": "<Keyboard>/shift",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Sprint",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "68417643-9eba-4546-9f96-6a98ea547984",
+                    "path": "<Keyboard>/v",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "SwitchCamera",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "c1b2a3d4-e5f6-7890-abcd-ef1234567890",
+                    "path": "<Gamepad>/leftShoulder",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Sprint",
                     "isComposite": false,
                     "isPartOfComposite": false
                 }

@@ -70,6 +70,20 @@ public readonly struct PlayerJumpEvent : IGameEvent
     }
 }
 
+// ─── 跳跃空中阶段（到达最高点后进入下落）───
+
+public readonly struct PlayerJumpAirPhaseEvent : IGameEvent
+{
+    public readonly int PlayerInstanceId;
+    public readonly string PlayerName;
+
+    public PlayerJumpAirPhaseEvent(int playerInstanceId, string playerName)
+    {
+        PlayerInstanceId = playerInstanceId;
+        PlayerName = playerName;
+    }
+}
+
 // ─── 落地 ───
 
 public readonly struct PlayerLandedEvent : IGameEvent
@@ -126,5 +140,20 @@ public readonly struct PlayerActionPresentationRequestEvent : IGameEvent
         PlayerInstanceId = playerInstanceId;
         Kind = kind;
         Action = action;
+    }
+}
+
+/// <summary>
+/// 请求修改当前 Action 主 Clip 的 Playable 播放速度（蓄力等）；由 PlayerAnimController 应用到主 AnimationClipPlayable。
+/// </summary>
+public readonly struct PlayablePlaybackSpeedRequestEvent : IGameEvent
+{
+    public readonly int EntityInstanceId;
+    public readonly float TargetSpeed;
+
+    public PlayablePlaybackSpeedRequestEvent(int entityInstanceId, float targetSpeed)
+    {
+        EntityInstanceId = entityInstanceId;
+        TargetSpeed = targetSpeed;
     }
 }

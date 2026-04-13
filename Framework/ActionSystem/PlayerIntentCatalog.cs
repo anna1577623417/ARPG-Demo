@@ -41,6 +41,19 @@ public static class PlayerIntentCatalog
             action: overrideAction);
     }
 
+    /// <summary>蓄力攻击：与轻击同一主攻击键派生，走 <see cref="WeaponMovesetSO.ChargedAttacks"/> 与独立 Charge 配置。</summary>
+    public static GameplayIntent ChargedAttack(float time, ActionDataSO overrideAction = null)
+    {
+        return GameplayIntent.Create(
+            GameplayIntentKind.ChargedAttack,
+            time,
+            DefaultBufferSeconds,
+            requiredAll: (ulong)StateTag.CanLightAttack,
+            requiredAny: 0UL,
+            forbidden: (ulong)(StateTag.Dead | StateTag.Stunned),
+            action: overrideAction);
+    }
+
     public static GameplayIntent Dodge(float time, ActionDataSO overrideAction = null)
     {
         return GameplayIntent.Create(
@@ -48,6 +61,18 @@ public static class PlayerIntentCatalog
             time,
             DefaultBufferSeconds,
             requiredAll: (ulong)StateTag.CanDodge,
+            requiredAny: 0UL,
+            forbidden: (ulong)(StateTag.Dead | StateTag.Stunned),
+            action: overrideAction);
+    }
+
+    public static GameplayIntent SwordDash(float time, ActionDataSO overrideAction = null)
+    {
+        return GameplayIntent.Create(
+            GameplayIntentKind.SwordDash,
+            time,
+            DefaultBufferSeconds,
+            requiredAll: (ulong)StateTag.CanSwordDash,
             requiredAny: 0UL,
             forbidden: (ulong)(StateTag.Dead | StateTag.Stunned),
             action: overrideAction);

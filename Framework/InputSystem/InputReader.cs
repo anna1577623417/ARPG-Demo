@@ -2,37 +2,30 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 /// <summary>
-/// 输入读取器（ScriptableObject 单例语义）。
+/// 输入读取器 — 硬件信号 → 语义事件的翻译层（ScriptableObject 单例语义）。
 ///
-/// ═══ 它是怎么工作的？ ═══
+/// ═══ 2.0 数据流 ═══
 ///
-/// 完整调用链：
-///   玩家按下物理按键（如键盘 Space）
-///     → Unity Input System 匹配到 .inputactions 里定义的 "Jump" Action
-///     → 自动生成的 PlayerInputSystem.cs 触发 IGamePlayActions.OnJump 回调
-///     → InputReader 实现了 IGamePlayActions，所以 OnJump 被调用
-///     → OnJump 内部做两件事：
-///         ① 缓存数据到属性（供状态机轮询）
-///         ② 发布事件到 GlobalEventBus（供状态机监听打断）
-///     → 状态机从 EventBus 收到 JumpInputEvent，执行状态切换
+/// 物理按键
+///   → Unity Input System (.inputactions 资产中定义的 Action)
+///   → 自动生成 PlayerInputSystem.cs 触发 IGamePlayActions 回调
+///   → InputReader（本类）将物理信号翻译为两种输出：
+///       ① 连续量属性（MoveInput / LookInput 等）— 供 PlayerController 每帧轮询
+///       ② 离散事件（JumpInputEvent / AttackInputEvent / DodgeInputEvent）— 发布到 GlobalEventBus
+///   → PlayerController 轮询 IsAttackHeld + PrimaryAttackPressTracker 派发轻/蓄力意图 → 入队 IntentBuffer
+///   → PlayerStateManager.OnPreLogicUpdate：TransitionResolver 标签仲裁 + 当前状态 TryConsumeGameplayIntent
 ///
-/// 为什么要实现 IGamePlayActions 和 IUIActions 接口？
-///   .inputactions 文件在 Unity 中会自动生成一个 C# 类 PlayerInputSystem，
-///   里面为每个 ActionMap 定义了一个接口（GamePlay → IGamePlayActions，UI → IUIActions），
-///   每个 Action 对应接口里的一个方法。
-///   调用 _inputActions.GamePlay.SetCallbacks(this) 后，Input System 会把
-///   所有 GamePlay ActionMap 下的回调绑定到 this（即 InputReader）。
-///   所以 InputReader 必须实现接口里的每一个方法，否则编译报错。
+/// ═══ 设计原则 ═══
 ///
-/// 为什么用 ScriptableObject 而不是 MonoBehaviour？
-///   - SO 是资产级对象，不依赖场景中的 GameObject 存活。
-///   - 多个系统（Player、AI接管、回放）可引用同一个 InputReader 资产。
-///   - 切换场景时 SO 不会被销毁，输入状态天然持久。
+/// 1. 数据来源唯一性：所有键位绑定只在 .inputactions 资产中定义，
+///    禁止在代码中 new InputAction() 临时创建，否则 RebindManager 无法统一管理。
+/// 2. ScriptableObject 不依赖场景 GameObject，多系统可共享同一资产实例。
+/// 3. InputReader 只做"翻译"，不做"决策"。语义意图的合法性由 TransitionResolver + 标签判定。
 ///
-/// 换绑流程预留：
-///   外部 RebindManager 通过 InputReader.ActionAsset 访问底层 InputActionAsset，
-///   调用 PerformInteractiveRebinding 执行改键，
-///   结果通过 SaveBindingOverridesAsJson / LoadBindingOverridesFromJson 持久化到 PlayerPrefs。
+/// ═══ 换绑 ═══
+///
+/// RebindManager 通过 InputReader.ActionAsset 访问底层 InputActionAsset，
+/// 调用 PerformInteractiveRebinding 执行改键，结果持久化到 PlayerPrefs。
 /// </summary>
 [CreateAssetMenu(fileName = "InputReader", menuName = "GameMain/Input/Input Reader")]
 public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions, PlayerInputSystem.IUIActions
@@ -46,6 +39,9 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
     /// <summary>移动输入方向（归一化 Vector2，x=左右，y=前后）。</summary>
     public Vector2 MoveInput { get; private set; }
 
+    /// <summary>上一帧驱动 Move 的设备是否为手柄；键盘 WASD 全为 1 模长，不能用手感阈值当 Run。</summary>
+    public bool MoveActuatedByGamepad { get; private set; }
+
     /// <summary>视角/鼠标增量输入。</summary>
     public Vector2 LookInput { get; private set; }
 
@@ -55,19 +51,30 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
     /// <summary>跳跃键是否持续按下。</summary>
     public bool IsJumpHeld { get; private set; }
 
-    /// <summary>冲刺键是否持续按下（Shift），供 PlayerController 判断跑步意图。</summary>
-    public bool IsSprintHeld { get; private set; }
-
     /// <summary>当前输入焦点模式。</summary>
     public InputFocusMode CurrentFocus => _currentFocus;
 
     /// <summary>暴露底层 InputActionAsset，供 RebindManager 执行换绑。</summary>
     public InputActionAsset ActionAsset => _inputActions?.asset;
 
-    // ═══ 手动绑定的额外按键（不在 .inputactions 中定义，运行时创建） ═══
-
-    private InputAction _switchCameraAction;
-    private InputAction _sprintAction;
+    // ═══ 编辑器操作提示 ═══
+    //
+    // 以下功能需要在 Unity 编辑器中的 .inputactions 文件中手动添加：
+    //
+    // 【GamePlay ActionMap】
+    //   1. "Sprint"  — 离散「剑冲」；键盘 Shift + 手柄 LB（见 .inputactions）
+    //   2. "Jump"    — 键盘 F；手柄 South
+    //   3. "Dodge"  — 键盘 Space；手柄 East
+    //   4. "SwitchCamera" — <Keyboard>/v
+    //
+    // 添加后 Unity 会自动重新生成 PlayerInputSystem.cs，届时：
+    //   - IGamePlayActions 接口会新增 OnSprint / OnSwitchCamera 方法
+    //   - 在本文件中实现对应回调即可
+    //
+    // ═══ 重要原则：数据来源唯一性 ═══
+    // 所有键位绑定必须且只能在 .inputactions 资产中定义。
+    // 禁止在代码中使用 new InputAction(...) 临时创建绑定，
+    // 否则会导致键位数据来源分裂，RebindManager 无法统一管理。
 
     // ═══ 生命周期 ═══
 
@@ -82,21 +89,6 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
             _inputActions.UI.SetCallbacks(this);
         }
 
-        // 手动创建切换相机按键（V 键），不依赖 .inputactions 定义
-        if (_switchCameraAction == null)
-        {
-            _switchCameraAction = new InputAction("SwitchCamera", InputActionType.Button, "<Keyboard>/v");
-            _switchCameraAction.performed += OnSwitchCamera;
-        }
-
-        // 手动创建冲刺按键（Left Shift），供 PlayerController 判断跑步意图
-        if (_sprintAction == null)
-        {
-            _sprintAction = new InputAction("Sprint", InputActionType.Button, "<Keyboard>/leftShift");
-            _sprintAction.performed += ctx => IsSprintHeld = true;
-            _sprintAction.canceled += ctx => IsSprintHeld = false;
-        }
-
         SetFocus(InputFocusMode.Gameplay);
     }
 
@@ -104,8 +96,6 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
     {
         _inputActions?.GamePlay.Disable();
         _inputActions?.UI.Disable();
-        _switchCameraAction?.Disable();
-        _sprintAction?.Disable();
     }
 
     // ═══ 焦点切换（Gameplay / UI 互斥） ═══
@@ -123,15 +113,11 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
             case InputFocusMode.Gameplay:
                 _inputActions.GamePlay.Enable();
                 _inputActions.UI.Disable();
-                _switchCameraAction?.Enable();
-                _sprintAction?.Enable();
                 break;
             case InputFocusMode.UI:
                 _inputActions.GamePlay.Disable();
                 _inputActions.UI.Enable();
-                _switchCameraAction?.Disable();
-                _sprintAction?.Disable();
-                ClearGameplayCache(); // 切到 UI 时清空 Gameplay 缓存，防止残留输入
+                ClearGameplayCache();
                 break;
         }
 
@@ -155,10 +141,10 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
     private void ClearGameplayCache()
     {
         MoveInput = Vector2.zero;
+        MoveActuatedByGamepad = false;
         LookInput = Vector2.zero;
         IsAttackHeld = false;
         IsJumpHeld = false;
-        IsSprintHeld = false;
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -180,6 +166,7 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
     {
         var rawInput = context.ReadValue<Vector2>();
         MoveInput = rawInput.sqrMagnitude < moveDeadZone * moveDeadZone ? Vector2.zero : rawInput;
+        MoveActuatedByGamepad = context.control != null && context.control.device is Gamepad;
         GlobalEventBus.Publish(new MoveInputEvent(MoveInput));
     }
 
@@ -213,21 +200,20 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
     }
 
     /// <summary>
-    /// 攻击（离散型 + 持续型）。
-    /// performed = 按下 → 广播事件，状态机切换到 AttackState。
-    /// canceled  = 松开 → 广播松开事件，IsAttackHeld 用于蓄力攻击等持续判定。
+    /// 攻击（离散）。使用 started 避免与「Hold」交互冲突导致鼠标左键无 performed。
     /// </summary>
     public void OnAttack(InputAction.CallbackContext context)
     {
-        Debug.Log("按下了 Attack 键");
-        if (context.performed)
+        if (context.started)
         {
             IsAttackHeld = true;
+            ChargeAttackDiagnostics.Log($"Input Attack started → IsAttackHeld=true (action={context.action?.name})");
             GlobalEventBus.Publish(new AttackInputEvent(true));
         }
         else if (context.canceled)
         {
             IsAttackHeld = false;
+            ChargeAttackDiagnostics.Log($"Input Attack canceled → IsAttackHeld=false");
             GlobalEventBus.Publish(new AttackInputEvent(false));
         }
     }
@@ -269,18 +255,20 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
     }
 
     /// <summary>
-    /// 切换相机视角（离散型）。
-    /// 手动绑定 V 键，不走 .inputactions 文件。
+    /// Sprint 在输入资产中保留名称，语义为离散「剑道冲刺」，不再驱动连续跑步。
     /// </summary>
-    private void OnSwitchCamera(InputAction.CallbackContext context)
+    public void OnSprint(InputAction.CallbackContext context)
     {
         if (context.performed)
         {
-            GlobalEventBus.Publish(new SwitchGameModeInputEvent());
+            GlobalEventBus.Publish(new SwordDashInputEvent());
         }
     }
+    public void OnSwitchCamera(InputAction.CallbackContext context) {
+        if (context.performed) GlobalEventBus.Publish(new SwitchGameModeInputEvent());
+    }
 
-    // UI ActionMap 回调（当前先保留最小处理，后续可接 UI 事件总线）
+    //UI ActionMap 回调（当前先保留最小处理，后续可接 UI 事件总线）
     public void OnCancel(InputAction.CallbackContext context)
     {
     }

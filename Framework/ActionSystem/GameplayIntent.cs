@@ -8,6 +8,14 @@ public enum GameplayIntentKind : byte
     LightAttack = 2,
     HeavyAttack = 3,
     Dodge = 4,
+    /// <summary>直线爆发位移（原 Shift「冲刺」语义，走 ActionDataSO，非连续 Run）。</summary>
+    SwordDash = 5,
+
+    /// <summary>
+    /// 蓄力型攻击（独立 ActionDataSO，走 <see cref="WeaponMovesetSO.ChargedAttacks"/>；
+    /// 与 <see cref="LightAttack"/> 同源主攻击键，由 <see cref="PrimaryAttackPressTracker"/> 长按阈值派发）。
+    /// </summary>
+    ChargedAttack = 6,
 }
 
 /// <summary>
