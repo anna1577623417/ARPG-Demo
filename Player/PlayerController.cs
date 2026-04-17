@@ -101,17 +101,10 @@ public class PlayerController : EntityController
         {
             _primaryAttackPress.SyncInitialHeldState(inputReader.IsAttackHeld);
         }
-
-        GlobalEventBus.Subscribe<JumpInputEvent>(OnJumpInput);
-        GlobalEventBus.Subscribe<DodgeInputEvent>(OnDodgeInput);
-        GlobalEventBus.Subscribe<SwordDashInputEvent>(OnSwordDashInput);
     }
 
     private void OnDisable()
     {
-        GlobalEventBus.Unsubscribe<JumpInputEvent>(OnJumpInput);
-        GlobalEventBus.Unsubscribe<DodgeInputEvent>(OnDodgeInput);
-        GlobalEventBus.Unsubscribe<SwordDashInputEvent>(OnSwordDashInput);
         if (inputReader != null)
         {
             _primaryAttackPress.SyncInitialHeldState(inputReader.IsAttackHeld);
@@ -125,6 +118,7 @@ public class PlayerController : EntityController
             return;
         }
 
+        ConsumeDiscreteIntents();
         _primaryAttackPress.Tick(Time.time, inputReader.IsAttackHeld, player);
 
         var rawInput = inputReader.MoveInput;
@@ -145,17 +139,38 @@ public class PlayerController : EntityController
         var wantsRun = ResolveRunIntent(rawInput, releaseSq);
         player.SetMovementIntent(worldDirection, wantsRun);
 
-        if (debugRunLogs && wantsRun != _prevWantsRun)
-        {
-            Debug.Log(
-                $"[PlayerController][Locomotion] WantsRun {(wantsRun ? "TRUE → Run" : "FALSE → Walk/Idle")} | " +
-                $"sticky={_stickyRunMode} | moveMag={rawInput.magnitude:F3} | " +
-                $"threshold={runMagnitudeThreshold:F2}",
-                this);
-        }
+        //if (debugRunLogs && wantsRun != _prevWantsRun)
+        //{
+        //    Debug.Log(
+        //        $"[PlayerController][Locomotion] WantsRun {(wantsRun ? "TRUE → Run" : "FALSE → Walk/Idle")} | " +
+        //        $"sticky={_stickyRunMode} | moveMag={rawInput.magnitude:F3} | " +
+        //        $"threshold={runMagnitudeThreshold:F2}",
+        //        this);
+        //}
 
         _prevWantsRun = wantsRun;
         _prevMoveInput = rawInput;
+    }
+
+    /// <summary>
+    /// 核心控制流改为直接依赖调用：控制器直接消费 InputReader 的离散脉冲并入队意图。
+    /// </summary>
+    private void ConsumeDiscreteIntents()
+    {
+        if (inputReader.ConsumeJumpPressed())
+        {
+            player.EnqueueGameplayIntent(PlayerIntentCatalog.Jump(Time.time));
+        }
+
+        if (inputReader.ConsumeDodgePressed())
+        {
+            player.EnqueueGameplayIntent(PlayerIntentCatalog.Dodge(Time.time, null));
+        }
+
+        if (inputReader.ConsumeSwordDashPressed())
+        {
+            player.EnqueueGameplayIntent(PlayerIntentCatalog.SwordDash(Time.time, null));
+        }
     }
 
     private static MoveTapCardinal GetDominantTapDir(Vector2 v, float separation)
@@ -213,11 +228,11 @@ public class PlayerController : EntityController
             return;
         }
 
-        Debug.Log(
-            on
-                ? $"[PlayerController][Run] Sticky RUN **ON** ({reason})"
-                : $"[PlayerController][Run] Sticky RUN **OFF** — {reason}",
-            this);
+        //Debug.Log(
+        //    on
+        //        ? $"[PlayerController][Run] Sticky RUN **ON** ({reason})"
+        //        : $"[PlayerController][Run] Sticky RUN **OFF** — {reason}",
+        //    this);
     }
 
     private bool ResolveRunIntent(Vector2 rawInput, float releaseSq)
@@ -278,36 +293,6 @@ public class PlayerController : EntityController
         var forward = refRotation * Vector3.forward;
         var right = refRotation * Vector3.right;
         return forward * input.y + right * input.x;
-    }
-
-    private void OnJumpInput(JumpInputEvent evt)
-    {
-        if (player == null || !evt.IsPressed)
-        {
-            return;
-        }
-
-        player.EnqueueGameplayIntent(PlayerIntentCatalog.Jump(Time.time));
-    }
-
-    private void OnDodgeInput(DodgeInputEvent evt)
-    {
-        if (player == null)
-        {
-            return;
-        }
-
-        player.EnqueueGameplayIntent(PlayerIntentCatalog.Dodge(Time.time, null));
-    }
-
-    private void OnSwordDashInput(SwordDashInputEvent evt)
-    {
-        if (player == null)
-        {
-            return;
-        }
-
-        player.EnqueueGameplayIntent(PlayerIntentCatalog.SwordDash(Time.time, null));
     }
 
 #if UNITY_EDITOR

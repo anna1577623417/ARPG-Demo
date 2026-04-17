@@ -1,5 +1,5 @@
 /// <summary>
-/// 固定容量环形意图队列：战斗帧内无 GC（除非扩容以外路径；容量固定不扩容）。
+/// 固定容量环形意图队列（结构体数组实现）：战斗帧内无 GC（除非扩容以外路径；容量固定不扩容）。
 /// </summary>
 public sealed class GameplayIntentBuffer
 {

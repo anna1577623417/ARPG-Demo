@@ -16,7 +16,7 @@ MonoBehaviour:
     type: 3}
   CrossfadeTime: 0.08
   AnimSpeed: 1.05
-  Duration: 0.1
+  Duration: 0.4
   Windows: []
   Charge:
     CanCharge: 0
@@ -74,8 +74,8 @@ MonoBehaviour:
       time: 0.76486087
       value: 0.25883484
       inSlope: -3.145072
-      outSlope: -3.145072
-      tangentMode: 0
+      outSlope: -1.1007731
+      tangentMode: 65
       weightedMode: 0
       inWeight: 0.33333334
       outWeight: 0.33333334

@@ -192,14 +192,12 @@ public class Player : Entity<Player>, IDamageable {
 
     void OnEnable()
     {
-        ChargeAttackDiagnostics.Enabled = debugChargeAttackFlow;
+
     }
 
     /// <summary>构建本帧只读上下文，供意图仲裁与状态查询。</summary>
     public FrameContext BuildFrameContext(float deltaTime)
     {
-        ChargeAttackDiagnostics.Enabled = debugChargeAttackFlow;
-
         var attackHeld = inputReader != null && inputReader.IsAttackHeld;
 
         return new FrameContext

@@ -77,18 +77,12 @@ public sealed class PlayerActionState : PlayerState
                 m_chargePhase = ChargeMicroPhase.ApproachingHold;
                 m_chargeHoldTimer = 0f;
                 m_didFreezeAtHold = false;
-                ChargeAttackDiagnostics.Log(
-                    $"Charge ON (ChargedAttack): action={m_action.name} holdPt={m_action.Charge.ChargeHoldPoint:F2} " +
-                    $"startupSpd={m_action.Charge.ChargeStartupSpeed:F2} execSpd={m_action.Charge.ExecutionSpeed:F2} " +
-                    $"maxHold={m_action.Charge.MaxChargeHoldTime:F2}s minCharged={m_action.Charge.MinHoldTimeForChargedTag:F2}s");
             }
             else
             {
                 var duration = m_action != null && m_action.Duration > 0.001f ? m_action.Duration : -1f;
                 player.BeginAttack(duration);
                 var so = m_action != null ? m_action.name : "null";
-                ChargeAttackDiagnostics.Log(
-                    $"Melee timer path: kind={m_kind} action={so} (蓄力仅 ChargedAttack 意图 + SO.CanCharge)");
             }
         }
 
@@ -254,8 +248,6 @@ public sealed class PlayerActionState : PlayerState
         if (m_lastLoggedChargePhase != m_chargePhase)
         {
             m_lastLoggedChargePhase = m_chargePhase;
-            ChargeAttackDiagnostics.Log(
-                $"phase={m_chargePhase} norm={m_attackNorm:F3} held={held} baseDur={baseDur:F3}s");
         }
 
         switch (m_chargePhase)
@@ -355,7 +347,6 @@ public sealed class PlayerActionState : PlayerState
 
         player.GameplayTags.Add(cfg.ChargedPayloadTags);
         m_appliedChargedTags |= cfg.ChargedPayloadTags;
-        ChargeAttackDiagnostics.Log($"Applied ChargedPayloadTags mask={cfg.ChargedPayloadTags}");
     }
 
     private void PublishPlaybackSpeed(Player player, float speedMultiplier)

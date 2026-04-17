@@ -2,7 +2,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 /// <summary>
-/// 输入读取器 — 硬件信号 → 语义事件的翻译层（ScriptableObject 单例语义）。
+/// 输入读取器 — 硬件信号 → 连续缓存 + 离散脉冲的翻译层（ScriptableObject 单例语义）。
 ///
 /// ═══ 2.0 数据流 ═══
 ///
@@ -10,9 +10,9 @@ using UnityEngine.InputSystem;
 ///   → Unity Input System (.inputactions 资产中定义的 Action)
 ///   → 自动生成 PlayerInputSystem.cs 触发 IGamePlayActions 回调
 ///   → InputReader（本类）将物理信号翻译为两种输出：
-///       ① 连续量属性（MoveInput / LookInput 等）— 供 PlayerController 每帧轮询
-///       ② 离散事件（JumpInputEvent / AttackInputEvent / DodgeInputEvent）— 发布到 GlobalEventBus
-///   → PlayerController 轮询 IsAttackHeld + PrimaryAttackPressTracker 派发轻/蓄力意图 → 入队 IntentBuffer
+///       ① 连续量属性（MoveInput / LookInput 等）— 供 PlayerController / CameraController 每帧轮询
+///       ② 离散脉冲（Jump/Dodge/SwordDash Pressed）— 由 PlayerController 直接消费
+///   → PlayerController 轮询 MoveInput/IsAttackHeld + 消费离散脉冲 → 入队 IntentBuffer
 ///   → PlayerStateManager.OnPreLogicUpdate：TransitionResolver 标签仲裁 + 当前状态 TryConsumeGameplayIntent
 ///
 /// ═══ 设计原则 ═══
@@ -21,6 +21,7 @@ using UnityEngine.InputSystem;
 ///    禁止在代码中 new InputAction() 临时创建，否则 RebindManager 无法统一管理。
 /// 2. ScriptableObject 不依赖场景 GameObject，多系统可共享同一资产实例。
 /// 3. InputReader 只做"翻译"，不做"决策"。语义意图的合法性由 TransitionResolver + 标签判定。
+/// 4. 核心输入到动作管线不经 EventBus：事件只用于 UI/模式切换等旁路广播。
 ///
 /// ═══ 换绑 ═══
 ///
@@ -51,6 +52,42 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
     /// <summary>跳跃键是否持续按下。</summary>
     public bool IsJumpHeld { get; private set; }
 
+    /// <summary>离散脉冲：本帧是否收到 Jump 按下边沿（由控制器消费并清零）。</summary>
+    public bool ConsumeJumpPressed()
+    {
+        if (!_jumpPressedPulse)
+        {
+            return false;
+        }
+
+        _jumpPressedPulse = false;
+        return true;
+    }
+
+    /// <summary>离散脉冲：本帧是否收到 Dodge 按下边沿（由控制器消费并清零）。</summary>
+    public bool ConsumeDodgePressed()
+    {
+        if (!_dodgePressedPulse)
+        {
+            return false;
+        }
+
+        _dodgePressedPulse = false;
+        return true;
+    }
+
+    /// <summary>离散脉冲：本帧是否收到 SwordDash 按下边沿（由控制器消费并清零）。</summary>
+    public bool ConsumeSwordDashPressed()
+    {
+        if (!_swordDashPressedPulse)
+        {
+            return false;
+        }
+
+        _swordDashPressedPulse = false;
+        return true;
+    }
+
     /// <summary>当前输入焦点模式。</summary>
     public InputFocusMode CurrentFocus => _currentFocus;
 
@@ -75,6 +112,11 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
     // 所有键位绑定必须且只能在 .inputactions 资产中定义。
     // 禁止在代码中使用 new InputAction(...) 临时创建绑定，
     // 否则会导致键位数据来源分裂，RebindManager 无法统一管理。
+
+    // 离散输入脉冲（核心管线消费用）：不经全局事件总线推进控制流。
+    private bool _jumpPressedPulse;
+    private bool _dodgePressedPulse;
+    private bool _swordDashPressedPulse;
 
     // ═══ 生命周期 ═══
 
@@ -145,6 +187,9 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
         LookInput = Vector2.zero;
         IsAttackHeld = false;
         IsJumpHeld = false;
+        _jumpPressedPulse = false;
+        _dodgePressedPulse = false;
+        _swordDashPressedPulse = false;
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -160,14 +205,13 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
     /// <summary>
     /// 移动（连续型）。
     /// WASD / 左摇杆，每帧都可能变化。
-    /// 状态机通过轮询 MoveInput 属性读取，同时广播事件供其他系统响应。
+    /// 状态机通过轮询 MoveInput 属性读取。
     /// </summary>
     public void OnMove(InputAction.CallbackContext context)
     {
         var rawInput = context.ReadValue<Vector2>();
         MoveInput = rawInput.sqrMagnitude < moveDeadZone * moveDeadZone ? Vector2.zero : rawInput;
         MoveActuatedByGamepad = context.control != null && context.control.device is Gamepad;
-        GlobalEventBus.Publish(new MoveInputEvent(MoveInput));
     }
 
     /// <summary>
@@ -177,7 +221,6 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
     public void OnLook(InputAction.CallbackContext context)
     {
         LookInput = context.ReadValue<Vector2>();
-        GlobalEventBus.Publish(new LookInputEvent(LookInput));
     }
 
     /// <summary>
@@ -190,12 +233,11 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
         if (context.performed)
         {
             IsJumpHeld = true;
-            GlobalEventBus.Publish(new JumpInputEvent(true));
+            _jumpPressedPulse = true;
         }
         else if (context.canceled)
         {
             IsJumpHeld = false;
-            GlobalEventBus.Publish(new JumpInputEvent(false));
         }
     }
 
@@ -207,14 +249,10 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
         if (context.started)
         {
             IsAttackHeld = true;
-            ChargeAttackDiagnostics.Log($"Input Attack started → IsAttackHeld=true (action={context.action?.name})");
-            GlobalEventBus.Publish(new AttackInputEvent(true));
         }
         else if (context.canceled)
         {
             IsAttackHeld = false;
-            ChargeAttackDiagnostics.Log($"Input Attack canceled → IsAttackHeld=false");
-            GlobalEventBus.Publish(new AttackInputEvent(false));
         }
     }
 
@@ -226,7 +264,7 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
     {
         if (context.performed)
         {
-            GlobalEventBus.Publish(new DodgeInputEvent());
+            _dodgePressedPulse = true;
         }
     }
 
@@ -261,7 +299,7 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
     {
         if (context.performed)
         {
-            GlobalEventBus.Publish(new SwordDashInputEvent());
+            _swordDashPressedPulse = true;
         }
     }
     public void OnSwitchCamera(InputAction.CallbackContext context) {

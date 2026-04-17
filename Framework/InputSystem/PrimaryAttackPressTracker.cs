@@ -67,7 +67,6 @@ public sealed class PrimaryAttackPressTracker
             if (time - _pressStartedAt >= hold)
             {
                 player.EnqueueGameplayIntent(PlayerIntentCatalog.ChargedAttack(time, null));
-                ChargeAttackDiagnostics.Log($"PrimaryAttack → ChargedAttack (held ≥ {hold:F3}s)");
                 _chargedIssuedThisSession = true;
             }
         }
@@ -77,7 +76,6 @@ public sealed class PrimaryAttackPressTracker
             if (!_chargedIssuedThisSession)
             {
                 player.EnqueueGameplayIntent(PlayerIntentCatalog.LightAttack(time, null));
-                ChargeAttackDiagnostics.Log("PrimaryAttack → LightAttack (release before charge threshold)");
             }
 
             _sessionOpen = false;

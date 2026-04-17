@@ -14,8 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   MainClip: {fileID: 938527645004508068, guid: 30e0c6f0ba714704faaf6b4df5acca56, type: 3}
   CrossfadeTime: 0.05
-  AnimSpeed: 1.08
-  Duration: 0.2
+  AnimSpeed: 4
+  Duration: 0.1
   Windows: []
   Charge:
     CanCharge: 0
@@ -26,8 +26,8 @@ MonoBehaviour:
     MinHoldTimeForChargedTag: 0
     ChargedPayloadTags: 549755813888
   BurstMovementSeconds: 0
-  BurstTravelDistance: 5.5
-  BurstPlanarSpeed: 25
+  BurstTravelDistance: 10
+  BurstPlanarSpeed: 0
   BurstUseFacingForward: 1
   UseDisplacementVelocityCurve: 1
   DisplacementVelocityMultiplier:
@@ -35,7 +35,7 @@ MonoBehaviour:
     m_Curve:
     - serializedVersion: 3
       time: 0
-      value: 0
+      value: 0.5
       inSlope: 0
       outSlope: 0
       tangentMode: 0
@@ -44,39 +44,48 @@ MonoBehaviour:
       outWeight: 0
     - serializedVersion: 3
       time: 0.1
-      value: 0
-      inSlope: 0
-      outSlope: 0
-      tangentMode: 0
+      value: 0.6
+      inSlope: 1.3594877
+      outSlope: 1.3594877
+      tangentMode: 136
       weightedMode: 0
       inWeight: 0.33333334
       outWeight: 0.33333334
     - serializedVersion: 3
-      time: 0.22
+      time: 0.22067139
+      value: 0.8
+      inSlope: 0.99999994
+      outSlope: 0.99999994
+      tangentMode: 136
+      weightedMode: 1
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 0.5
       value: 1
       inSlope: 0
       outSlope: 0
-      tangentMode: 0
+      tangentMode: 136
       weightedMode: 0
       inWeight: 0.33333334
       outWeight: 0.33333334
     - serializedVersion: 3
-      time: 0.4
-      value: 0.55
-      inSlope: -1.8190706
-      outSlope: -1.8190706
-      tangentMode: 0
+      time: 0.8
+      value: 0.9
+      inSlope: -1.0000004
+      outSlope: -1.0000004
+      tangentMode: 136
       weightedMode: 0
       inWeight: 0.33333334
       outWeight: 0.33333334
     - serializedVersion: 3
-      time: 0.65
-      value: 0.18
-      inSlope: -1.4038748
-      outSlope: -1.4038748
-      tangentMode: 0
+      time: 0.9
+      value: 0
+      inSlope: -0.96798027
+      outSlope: -0.96798027
+      tangentMode: 1
       weightedMode: 0
-      inWeight: 0.33333334
+      inWeight: 0.21868859
       outWeight: 0.33333334
     - serializedVersion: 3
       time: 1
@@ -90,5 +99,5 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  DisplacementPeakForwardSpeed: 14
+  DisplacementPeakForwardSpeed: 20
   DrivesBurstMovement: 1

@@ -2,43 +2,11 @@ using UnityEngine;
 
 /// <summary>
 /// 输入事件定义。
-/// 所有输入事件都是 struct + IGameEvent，由 InputReader 发布到 GlobalEventBus。
-/// 状态机和角色逻辑只依赖这些事件结构体，完全不引用 UnityEngine.InputSystem 命名空间。
-/// 这就是解耦的核心：逻辑层永远不知道玩家按的是哪个物理按键。
+/// 原则：EventBus 仅用于旁路广播（UI / 相机 / 调试）。
+/// 核心输入-动作管线不依赖这些事件推进流程，而是由 PlayerController 直接消费 InputReader 缓存与离散脉冲。
 /// </summary>
 
-// ─── 连续型输入（每帧都可能变化，状态机通过轮询 InputReader 缓存读取） ───
-
-public readonly struct MoveInputEvent : IGameEvent
-{
-    public readonly Vector2 Direction;
-    public MoveInputEvent(Vector2 direction) { Direction = direction; }
-}
-
-public readonly struct LookInputEvent : IGameEvent
-{
-    public readonly Vector2 Delta;
-    public LookInputEvent(Vector2 delta) { Delta = delta; }
-}
-
-// ─── 离散型输入（瞬间触发，通过 EventBus 广播，状态机监听后可打断当前状态） ───
-
-public readonly struct JumpInputEvent : IGameEvent
-{
-    public readonly bool IsPressed;
-    public JumpInputEvent(bool isPressed) { IsPressed = isPressed; }
-}
-
-public readonly struct AttackInputEvent : IGameEvent
-{
-    public readonly bool IsPressed;
-    public AttackInputEvent(bool isPressed) { IsPressed = isPressed; }
-}
-
-public readonly struct DodgeInputEvent : IGameEvent { }
-
-/// <summary>剑道冲刺 / 直线爆发（离散，对应原 Sprint 键位）。</summary>
-public readonly struct SwordDashInputEvent : IGameEvent { }
+// ─── 仍通过总线广播的低频/全局输入事件（非核心动作推进） ───
 
 public readonly struct InteractInputEvent : IGameEvent { }
 

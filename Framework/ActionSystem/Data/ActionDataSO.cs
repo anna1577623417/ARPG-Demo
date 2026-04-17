@@ -50,7 +50,7 @@ public class ActionDataSO : ScriptableObject
     public float CrossfadeTime = 0.08f;
 
     [Tooltip("动画播放速度倍率。")]
-    [Range(0.1f, 5f)]
+    [Range(0.1f, 20f)]
     public float AnimSpeed = 1f;
 
     [Tooltip("逻辑时长（秒）。与动画长度可不同，用于先行手感调参。")]

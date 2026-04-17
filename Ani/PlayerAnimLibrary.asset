@@ -28,7 +28,7 @@ MonoBehaviour:
   - StateName: Locomotion_Run
     Clip: {fileID: -4950333804767787469, guid: c334125d0dbc3a544a089e659a9370d4, type: 3}
     TransitionDuration: 0.1
-    Speed: 1.5
+    Speed: 1.3
     ReferenceLocomotionSpeed: 5
     IsLooping: 1
   - StateName: Airborne_JumpStart
