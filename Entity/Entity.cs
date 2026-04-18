@@ -156,8 +156,16 @@ public abstract class Entity : MonoBehaviour
             return;
         }
 
-        transform.rotation = Quaternion.RotateTowards(
-            transform.rotation, target, rotSpeed * Time.deltaTime);
+        var angle = Quaternion.Angle(transform.rotation, target);
+        if (angle < 0.05f)
+        {
+            transform.rotation = target;
+            return;
+        }
+
+        var maxDegrees = rotSpeed * Time.deltaTime;
+        var t = Mathf.Clamp01(maxDegrees / Mathf.Max(angle, 1e-4f));
+        transform.rotation = Quaternion.Slerp(transform.rotation, target, t);
     }
 
     // ─── 生命值 ───

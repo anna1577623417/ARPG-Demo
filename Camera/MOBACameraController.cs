@@ -18,6 +18,7 @@ using UnityEngine;
 /// - 移动方向为世界坐标（W = 世界北），不跟随相机旋转
 /// - 预留：点击移动（ClickToMove）由 MOBAPlayerController 处理
 /// </summary>
+[DefaultExecutionOrder(-100)]
 [AddComponentMenu("GameMain/Camera/MOBA Camera Controller")]
 public class MOBACameraController : CameraController
 {
@@ -41,7 +42,13 @@ public class MOBACameraController : CameraController
     private float _currentZoomHeight;
 
     public override GameModeType Mode => GameModeType.MOBA;
-    public override bool IsCameraRelativeMovement => false;
+
+    /// <summary>WASD 与世界 XZ 对齐（上帝视角），不随俯视相机 yaw 旋转。</summary>
+    protected override void RefreshPlanarMovementAxesFromBrainOutput()
+    {
+        _planarMovementForward = Vector3.forward;
+        _planarMovementRight = Vector3.right;
+    }
 
     protected override void OnEnable()
     {

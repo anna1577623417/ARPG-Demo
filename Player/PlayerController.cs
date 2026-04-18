@@ -3,8 +3,10 @@ using UnityEngine;
 /// <summary>
 /// 玩家控制器：连续移动采样 + 离散意图入队。
 /// 跑步（Run）：摇杆高幅度 **或** **同一 WASD 方向双击** 进入「粘性跑步」——有移动输入期间保持 Run，可任意变向，松手后退出。
+/// 连续移动在 <see cref="LateUpdate"/> 应用，保证晚于各 <see cref="CameraController"/> 的 <c>LateUpdate</c>，
+/// 与当帧已刷新的 <see cref="ICameraDirectionProvider"/> 对齐。
 /// </summary>
-[DefaultExecutionOrder(-50)]
+[DefaultExecutionOrder(20)]
 [RequireComponent(typeof(Player))]
 [AddComponentMenu("GameMain/Player/Player Controller")]
 public class PlayerController : EntityController
@@ -39,6 +41,15 @@ public class PlayerController : EntityController
     [Header("Debug")]
     [SerializeField] private bool debugRunLogs = true;
 
+    [Tooltip("绘制 ICameraDirectionProvider 的平面 Forward（蓝）与合成移动方向（绿），用于验证帧序与多相机。")]
+    [SerializeField] private bool debugDrawCameraRelativeAxes;
+
+    [Tooltip("[MoveDiag:1] 每帧打印 Provider 平面 Forward/Right；勿动鼠标与移动，观察是否漂移。")]
+    [SerializeField] private bool debugLogProviderPlanarAxes;
+
+    [Tooltip("[MoveDiag:3] 有移动输入时打印角色根 transform.forward，按住 W 看朝向是否被移动/动画反向带动。")]
+    [SerializeField] private bool debugLogPlayerForwardWhenMoving;
+
     [Header("Primary attack — tap vs hold")]
     [Tooltip("左键（Attack）短按派发轻击，长按达到阈值派发蓄力意图；与 WeaponMoveset 中 LightAttacks / ChargedAttacks 对应。")]
     [SerializeField] private PrimaryAttackSplitPolicy primaryAttackSplit = new PrimaryAttackSplitPolicy
@@ -58,6 +69,16 @@ public class PlayerController : EntityController
 
     private bool _stickyRunMode;
     private bool _prevWantsRun;
+
+    /// <summary>Update 采样，LateUpdate 与相机方向对齐后写入移动意图。</summary>
+    private Vector2 _pendingLocomotionMoveInput;
+
+    /// <summary>
+    /// Runtime party bootstrap may assign <see cref="Player.BindSharedInputReader"/> after Awake —
+    /// player.asset wins over a serialized-but-stale controller reference.
+    /// </summary>
+    private InputReader EffectiveInputReader =>
+        player != null && player.InputReader != null ? player.InputReader : inputReader;
 
     // ─── 生命周期 ───
 
@@ -80,7 +101,7 @@ public class PlayerController : EntityController
             player = GetComponent<Player>();
         }
 
-        if (inputReader == null && player != null)
+        if (inputReader == null && player != null && player.InputReader != null)
         {
             inputReader = player.InputReader;
         }
@@ -97,31 +118,34 @@ public class PlayerController : EntityController
     private void OnEnable()
     {
         Init();
-        if (inputReader != null)
+        var reader = EffectiveInputReader;
+        if (reader != null)
         {
-            _primaryAttackPress.SyncInitialHeldState(inputReader.IsAttackHeld);
+            _primaryAttackPress.SyncInitialHeldState(reader.IsAttackHeld);
         }
     }
 
     private void OnDisable()
     {
-        if (inputReader != null)
+        var reader = EffectiveInputReader;
+        if (reader != null)
         {
-            _primaryAttackPress.SyncInitialHeldState(inputReader.IsAttackHeld);
+            _primaryAttackPress.SyncInitialHeldState(reader.IsAttackHeld);
         }
     }
 
     private void Update()
     {
-        if (player == null || inputReader == null)
+        var reader = EffectiveInputReader;
+        if (player == null || reader == null)
         {
             return;
         }
 
-        ConsumeDiscreteIntents();
-        _primaryAttackPress.Tick(Time.time, inputReader.IsAttackHeld, player);
+        ConsumeDiscreteIntents(reader);
+        _primaryAttackPress.Tick(Time.time, reader.IsAttackHeld, player);
 
-        var rawInput = inputReader.MoveInput;
+        var rawInput = reader.MoveInput;
         var releaseSq = moveReleaseThreshold * moveReleaseThreshold;
 
         if (rawInput.sqrMagnitude < releaseSq)
@@ -135,39 +159,87 @@ public class PlayerController : EntityController
 
         DetectDoubleTapCardinalStickyRun(rawInput, releaseSq);
 
+        _pendingLocomotionMoveInput = rawInput;
+        _prevMoveInput = rawInput;
+    }
+
+    private void LateUpdate()
+    {
+        var reader = EffectiveInputReader;
+        if (player == null || reader == null)
+        {
+            return;
+        }
+
+        var rawInput = _pendingLocomotionMoveInput;
+        var releaseSq = moveReleaseThreshold * moveReleaseThreshold;
         var worldDirection = ResolveWorldDirection(rawInput);
         var wantsRun = ResolveRunIntent(rawInput, releaseSq);
         player.SetMovementIntent(worldDirection, wantsRun);
 
-        //if (debugRunLogs && wantsRun != _prevWantsRun)
-        //{
-        //    Debug.Log(
-        //        $"[PlayerController][Locomotion] WantsRun {(wantsRun ? "TRUE → Run" : "FALSE → Walk/Idle")} | " +
-        //        $"sticky={_stickyRunMode} | moveMag={rawInput.magnitude:F3} | " +
-        //        $"threshold={runMagnitudeThreshold:F2}",
-        //        this);
-        //}
+        if (debugLogProviderPlanarAxes)
+        {
+            if (_gameModeManager == null)
+            {
+                Debug.Log($"[MoveDiag:1 Provider] GameModeManager=null frame={Time.frameCount}");
+            }
+            else
+            {
+                var p = _gameModeManager.ActiveCameraDirectionProvider;
+                if (p == null)
+                {
+                    Debug.Log($"[MoveDiag:1 Provider] ActiveCameraDirectionProvider=null frame={Time.frameCount}");
+                }
+                else
+                {
+                    Debug.Log(
+                        $"[MoveDiag:1 Provider] Forward={p.Forward} Right={p.Right} | moveRaw={rawInput} worldDir={worldDirection} " +
+                        $"LookInput={reader.LookInput} frame={Time.frameCount}");
+                }
+            }
+        }
+
+        if (debugLogPlayerForwardWhenMoving && rawInput.sqrMagnitude > releaseSq)
+        {
+            var f = player.transform.forward;
+            Debug.Log(
+                $"[MoveDiag:3 PlayerRoot] transform.forward={f} xz=({f.x:F5}, {f.z:F5}) moveRaw={rawInput} worldDir={worldDirection} frame={Time.frameCount}");
+        }
+
+        if (debugDrawCameraRelativeAxes && _gameModeManager != null)
+        {
+            var p = _gameModeManager.ActiveCameraDirectionProvider;
+            var origin = player.transform.position + Vector3.up * 0.1f;
+            if (p != null)
+            {
+                Debug.DrawRay(origin, p.Forward * 3f, Color.blue);
+            }
+
+            if (worldDirection.sqrMagnitude > 1e-6f)
+            {
+                Debug.DrawRay(origin, worldDirection.normalized * 2.5f, Color.green);
+            }
+        }
 
         _prevWantsRun = wantsRun;
-        _prevMoveInput = rawInput;
     }
 
     /// <summary>
     /// 核心控制流改为直接依赖调用：控制器直接消费 InputReader 的离散脉冲并入队意图。
     /// </summary>
-    private void ConsumeDiscreteIntents()
+    private void ConsumeDiscreteIntents(InputReader reader)
     {
-        if (inputReader.ConsumeJumpPressed())
+        if (reader.ConsumeJumpPressed())
         {
             player.EnqueueGameplayIntent(PlayerIntentCatalog.Jump(Time.time));
         }
 
-        if (inputReader.ConsumeDodgePressed())
+        if (reader.ConsumeDodgePressed())
         {
             player.EnqueueGameplayIntent(PlayerIntentCatalog.Dodge(Time.time, null));
         }
 
-        if (inputReader.ConsumeSwordDashPressed())
+        if (reader.ConsumeSwordDashPressed())
         {
             player.EnqueueGameplayIntent(PlayerIntentCatalog.SwordDash(Time.time, null));
         }
@@ -247,7 +319,8 @@ public class PlayerController : EntityController
             return true;
         }
 
-        if (inputReader.MoveActuatedByGamepad && rawInput.magnitude >= runMagnitudeThreshold)
+        var reader = EffectiveInputReader;
+        if (reader != null && reader.MoveActuatedByGamepad && rawInput.magnitude >= runMagnitudeThreshold)
         {
             return true;
         }
@@ -255,6 +328,10 @@ public class PlayerController : EntityController
         return false;
     }
 
+    /// <summary>
+    /// 仅使用 <see cref="GameModeManager.ActiveCameraDirectionProvider"/> 的平面 Forward/Right；<b>禁止</b>在此读取 <see cref="Camera.main"/>，
+    /// 避免多相机 / Brain 与状态机耦合下的隐性方向源。
+    /// </summary>
     private Vector3 ResolveWorldDirection(Vector2 rawInput)
     {
         if (rawInput.sqrMagnitude <= 0.0001f)
@@ -264,34 +341,24 @@ public class PlayerController : EntityController
 
         var input = Vector2.ClampMagnitude(rawInput, 1f);
 
-        if (_gameModeManager != null)
+        if (_gameModeManager == null)
         {
-            var activeCtrl = _gameModeManager.ActiveCameraController;
-            if (activeCtrl != null && !activeCtrl.IsCameraRelativeMovement)
-            {
-                return new Vector3(input.x, 0f, input.y);
-            }
+            return Vector3.zero;
         }
 
-        Quaternion refRotation;
-
-        if (_gameModeManager != null)
+        var provider = _gameModeManager.ActiveCameraDirectionProvider;
+        if (provider == null)
         {
-            refRotation = _gameModeManager.GetMovementReferenceRotation();
-        }
-        else
-        {
-            var mainCam = Camera.main;
-            if (mainCam == null)
-            {
-                return new Vector3(input.x, 0f, input.y);
-            }
-
-            refRotation = Quaternion.Euler(0f, mainCam.transform.eulerAngles.y, 0f);
+            return Vector3.zero;
         }
 
-        var forward = refRotation * Vector3.forward;
-        var right = refRotation * Vector3.right;
+        var forward = provider.Forward;
+        var right = provider.Right;
+        if (forward.sqrMagnitude < 1e-8f || right.sqrMagnitude < 1e-8f)
+        {
+            return Vector3.zero;
+        }
+
         return forward * input.y + right * input.x;
     }
 

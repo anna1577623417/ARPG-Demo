@@ -26,6 +26,7 @@ using UnityEngine;
 ///    └── MOBACamera    (MOBACameraController + CinemachineVirtualCamera)
 /// 3. 将三个 CameraController 拖到 cameraControllers 列表
 /// 4. 启动时自动激活 defaultMode 对应的控制器
+/// 5. 相机相对移动的平面方向由 <see cref="ActiveCameraDirectionProvider"/> 转发，不在此计算
 /// </summary>
 [AddComponentMenu("GameMain/Game/Game Mode Manager")]
 public class GameModeManager : MonoSingleton<GameModeManager>, IGameModule
@@ -51,16 +52,6 @@ public class GameModeManager : MonoSingleton<GameModeManager>, IGameModule
     public CameraController ActiveCameraController =>
         _controllerMap.TryGetValue(_currentMode, out var ctrl) ? ctrl : null;
 
-    /// <summary>当前模式是否使用相机相对移动。</summary>
-    public bool IsCameraRelativeMovement
-    {
-        get
-        {
-            var ctrl = ActiveCameraController;
-            return ctrl != null && ctrl.IsCameraRelativeMovement;
-        }
-    }
-
     /// <summary>获取当前激活相机的 Transform。</summary>
     public Transform GetActiveCameraTransform()
     {
@@ -69,15 +60,13 @@ public class GameModeManager : MonoSingleton<GameModeManager>, IGameModule
     }
 
     /// <summary>
-    /// 获取移动参考旋转（仅水平偏航角）。
-    /// 由 CameraController 子类从鼠标驱动的 _yaw 直接构造，
-    /// 不经过 Cinemachine → Camera.main 链路，无帧序问题。
+    /// 当前激活相机控制器提供的 XZ 平面移动方向（Brain 输出或模式特例）。<see cref="PlayerController"/> 唯一应使用的来源。
     /// </summary>
-    public Quaternion GetMovementReferenceRotation()
-    {
-        var ctrl = ActiveCameraController;
-        return ctrl != null ? ctrl.MovementReferenceRotation : Quaternion.identity;
-    }
+    public ICameraDirectionProvider ActiveCameraDirectionProvider =>
+        ActiveCameraController as ICameraDirectionProvider;
+
+    /// <summary>与 <see cref="ActiveCameraDirectionProvider"/> 同义；模式切换时随 <see cref="ActiveCameraController"/> 自动变化。</summary>
+    public ICameraDirectionProvider ActiveCamera => ActiveCameraDirectionProvider;
 
     public bool IsInitialized => _isInitialized;
 

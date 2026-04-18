@@ -172,6 +172,105 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
                     ""processors"": """",
                     ""interactions"": """",
                     ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""PartyPrevious"",
+                    ""type"": ""Button"",
+                    ""id"": ""f1a1b1c1-d1e1-4f11-a1b1-c1d1e1f1a101"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""PartyNext"",
+                    ""type"": ""Button"",
+                    ""id"": ""f1a1b1c1-d1e1-4f11-a1b1-c1d1e1f1a102"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""PartySlot1"",
+                    ""type"": ""Button"",
+                    ""id"": ""f1a1b1c1-d1e1-4f11-a1b1-c1d1e1f1a111"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""PartySlot2"",
+                    ""type"": ""Button"",
+                    ""id"": ""f1a1b1c1-d1e1-4f11-a1b1-c1d1e1f1a112"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""PartySlot3"",
+                    ""type"": ""Button"",
+                    ""id"": ""f1a1b1c1-d1e1-4f11-a1b1-c1d1e1f1a113"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""PartySlot4"",
+                    ""type"": ""Button"",
+                    ""id"": ""f1a1b1c1-d1e1-4f11-a1b1-c1d1e1f1a114"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""PartySlot5"",
+                    ""type"": ""Button"",
+                    ""id"": ""f1a1b1c1-d1e1-4f11-a1b1-c1d1e1f1a115"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""PartySlot6"",
+                    ""type"": ""Button"",
+                    ""id"": ""f1a1b1c1-d1e1-4f11-a1b1-c1d1e1f1a116"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""PartySlot7"",
+                    ""type"": ""Button"",
+                    ""id"": ""f1a1b1c1-d1e1-4f11-a1b1-c1d1e1f1a117"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""PartySlot8"",
+                    ""type"": ""Button"",
+                    ""id"": ""f1a1b1c1-d1e1-4f11-a1b1-c1d1e1f1a118"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""LockOnToggle"",
+                    ""type"": ""Button"",
+                    ""id"": ""a1b2c3d4-e5f6-4789-a012-00000000a101"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
                 }
             ],
             ""bindings"": [
@@ -482,6 +581,292 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
                     ""action"": ""Sprint"",
                     ""isComposite"": false,
                     ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""e1e00001-0000-4000-8000-000000000001"",
+                    ""path"": ""<Keyboard>/q"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""PartyPrevious"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""e1e00001-0000-4000-8000-000000000002"",
+                    ""path"": ""<Gamepad>/leftStickPress"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""PartyPrevious"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""e1e00001-0000-4000-8000-000000000003"",
+                    ""path"": ""<Keyboard>/r"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""PartyNext"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""e1e00001-0000-4000-8000-000000000004"",
+                    ""path"": ""<Gamepad>/rightStickPress"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""PartyNext"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""e1e00001-0000-4000-8000-000000000011"",
+                    ""path"": ""<Keyboard>/digit1"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""PartySlot1"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""e1e00001-0000-4000-8000-000000000012"",
+                    ""path"": ""<Keyboard>/numpad1"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""PartySlot1"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""e1e00001-0000-4000-8000-000000000013"",
+                    ""path"": ""<Gamepad>/dpad/up"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""PartySlot1"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""e1e00001-0000-4000-8000-000000000021"",
+                    ""path"": ""<Keyboard>/digit2"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""PartySlot2"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""e1e00001-0000-4000-8000-000000000022"",
+                    ""path"": ""<Keyboard>/numpad2"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""PartySlot2"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""e1e00001-0000-4000-8000-000000000023"",
+                    ""path"": ""<Gamepad>/dpad/right"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""PartySlot2"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""e1e00001-0000-4000-8000-000000000031"",
+                    ""path"": ""<Keyboard>/digit3"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""PartySlot3"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""e1e00001-0000-4000-8000-000000000032"",
+                    ""path"": ""<Keyboard>/numpad3"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""PartySlot3"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""e1e00001-0000-4000-8000-000000000033"",
+                    ""path"": ""<Gamepad>/dpad/down"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""PartySlot3"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""e1e00001-0000-4000-8000-000000000041"",
+                    ""path"": ""<Keyboard>/digit4"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""PartySlot4"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""e1e00001-0000-4000-8000-000000000042"",
+                    ""path"": ""<Keyboard>/numpad4"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""PartySlot4"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""e1e00001-0000-4000-8000-000000000043"",
+                    ""path"": ""<Gamepad>/dpad/left"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""PartySlot4"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""e1e00001-0000-4000-8000-000000000051"",
+                    ""path"": ""<Keyboard>/digit5"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""PartySlot5"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""e1e00001-0000-4000-8000-000000000052"",
+                    ""path"": ""<Keyboard>/numpad5"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""PartySlot5"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""e1e00001-0000-4000-8000-000000000061"",
+                    ""path"": ""<Keyboard>/digit6"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""PartySlot6"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""e1e00001-0000-4000-8000-000000000062"",
+                    ""path"": ""<Keyboard>/numpad6"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""PartySlot6"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""e1e00001-0000-4000-8000-000000000071"",
+                    ""path"": ""<Keyboard>/digit7"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""PartySlot7"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""e1e00001-0000-4000-8000-000000000072"",
+                    ""path"": ""<Keyboard>/numpad7"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""PartySlot7"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""e1e00001-0000-4000-8000-000000000081"",
+                    ""path"": ""<Keyboard>/digit8"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""PartySlot8"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""e1e00001-0000-4000-8000-000000000082"",
+                    ""path"": ""<Keyboard>/numpad8"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""PartySlot8"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""b2c3d4e5-f6a7-4890-b123-000000000101"",
+                    ""path"": ""<Keyboard>/tab"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""LockOnToggle"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""b2c3d4e5-f6a7-4890-b123-000000000102"",
+                    ""path"": ""<Gamepad>/rightStickPress"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""LockOnToggle"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
                 }
             ]
         },
@@ -622,6 +1007,17 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
         m_GamePlay_Pause = m_GamePlay.FindAction("Pause", throwIfNotFound: true);
         m_GamePlay_Sprint = m_GamePlay.FindAction("Sprint", throwIfNotFound: true);
         m_GamePlay_SwitchCamera = m_GamePlay.FindAction("SwitchCamera", throwIfNotFound: true);
+        m_GamePlay_PartyPrevious = m_GamePlay.FindAction("PartyPrevious", throwIfNotFound: true);
+        m_GamePlay_PartyNext = m_GamePlay.FindAction("PartyNext", throwIfNotFound: true);
+        m_GamePlay_PartySlot1 = m_GamePlay.FindAction("PartySlot1", throwIfNotFound: true);
+        m_GamePlay_PartySlot2 = m_GamePlay.FindAction("PartySlot2", throwIfNotFound: true);
+        m_GamePlay_PartySlot3 = m_GamePlay.FindAction("PartySlot3", throwIfNotFound: true);
+        m_GamePlay_PartySlot4 = m_GamePlay.FindAction("PartySlot4", throwIfNotFound: true);
+        m_GamePlay_PartySlot5 = m_GamePlay.FindAction("PartySlot5", throwIfNotFound: true);
+        m_GamePlay_PartySlot6 = m_GamePlay.FindAction("PartySlot6", throwIfNotFound: true);
+        m_GamePlay_PartySlot7 = m_GamePlay.FindAction("PartySlot7", throwIfNotFound: true);
+        m_GamePlay_PartySlot8 = m_GamePlay.FindAction("PartySlot8", throwIfNotFound: true);
+        m_GamePlay_LockOnToggle = m_GamePlay.FindAction("LockOnToggle", throwIfNotFound: true);
         // UI
         m_UI = asset.FindActionMap("UI", throwIfNotFound: true);
         m_UI_Cancel = m_UI.FindAction("Cancel", throwIfNotFound: true);
@@ -717,6 +1113,17 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
     private readonly InputAction m_GamePlay_Pause;
     private readonly InputAction m_GamePlay_Sprint;
     private readonly InputAction m_GamePlay_SwitchCamera;
+    private readonly InputAction m_GamePlay_PartyPrevious;
+    private readonly InputAction m_GamePlay_PartyNext;
+    private readonly InputAction m_GamePlay_PartySlot1;
+    private readonly InputAction m_GamePlay_PartySlot2;
+    private readonly InputAction m_GamePlay_PartySlot3;
+    private readonly InputAction m_GamePlay_PartySlot4;
+    private readonly InputAction m_GamePlay_PartySlot5;
+    private readonly InputAction m_GamePlay_PartySlot6;
+    private readonly InputAction m_GamePlay_PartySlot7;
+    private readonly InputAction m_GamePlay_PartySlot8;
+    private readonly InputAction m_GamePlay_LockOnToggle;
     /// <summary>
     /// Provides access to input actions defined in input action map "GamePlay".
     /// </summary>
@@ -764,6 +1171,50 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
         /// Provides access to the underlying input action "GamePlay/SwitchCamera".
         /// </summary>
         public InputAction @SwitchCamera => m_Wrapper.m_GamePlay_SwitchCamera;
+        /// <summary>
+        /// Provides access to the underlying input action "GamePlay/PartyPrevious".
+        /// </summary>
+        public InputAction @PartyPrevious => m_Wrapper.m_GamePlay_PartyPrevious;
+        /// <summary>
+        /// Provides access to the underlying input action "GamePlay/PartyNext".
+        /// </summary>
+        public InputAction @PartyNext => m_Wrapper.m_GamePlay_PartyNext;
+        /// <summary>
+        /// Provides access to the underlying input action "GamePlay/PartySlot1".
+        /// </summary>
+        public InputAction @PartySlot1 => m_Wrapper.m_GamePlay_PartySlot1;
+        /// <summary>
+        /// Provides access to the underlying input action "GamePlay/PartySlot2".
+        /// </summary>
+        public InputAction @PartySlot2 => m_Wrapper.m_GamePlay_PartySlot2;
+        /// <summary>
+        /// Provides access to the underlying input action "GamePlay/PartySlot3".
+        /// </summary>
+        public InputAction @PartySlot3 => m_Wrapper.m_GamePlay_PartySlot3;
+        /// <summary>
+        /// Provides access to the underlying input action "GamePlay/PartySlot4".
+        /// </summary>
+        public InputAction @PartySlot4 => m_Wrapper.m_GamePlay_PartySlot4;
+        /// <summary>
+        /// Provides access to the underlying input action "GamePlay/PartySlot5".
+        /// </summary>
+        public InputAction @PartySlot5 => m_Wrapper.m_GamePlay_PartySlot5;
+        /// <summary>
+        /// Provides access to the underlying input action "GamePlay/PartySlot6".
+        /// </summary>
+        public InputAction @PartySlot6 => m_Wrapper.m_GamePlay_PartySlot6;
+        /// <summary>
+        /// Provides access to the underlying input action "GamePlay/PartySlot7".
+        /// </summary>
+        public InputAction @PartySlot7 => m_Wrapper.m_GamePlay_PartySlot7;
+        /// <summary>
+        /// Provides access to the underlying input action "GamePlay/PartySlot8".
+        /// </summary>
+        public InputAction @PartySlot8 => m_Wrapper.m_GamePlay_PartySlot8;
+        /// <summary>
+        /// Provides access to the underlying input action "GamePlay/LockOnToggle".
+        /// </summary>
+        public InputAction @LockOnToggle => m_Wrapper.m_GamePlay_LockOnToggle;
         /// <summary>
         /// Provides access to the underlying input action map instance.
         /// </summary>
@@ -817,6 +1268,39 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
             @SwitchCamera.started += instance.OnSwitchCamera;
             @SwitchCamera.performed += instance.OnSwitchCamera;
             @SwitchCamera.canceled += instance.OnSwitchCamera;
+            @PartyPrevious.started += instance.OnPartyPrevious;
+            @PartyPrevious.performed += instance.OnPartyPrevious;
+            @PartyPrevious.canceled += instance.OnPartyPrevious;
+            @PartyNext.started += instance.OnPartyNext;
+            @PartyNext.performed += instance.OnPartyNext;
+            @PartyNext.canceled += instance.OnPartyNext;
+            @PartySlot1.started += instance.OnPartySlot1;
+            @PartySlot1.performed += instance.OnPartySlot1;
+            @PartySlot1.canceled += instance.OnPartySlot1;
+            @PartySlot2.started += instance.OnPartySlot2;
+            @PartySlot2.performed += instance.OnPartySlot2;
+            @PartySlot2.canceled += instance.OnPartySlot2;
+            @PartySlot3.started += instance.OnPartySlot3;
+            @PartySlot3.performed += instance.OnPartySlot3;
+            @PartySlot3.canceled += instance.OnPartySlot3;
+            @PartySlot4.started += instance.OnPartySlot4;
+            @PartySlot4.performed += instance.OnPartySlot4;
+            @PartySlot4.canceled += instance.OnPartySlot4;
+            @PartySlot5.started += instance.OnPartySlot5;
+            @PartySlot5.performed += instance.OnPartySlot5;
+            @PartySlot5.canceled += instance.OnPartySlot5;
+            @PartySlot6.started += instance.OnPartySlot6;
+            @PartySlot6.performed += instance.OnPartySlot6;
+            @PartySlot6.canceled += instance.OnPartySlot6;
+            @PartySlot7.started += instance.OnPartySlot7;
+            @PartySlot7.performed += instance.OnPartySlot7;
+            @PartySlot7.canceled += instance.OnPartySlot7;
+            @PartySlot8.started += instance.OnPartySlot8;
+            @PartySlot8.performed += instance.OnPartySlot8;
+            @PartySlot8.canceled += instance.OnPartySlot8;
+            @LockOnToggle.started += instance.OnLockOnToggle;
+            @LockOnToggle.performed += instance.OnLockOnToggle;
+            @LockOnToggle.canceled += instance.OnLockOnToggle;
         }
 
         /// <summary>
@@ -855,6 +1339,39 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
             @SwitchCamera.started -= instance.OnSwitchCamera;
             @SwitchCamera.performed -= instance.OnSwitchCamera;
             @SwitchCamera.canceled -= instance.OnSwitchCamera;
+            @PartyPrevious.started -= instance.OnPartyPrevious;
+            @PartyPrevious.performed -= instance.OnPartyPrevious;
+            @PartyPrevious.canceled -= instance.OnPartyPrevious;
+            @PartyNext.started -= instance.OnPartyNext;
+            @PartyNext.performed -= instance.OnPartyNext;
+            @PartyNext.canceled -= instance.OnPartyNext;
+            @PartySlot1.started -= instance.OnPartySlot1;
+            @PartySlot1.performed -= instance.OnPartySlot1;
+            @PartySlot1.canceled -= instance.OnPartySlot1;
+            @PartySlot2.started -= instance.OnPartySlot2;
+            @PartySlot2.performed -= instance.OnPartySlot2;
+            @PartySlot2.canceled -= instance.OnPartySlot2;
+            @PartySlot3.started -= instance.OnPartySlot3;
+            @PartySlot3.performed -= instance.OnPartySlot3;
+            @PartySlot3.canceled -= instance.OnPartySlot3;
+            @PartySlot4.started -= instance.OnPartySlot4;
+            @PartySlot4.performed -= instance.OnPartySlot4;
+            @PartySlot4.canceled -= instance.OnPartySlot4;
+            @PartySlot5.started -= instance.OnPartySlot5;
+            @PartySlot5.performed -= instance.OnPartySlot5;
+            @PartySlot5.canceled -= instance.OnPartySlot5;
+            @PartySlot6.started -= instance.OnPartySlot6;
+            @PartySlot6.performed -= instance.OnPartySlot6;
+            @PartySlot6.canceled -= instance.OnPartySlot6;
+            @PartySlot7.started -= instance.OnPartySlot7;
+            @PartySlot7.performed -= instance.OnPartySlot7;
+            @PartySlot7.canceled -= instance.OnPartySlot7;
+            @PartySlot8.started -= instance.OnPartySlot8;
+            @PartySlot8.performed -= instance.OnPartySlot8;
+            @PartySlot8.canceled -= instance.OnPartySlot8;
+            @LockOnToggle.started -= instance.OnLockOnToggle;
+            @LockOnToggle.performed -= instance.OnLockOnToggle;
+            @LockOnToggle.canceled -= instance.OnLockOnToggle;
         }
 
         /// <summary>
@@ -1076,6 +1593,83 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
         /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
         /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
         void OnSwitchCamera(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "PartyPrevious" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnPartyPrevious(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "PartyNext" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnPartyNext(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "PartySlot1" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnPartySlot1(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "PartySlot2" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnPartySlot2(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "PartySlot3" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnPartySlot3(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "PartySlot4" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnPartySlot4(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "PartySlot5" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnPartySlot5(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "PartySlot6" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnPartySlot6(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "PartySlot7" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnPartySlot7(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "PartySlot8" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnPartySlot8(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "LockOnToggle" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnLockOnToggle(InputAction.CallbackContext context);
     }
     /// <summary>
     /// Interface to implement callback methods for all input action callbacks associated with input actions defined by "UI" which allows adding and removing callbacks.

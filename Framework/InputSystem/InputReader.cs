@@ -35,6 +35,9 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
     private InputFocusMode _currentFocus = InputFocusMode.Gameplay;
     [SerializeField, Range(0f, 1f)] private float moveDeadZone = 0.12f;
 
+    [Tooltip("Look（鼠标 delta / 摇杆）死区：低于此模长则视为 0，避免无输入时轴缓慢漂移。")]
+    [SerializeField, Range(0f, 0.05f)] private float lookInputDeadZone = 0.002f;
+
     // ═══ 缓存状态（供状态机 Update 轮询读取） ═══
 
     /// <summary>移动输入方向（归一化 Vector2，x=左右，y=前后）。</summary>
@@ -42,6 +45,9 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
 
     /// <summary>上一帧驱动 Move 的设备是否为手柄；键盘 WASD 全为 1 模长，不能用手感阈值当 Run。</summary>
     public bool MoveActuatedByGamepad { get; private set; }
+
+    /// <summary>上一帧驱动 Look 的设备是否为手柄（右摇杆为连续量，需乘 <c>Time.deltaTime</c>；鼠标 delta 则否）。</summary>
+    public bool LookActuatedByGamepad { get; private set; }
 
     /// <summary>视角/鼠标增量输入。</summary>
     public Vector2 LookInput { get; private set; }
@@ -88,6 +94,56 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
         return true;
     }
 
+    /// <summary>阵容：上一名（由 <see cref="GameplayInputRouter"/> 消费）。</summary>
+    public bool ConsumePartyPreviousPressed()
+    {
+        if (!_partyPreviousPressedPulse)
+        {
+            return false;
+        }
+
+        _partyPreviousPressedPulse = false;
+        return true;
+    }
+
+    /// <summary>阵容：下一名。</summary>
+    public bool ConsumePartyNextPressed()
+    {
+        if (!_partyNextPressedPulse)
+        {
+            return false;
+        }
+
+        _partyNextPressedPulse = false;
+        return true;
+    }
+
+    /// <summary>阵容：直接切到槽位（0…7）。同一帧多次按下取最后一次。</summary>
+    public bool ConsumePartySlotPressed(out int slot0Based)
+    {
+        if (_partySlotPressedPulse < 0)
+        {
+            slot0Based = -1;
+            return false;
+        }
+
+        slot0Based = _partySlotPressedPulse;
+        _partySlotPressedPulse = -1;
+        return true;
+    }
+
+    /// <summary>战斗锁定：按下边沿（由 <see cref="GameplayInputRouter"/> 消费并转发事件）。</summary>
+    public bool ConsumeLockOnTogglePressed()
+    {
+        if (!_lockOnTogglePressedPulse)
+        {
+            return false;
+        }
+
+        _lockOnTogglePressedPulse = false;
+        return true;
+    }
+
     /// <summary>当前输入焦点模式。</summary>
     public InputFocusMode CurrentFocus => _currentFocus;
 
@@ -103,10 +159,11 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
     //   2. "Jump"    — 键盘 F；手柄 South
     //   3. "Dodge"  — 键盘 Space；手柄 East
     //   4. "SwitchCamera" — <Keyboard>/v
+    //   5. 阵容切换 — PartyPrevious / PartyNext / PartySlot1…8（默认 Q / R / 数字行+小键盘；手柄十字键 1–4）
+    //   6. LockOnToggle — 锁定（默认 Tab / 手柄 R3）
     //
-    // 添加后 Unity 会自动重新生成 PlayerInputSystem.cs，届时：
-    //   - IGamePlayActions 接口会新增 OnSprint / OnSwitchCamera 方法
-    //   - 在本文件中实现对应回调即可
+    // 若在 Input Asset 窗口点「Generate C# Class」，会重写 PlayerInputSystem.cs：
+    //   将 IGamePlayActions 新增方法在本类（InputReader）中实现即可。
     //
     // ═══ 重要原则：数据来源唯一性 ═══
     // 所有键位绑定必须且只能在 .inputactions 资产中定义。
@@ -117,6 +174,10 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
     private bool _jumpPressedPulse;
     private bool _dodgePressedPulse;
     private bool _swordDashPressedPulse;
+    private bool _partyPreviousPressedPulse;
+    private bool _partyNextPressedPulse;
+    private int _partySlotPressedPulse = -1;
+    private bool _lockOnTogglePressedPulse;
 
     // ═══ 生命周期 ═══
 
@@ -184,12 +245,17 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
     {
         MoveInput = Vector2.zero;
         MoveActuatedByGamepad = false;
+        LookActuatedByGamepad = false;
         LookInput = Vector2.zero;
         IsAttackHeld = false;
         IsJumpHeld = false;
         _jumpPressedPulse = false;
         _dodgePressedPulse = false;
         _swordDashPressedPulse = false;
+        _partyPreviousPressedPulse = false;
+        _partyNextPressedPulse = false;
+        _partySlotPressedPulse = -1;
+        _lockOnTogglePressedPulse = false;
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -220,7 +286,9 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
     /// </summary>
     public void OnLook(InputAction.CallbackContext context)
     {
-        LookInput = context.ReadValue<Vector2>();
+        var raw = context.ReadValue<Vector2>();
+        LookActuatedByGamepad = context.control != null && context.control.device is Gamepad;
+        LookInput = CameraLookInputAdapter.ApplyDeadZone(raw, lookInputDeadZone);
     }
 
     /// <summary>
@@ -304,6 +372,47 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
     }
     public void OnSwitchCamera(InputAction.CallbackContext context) {
         if (context.performed) GlobalEventBus.Publish(new SwitchGameModeInputEvent());
+    }
+
+    public void OnPartyPrevious(InputAction.CallbackContext context)
+    {
+        if (context.performed)
+        {
+            _partyPreviousPressedPulse = true;
+        }
+    }
+
+    public void OnPartyNext(InputAction.CallbackContext context)
+    {
+        if (context.performed)
+        {
+            _partyNextPressedPulse = true;
+        }
+    }
+
+    public void OnPartySlot1(InputAction.CallbackContext context) => SetPartySlotPulse(context, 0);
+    public void OnPartySlot2(InputAction.CallbackContext context) => SetPartySlotPulse(context, 1);
+    public void OnPartySlot3(InputAction.CallbackContext context) => SetPartySlotPulse(context, 2);
+    public void OnPartySlot4(InputAction.CallbackContext context) => SetPartySlotPulse(context, 3);
+    public void OnPartySlot5(InputAction.CallbackContext context) => SetPartySlotPulse(context, 4);
+    public void OnPartySlot6(InputAction.CallbackContext context) => SetPartySlotPulse(context, 5);
+    public void OnPartySlot7(InputAction.CallbackContext context) => SetPartySlotPulse(context, 6);
+    public void OnPartySlot8(InputAction.CallbackContext context) => SetPartySlotPulse(context, 7);
+
+    public void OnLockOnToggle(InputAction.CallbackContext context)
+    {
+        if (context.performed)
+        {
+            _lockOnTogglePressedPulse = true;
+        }
+    }
+
+    private void SetPartySlotPulse(InputAction.CallbackContext context, int slot0Based)
+    {
+        if (context.performed)
+        {
+            _partySlotPressedPulse = slot0Based;
+        }
     }
 
     //UI ActionMap 回调（当前先保留最小处理，后续可接 UI 事件总线）

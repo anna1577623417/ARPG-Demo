@@ -26,6 +26,7 @@ using UnityEngine;
 /// - 激活时应隐藏玩家模型（或只隐藏头部），防止穿模
 /// - 角色朝向应跟随相机 yaw（由 PlayerController 在 FPS 模式下处理）
 /// </summary>
+[DefaultExecutionOrder(-100)]
 [AddComponentMenu("GameMain/Camera/FPS Camera Controller")]
 public class FPSCameraController : CameraController
 {
@@ -33,9 +34,13 @@ public class FPSCameraController : CameraController
     [Tooltip("玩家头部骨骼下的 EyePoint 空物体（视角支点）")]
     [SerializeField] private Transform eyePoint;
 
-    [Header("Look Settings")]
+    [Header("Look Settings — Gamepad (deg/s)")]
     [SerializeField] private float horizontalSensitivity = 300f;
     [SerializeField] private float verticalSensitivity = 200f;
+
+    [Header("Look Settings — Mouse (deg per LookInput unit, no deltaTime)")]
+    [SerializeField] private float mouseYawDegreesPerUnit = 0.15f;
+    [SerializeField] private float mousePitchDegreesPerUnit = 0.12f;
     [SerializeField] private float verticalMinAngle = -80f;
     [SerializeField] private float verticalMaxAngle = 80f;
 
@@ -43,7 +48,6 @@ public class FPSCameraController : CameraController
     private float _pitch;
 
     public override GameModeType Mode => GameModeType.FPS;
-    public override bool IsCameraRelativeMovement => true;
 
     protected override void OnEnable()
     {
@@ -68,17 +72,29 @@ public class FPSCameraController : CameraController
         Cursor.visible = true;
     }
 
-    public override Quaternion MovementReferenceRotation => Quaternion.Euler(0f, _yaw, 0f);
-
     protected override void UpdateCamera()
     {
         if (eyePoint == null) return;
 
+        if (inputReader == null)
+        {
+            return;
+        }
+
         var look = inputReader.LookInput;
         if (look.sqrMagnitude > 0.0001f)
         {
-            _yaw += look.x * horizontalSensitivity * Time.deltaTime;
-            _pitch -= look.y * verticalSensitivity * Time.deltaTime;
+            if (inputReader.LookActuatedByGamepad)
+            {
+                _yaw += look.x * horizontalSensitivity * Time.deltaTime;
+                _pitch -= look.y * verticalSensitivity * Time.deltaTime;
+            }
+            else
+            {
+                _yaw += look.x * mouseYawDegreesPerUnit;
+                _pitch -= look.y * mousePitchDegreesPerUnit;
+            }
+
             _pitch = Mathf.Clamp(_pitch, verticalMinAngle, verticalMaxAngle);
         }
 

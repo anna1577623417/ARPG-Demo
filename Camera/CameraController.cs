@@ -24,8 +24,11 @@ using Cinemachine;
 ///   - 子类实现具体的 UpdateCamera 逻辑
 ///   - Enable/Disable 自动提升/降低 VCam Priority
 ///   - 不处理角色移动逻辑（那是 PlayerController 的职责）
+///   - 相机相对移动的平面 Forward/Right 由 <see cref="RefreshPlanarMovementAxesFromBrainOutput"/> 统一写入，
+///     供 <see cref="ICameraDirectionProvider"/> 消费（子类如 MOBA 可覆盖为世界观）。
+///   - 各具体相机控制器应使用 <c>[DefaultExecutionOrder(-100)]</c>，早于 <see cref="PlayerController"/> 的 <c>LateUpdate</c>。
 /// </summary>
-public abstract class CameraController : MonoBehaviour
+public abstract class CameraController : MonoBehaviour, ICameraDirectionProvider
 {
     [Header("Camera")]
     [SerializeField] protected CinemachineVirtualCameraBase virtualCamera;
@@ -40,23 +43,14 @@ public abstract class CameraController : MonoBehaviour
     /// <summary>此控制器对应的游戏模式。</summary>
     public abstract GameModeType Mode { get; }
 
-    /// <summary>此模式是否使用相机相对移动（Action/FPS = true, MOBA = false）。</summary>
-    public abstract bool IsCameraRelativeMovement { get; }
+    protected Vector3 _planarMovementForward = Vector3.forward;
+    protected Vector3 _planarMovementRight = Vector3.right;
 
-    /// <summary>
-    /// 移动参考旋转（仅水平偏航角，无俯仰）。
-    /// PlayerController 用这个计算"虚拟指北"，而不是读 Camera.main.transform。
-    ///
-    /// 为什么不用 Camera.main.transform？
-    ///   followTarget 是 Player 子物体 → Player.LookAtDirection 旋转角色时
-    ///   会拖动 followTarget 的世界朝向 → Cinemachine 写入 Camera.main 的值被污染
-    ///   → 如果 PlayerController 读 Camera.main → 拿到被污染的方向 → 反馈死循环。
-    ///
-    ///   MovementReferenceRotation 直接从 _yaw（纯鼠标驱动）构造，
-    ///   不经过 followTarget → Cinemachine → Camera.main 这条链路，
-    ///   完全免疫帧序问题和父子物体旋转耦合。
-    /// </summary>
-    public virtual Quaternion MovementReferenceRotation => Quaternion.identity;
+    /// <inheritdoc />
+    public Vector3 Forward => _planarMovementForward;
+
+    /// <inheritdoc />
+    public Vector3 Right => _planarMovementRight;
 
     /// <summary>
     /// 获取实际渲染相机的 Transform（供 PlayerController 计算移动方向）。
@@ -95,11 +89,108 @@ public abstract class CameraController : MonoBehaviour
         }
     }
 
+    /// <summary>单帧顺序：先由子类 <see cref="UpdateCamera"/> 写轨道/轴，再刷新平面方向供玩家本帧 <c>LateUpdate</c> 消费。</summary>
     protected virtual void LateUpdate()
     {
-        if (inputReader == null) return;
         UpdateCamera();
+        RefreshPlanarMovementAxesFromBrainOutput();
     }
+
+    /// <summary>
+    /// 在 <c>LateUpdate</c> 末尾根据 Brain 控制的输出相机刷新 XZ 平面轴（与 <see cref="PlayerController"/> 的 <c>LateUpdate</c> 配合，见该类执行顺序）。
+    /// </summary>
+    protected virtual void RefreshPlanarMovementAxesFromBrainOutput()
+    {
+        var outputCam = ResolveOutputCameraForMovementAxes();
+        if (outputCam == null)
+        {
+            _planarMovementForward = Vector3.forward;
+            _planarMovementRight = Vector3.right;
+            return;
+        }
+
+        var f = Vector3.ProjectOnPlane(outputCam.transform.forward, Vector3.up);
+        var r = Vector3.ProjectOnPlane(outputCam.transform.right, Vector3.up);
+        if (f.sqrMagnitude < 1e-8f || r.sqrMagnitude < 1e-8f)
+        {
+            _planarMovementForward = Vector3.forward;
+            _planarMovementRight = Vector3.right;
+            return;
+        }
+
+        f.Normalize();
+        r.Normalize();
+        _planarMovementForward = f;
+        _planarMovementRight = r;
+    }
+
+    /// <summary>优先使用挂在输出机上的 <c>CinemachineBrain.OutputCamera</c>，避免多 Camera 时误用非 Brain 目标。</summary>
+    private static Camera ResolveOutputCameraForMovementAxes()
+    {
+        var main = Camera.main;
+        if (main == null)
+        {
+            return null;
+        }
+
+#if !CINEMACHINE_3
+        if (main.TryGetComponent<CinemachineBrain>(out var brain) && brain.OutputCamera != null)
+        {
+            return brain.OutputCamera;
+        }
+#endif
+        return main;
+    }
+
+#if !CINEMACHINE_3
+    /// <summary>CM2：读写虚拟相机镜头 FOV（供换人呼吸等）。<c>m_Lens</c> 在具体类型上，不在 <see cref="CinemachineVirtualCameraBase"/>。</summary>
+    public bool TryGetLensFieldOfView(out float fieldOfView)
+    {
+        switch (virtualCamera)
+        {
+            case CinemachineFreeLook freeLook:
+                fieldOfView = freeLook.m_Lens.FieldOfView;
+                return true;
+            case CinemachineVirtualCamera vcam:
+                fieldOfView = vcam.m_Lens.FieldOfView;
+                return true;
+            default:
+                fieldOfView = 60f;
+                return false;
+        }
+    }
+
+    public void SetLensFieldOfView(float fieldOfView)
+    {
+        switch (virtualCamera)
+        {
+            case CinemachineFreeLook freeLook:
+            {
+                var lens = freeLook.m_Lens;
+                lens.FieldOfView = fieldOfView;
+                freeLook.m_Lens = lens;
+                break;
+            }
+            case CinemachineVirtualCamera vcam:
+            {
+                var lens = vcam.m_Lens;
+                lens.FieldOfView = fieldOfView;
+                vcam.m_Lens = lens;
+                break;
+            }
+        }
+    }
+#else
+    public bool TryGetLensFieldOfView(out float fieldOfView)
+    {
+        fieldOfView = 60f;
+        return false;
+    }
+
+    public void SetLensFieldOfView(float fieldOfView)
+    {
+    }
+#endif
 
     /// <summary>子类实现具体的相机控制逻辑。</summary>
     protected abstract void UpdateCamera();

@@ -45,6 +45,11 @@ public class Player : Entity<Player>, IDamageable {
     [Tooltip("空中移动控制力的乘数 (0~1)。\n增大：在空中可以灵活改变方向（像超级马里奥）。\n减小：起跳后几乎无法改变落点（偏写实）。")]
     [SerializeField] private float airMoveMultiplier = 0.6f;
 
+    [Header("Facing — Camera-relative")]
+    [Tooltip(
+        "地面跑动时：先对「移动方向」做水平 Slerp，再交给 <see cref=\"Entity{T}.LookAtDirection\"/>，避免每帧相机微小变化 → 转身 → Follow 扰动相机 → 方向再变的闭环抖/原地打转。")]
+    [SerializeField, Min(0.5f)] private float locomotionFacingResponsiveness = 14f;
+
     [Tooltip("角色 Pivot (中心点) 到脚底的精确垂直距离。\n增大：系统会认为你的脚更长，角色会整体悬浮在空中。\n减小：系统认为你的脚更短，角色小腿会陷入地里。")]
     [SerializeField] private float pivotToFootOffset = 0.4f;
 
@@ -98,6 +103,11 @@ public class Player : Entity<Player>, IDamageable {
     private bool m_isMoving;
     private Vector3 m_movementIntent;
     private bool m_runIntent;
+
+    /// <summary>仅用于 <see cref="MoveByLocomotionIntent"/> 内 <see cref="LookAtDirection"/>，与瞬时 <c>m_movementIntent</c> 解耦。</summary>
+    private Vector3 m_smoothedPlanarFacing = Vector3.forward;
+
+    private bool m_smoothedFacingInitialized;
     private float m_runLatchEndTime;
     private bool m_isInitialized;
 
@@ -128,6 +138,14 @@ public class Player : Entity<Player>, IDamageable {
     // ─── 公开属性 ───
 
     public InputReader InputReader => inputReader;
+
+    /// <summary>
+    /// Composition root assigns one shared <see cref="InputReader"/> asset for all party members.
+    /// </summary>
+    public void BindSharedInputReader(InputReader reader)
+    {
+        inputReader = reader;
+    }
     public PlayerStateManager States => m_stateManager;
 
     public Vector3 PlanarVelocity => m_planarVelocity;
@@ -303,10 +321,38 @@ public class Player : Entity<Player>, IDamageable {
         if (hasInput) {
             m_planarVelocity = input.normalized * newSpeed;
             SetMoveDirection(input);
-            LookAtDirection(input);
+
+            var flatTarget = new Vector3(input.x, 0f, input.z);
+            if (flatTarget.sqrMagnitude < 1e-6f)
+            {
+                flatTarget = new Vector3(transform.forward.x, 0f, transform.forward.z);
+            }
+
+            flatTarget.Normalize();
+
+            if (!m_smoothedFacingInitialized || Vector3.Dot(m_smoothedPlanarFacing, flatTarget) < 0.2f)
+            {
+                m_smoothedPlanarFacing = flatTarget;
+                m_smoothedFacingInitialized = true;
+            }
+            else
+            {
+                var k = 1f - Mathf.Exp(-locomotionFacingResponsiveness * Time.deltaTime);
+                m_smoothedPlanarFacing = Vector3.Slerp(m_smoothedPlanarFacing, flatTarget, k).normalized;
+            }
+
+            LookAtDirection(m_smoothedPlanarFacing);
         } else {
             var dir = currentSpeed > 0.01f ? m_planarVelocity.normalized : Vector3.zero;
             m_planarVelocity = dir * newSpeed;
+
+            var f = transform.forward;
+            f.y = 0f;
+            if (f.sqrMagnitude > 1e-6f)
+            {
+                m_smoothedPlanarFacing = f.normalized;
+                m_smoothedFacingInitialized = true;
+            }
         }
 
         PublishMoveEvents(hasInput);
