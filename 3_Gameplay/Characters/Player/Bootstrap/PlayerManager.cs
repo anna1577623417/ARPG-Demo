@@ -1,7 +1,7 @@
 using UnityEngine;
 
 /// <summary>
-/// 运行时队伍与在场角色：从 <see cref="TeamDefinitionSO"/> 取预制体，生成/激活当前操作角色；
+/// 运行时队伍与在场角色：从 <see cref="TeamDefinitionSO"/> 取预制体，开局生成全部有预制体的槽位（未上场者隐藏），场上仅激活当前一人；
 /// Q/R、数字键经 <see cref="InputReader"/> 脉冲驱动切换；默认在「上一在场角色」位置交接（可改为固定刷新点）。
 /// </summary>
 [DefaultExecutionOrder(-80)]
@@ -185,7 +185,53 @@ public sealed class PlayerManager : MonoBehaviour
             }
         }
 
-        return TrySwitchToInternal(slot, true);
+        var n = teamDefinition.SlotCount;
+        for (var i = 0; i < n; i++)
+        {
+            var prefab = teamDefinition.GetPlayerPrefab(i);
+            if (prefab == null)
+            {
+                continue;
+            }
+
+            ResolveSpawnTransform(i, true, out var pos, out var rot);
+
+            var existing = _rootsBySlot[i];
+            GameObject root;
+            if (existing != null)
+            {
+                root = existing;
+                root.transform.SetPositionAndRotation(pos, rot);
+            }
+            else
+            {
+                var parent = playerParentOverride != null ? playerParentOverride : GetDefaultParent(i);
+                if (_playerFactory != null)
+                {
+                    root = _playerFactory.InstantiatePlayer(prefab, pos, rot, parent);
+                }
+                else
+                {
+                    root = Instantiate(prefab, pos, rot, parent);
+                }
+
+                _rootsBySlot[i] = root;
+                _stubBySlot[i].HasSpawnedInstance = true;
+            }
+
+            root.SetActive(i == slot);
+        }
+
+        ActivePlayerRoot = _rootsBySlot[slot];
+        _activeSlotIndex = slot;
+
+        RegisterActiveWithRouter(ActivePlayerRoot);
+        BindActionCamera(ActivePlayerRoot);
+
+        var reader = ResolveEffectiveInputReader();
+        reader?.RestoreGameplayControlsWhileFocused();
+
+        return ActivePlayerRoot != null;
     }
 
     /// <summary>切换到指定槽；若该槽无预制体则失败。</summary>
