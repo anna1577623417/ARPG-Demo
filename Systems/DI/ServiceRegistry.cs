@@ -2,8 +2,8 @@ using System;
 using System.Collections.Generic;
 
 /// <summary>
-/// 轻量服务定位器：场景级组合根（<see cref="SystemRoot"/>）在启动时注册单例式系统，
-/// 其余代码通过接口解析，避免散落的全局查找。
+/// 场景级服务登记册：仅供 UI、调试或非核心系统在运行时<strong>可选</strong>解析全局服务。
+/// <strong>禁止</strong>在组合根内部用 <see cref="TryResolve{T}"/> 拼自己刚注册的类型；核心依赖应直接传参或构造注入。
 /// </summary>
 public sealed class ServiceRegistry : IServiceResolver
 {

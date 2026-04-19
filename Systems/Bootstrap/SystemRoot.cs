@@ -1,28 +1,32 @@
 using UnityEngine;
 
 /// <summary>
-/// 场景组合根：本场景内服务的唯一注册点，并在启动时向下游显式注入依赖。
-/// 请在 Inspector 中指派「需要被注入」的组件引用；避免在业务脚本里使用全局 <c>Find*</c> 解析控制流依赖。
+/// 场景组合根：装配场景级单例、向登记册暴露，并在 <see cref="Awake"/> 中把 <see cref="IGameModeMovementContext"/>
+/// 推入本场景内<strong>已显式登记</strong>的 <see cref="PlayerController"/>（不扫树、不查表、角色预制体不引用本类）。
+/// 运行时动态创建的角色由 <see cref="PlayerFactory"/> 在生成点注入；多角色时此数组可列多个或留空改由 <c>PlayerManager</c>+Factory 负责。
 /// </summary>
 [DefaultExecutionOrder(-120)]
 [AddComponentMenu("GameMain/Systems/System Root")]
 public sealed class SystemRoot : MonoBehaviour
 {
     [Header("Services (scene singletons)")]
-    [Tooltip("相机/模式上下文；供 PlayerController 的移动方向投影。")]
+    [Tooltip("相机/模式服务；实现 IGameModeMovementContext，供本根与工厂注入。")]
     [SerializeField] private GameModeManager gameModeManager;
 
-    [Header("Inject — Player")]
-    [Tooltip("需要注入 IGameModeMovementContext 的 PlayerController；可留空并由下方选项自动收集。")]
-    [SerializeField] private PlayerController[] playerControllers;
-
-    [Tooltip("勾选时在本物体子层级中查找 PlayerController 并注入（仅限子树，不用全场景 Find）。")]
-    [SerializeField] private bool gatherPlayerControllersInChildren;
+    [Header("Bootstrap — editor-placed players only")]
+    [Tooltip("仅填「本场景里已摆好」的 PlayerController；从玩家根拖入即可。动态生成者留空，用 PlayerFactory 注入。可填多个，服务多角色开发期场景。")]
+    [SerializeField] private PlayerController[] scenePlayerControllers;
 
     private ServiceRegistry _registry;
 
-    /// <summary>场景服务表，供 UI / 调试模块在运行时解析。</summary>
+    /// <summary>可选服务表（UI / 调试）；核心管线勿依赖此处做隐式查找。</summary>
     public IServiceResolver Services => _registry;
+
+    /// <summary>直接暴露移动上下文引用，供工厂/绑定器构造注入（不经查表）。</summary>
+    public IGameModeMovementContext MovementContext => gameModeManager;
+
+    /// <summary>具体实现；仅当边缘代码确实需要相机模式 API 时使用。</summary>
+    public GameModeManager GameMode => gameModeManager;
 
     private void Awake()
     {
@@ -34,52 +38,27 @@ public sealed class SystemRoot : MonoBehaviour
             _registry.RegisterAs<IGameModeMovementContext>(gameModeManager);
         }
 
-        WireMovementContextInjection();
+        PushMovementContextToScenePlayers();
     }
 
-    private void WireMovementContextInjection()
+    /// <summary>
+    /// 在本帧早期（早于 PlayerController 默认 Awake）完成注入：纯显式列表，无反射、无层级扫描。
+    /// </summary>
+    private void PushMovementContextToScenePlayers()
     {
-        if (!_registry.TryResolve(out IGameModeMovementContext ctx))
+        var ctx = MovementContext;
+        if (ctx == null || scenePlayerControllers == null || scenePlayerControllers.Length == 0)
         {
-#if UNITY_EDITOR
-            if (HasTargetsNeedingInjection())
-            {
-                Debug.LogWarning(
-                    "[SystemRoot] 已配置需要移动的 PlayerController，但未指派 GameModeManager；" +
-                    "移动将退回世界轴或 Camera.main。请在 Inspector 中完成注册。",
-                    this);
-            }
-#endif
             return;
         }
 
-        foreach (var pc in ResolvePlayerControllers())
+        for (var i = 0; i < scenePlayerControllers.Length; i++)
         {
+            var pc = scenePlayerControllers[i];
             if (pc != null)
             {
                 pc.InjectMovementContext(ctx);
             }
         }
     }
-
-    private PlayerController[] ResolvePlayerControllers()
-    {
-        if (gatherPlayerControllersInChildren)
-        {
-            return GetComponentsInChildren<PlayerController>(true);
-        }
-
-        return playerControllers ?? System.Array.Empty<PlayerController>();
-    }
-
-    private bool HasTargetsNeedingInjection()
-    {
-        if (gatherPlayerControllersInChildren)
-        {
-            return GetComponentsInChildren<PlayerController>(true).Length > 0;
-        }
-
-        return playerControllers != null && playerControllers.Length > 0;
-    }
 }
-

@@ -89,7 +89,10 @@ public class PlayerController : EntityController
         _primaryAttackPress.Configure(in primaryAttackSplit);
     }
 
-    /// <summary>由 <see cref="SystemRoot"/> 在启动时显式注入，提供相机相对移动参考；未注入时回退为保守缺省行为。</summary>
+    /// <summary>
+    /// 构造期/生成点注入相机移动上下文：由 <see cref="SystemRoot"/>（场景登记）或 <see cref="PlayerFactory"/>（运行时生成）推送；
+    /// 调用方持有接口引用而非查表解析；晚注入时移动采样会在下一帧起生效。
+    /// </summary>
     public void InjectMovementContext(IGameModeMovementContext context)
     {
         _movementContext = context;
@@ -265,13 +268,9 @@ public class PlayerController : EntityController
 
         var input = Vector2.ClampMagnitude(rawInput, 1f);
 
-        if (_movementContext != null)
+        if (_movementContext != null && !_movementContext.IsCameraRelativeMovement)
         {
-            var activeCtrl = _movementContext.ActiveCameraController;
-            if (activeCtrl != null && !activeCtrl.IsCameraRelativeMovement)
-            {
-                return new Vector3(input.x, 0f, input.y);
-            }
+            return new Vector3(input.x, 0f, input.y);
         }
 
         Quaternion refRotation;
@@ -287,8 +286,8 @@ public class PlayerController : EntityController
             {
                 _loggedMissingMovementContext = true;
                 Debug.LogWarning(
-                    "[PlayerController] 未通过 SystemRoot 注入 IGameModeMovementContext，" +
-                    "将使用 Camera.main 的 Y 角作为移动参考。请为场景添加 SystemRoot 并注册 GameModeManager。",
+                    "[PlayerController] 缺少 IGameModeMovementContext：请在 SystemRoot → Scene Player Controllers 登记本角色，" +
+                    "或对 Instantiate 结果使用 PlayerFactory 注入。当前使用 Camera.main Y 角作为移动参考。",
                     this);
             }
 #endif
