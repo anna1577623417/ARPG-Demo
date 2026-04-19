@@ -1,13 +1,8 @@
+using Cinemachine;
 using UnityEngine;
 
-#if CINEMACHINE_3
-using Unity.Cinemachine;
-#else
-using Cinemachine;
-#endif
-
 /// <summary>
-/// 相机控制器基类。
+/// 相机控制器基类（Unity 2022 LTS + Package Cinemachine 2.x，<c>CinemachineVirtualCamera</c>）。
 ///
 /// 每种游戏模式有一个独立的 CameraController 子类：
 ///   ActionCameraController  — 第三人称 FreeLook 轨道相机（类魂）

@@ -3,7 +3,7 @@ using UnityEngine;
 /// <summary>
 /// 场景组合根：装配场景级单例、向登记册暴露，并在 <see cref="Awake"/> 中把 <see cref="IGameModeMovementContext"/>
 /// 推入本场景内<strong>已显式登记</strong>的 <see cref="PlayerController"/>（不扫树、不查表、角色预制体不引用本类）。
-/// 运行时动态创建的角色由 <see cref="PlayerFactory"/> 在生成点注入；多角色时此数组可列多个或留空改由 <c>PlayerManager</c>+Factory 负责。
+/// 运行时由 <see cref="PlayerManager"/> 生成的角色由工厂在生成点注入；此处列表仅用于场景中<strong>预摆</strong>的玩家。
 /// </summary>
 [DefaultExecutionOrder(-120)]
 [AddComponentMenu("GameMain/Systems/System Root")]

@@ -1,13 +1,9 @@
-using UnityEngine;
-
-#if CINEMACHINE_3
-using Unity.Cinemachine;
-#else
 using Cinemachine;
-#endif
+using UnityEngine;
 
 /// <summary>
 /// 动作模式相机控制器（类魂 / 第三人称跟随）。
+/// 目标环境：Unity 2022 LTS，Cinemachine 2.x（<c>CinemachineVirtualCamera</c>），无条件编译分支。
 ///
 /// ═══ 核心原理 ═══
 ///
@@ -100,5 +96,42 @@ public class ActionCameraController : CameraController
         // 子物体 followTarget 的世界朝向会被"拖走"，
         // 导致 Cinemachine 读到被污染的旋转 → 反馈死循环 → 原地转圈。
         followTarget.rotation = Quaternion.Euler(_pitch, _yaw, 0f);
+    }
+
+    /// <summary>
+    /// 运行时把轨道控制与 Cinemachine 跟/看目标换到指定 Transform（玩家由代码生成且未在检视器里连线时使用）。
+    /// </summary>
+    /// <param name="follow">跟随锚点（与预制体上 PlayerCameraAnchor 的 Follow 一致）。</param>
+    /// <param name="lookAt">LookAt；为 null 时与 <paramref name="follow"/> 相同。</param>
+    public void RebindFollowAndLookAt(Transform follow, Transform lookAt = null)
+    {
+        if (follow == null)
+        {
+            Debug.LogError("[ActionCamera] RebindFollowAndLookAt: follow 为 null。", this);
+            return;
+        }
+
+        var targetFollow = follow;
+        var targetLook = lookAt != null ? lookAt : follow;
+
+        followTarget = follow;
+
+        if (virtualCamera == null)
+        {
+            Debug.LogError("[ActionCamera] RebindFollowAndLookAt: VirtualCamera 未指派。", this);
+            return;
+        }
+
+        // FreeLook / 其他子类不是 CinemachineVirtualCamera，但均继承 VirtualCameraBase 的 Follow、LookAt
+        virtualCamera.Follow = targetFollow;
+        virtualCamera.LookAt = targetLook;
+
+        var euler = follow.eulerAngles;
+        _yaw = euler.y;
+        _pitch = euler.x;
+        if (_pitch > 180f)
+        {
+            _pitch -= 360f;
+        }
     }
 }

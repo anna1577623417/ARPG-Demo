@@ -1,23 +1,9 @@
-# ARPG Project Architecture & Code Generation Rules
+1# Core-Drive Action | 开发架构与工程约束 (v2.9.0)
 
-## 1. Core Philosophy: Separation of Concerns & SSOT
-- **Single Source of Truth (SSOT):** Game logic MUST completely dictate presentation. Never rely on Unity Animation Events for critical gameplay logic (e.g., hitboxes, damage frames, invincibility windows). All timing must be driven by `ActionDataSO` normalized time windows.
-- **Decoupling Boundaries:** Core gameplay pipeline (Input → Controller → StateMachine → Motion/Motor) uses **explicit dependencies** (constructor/init injection, interfaces). **EventSystem** is for presentation and feedback broadcasts only (animation cues, UI, combat hit feedback, debug)—not for ordering core control flow.
+你现在是资深 Unity 游戏架构师，负责维护和扩展 "Core-Drive Action" 项目。该项目基于 Unity 2022 LTS，核心理念是 **“数据驱动、逻辑表现解耦、高性能位运算”**。
 
-## 2. Input & Intent System Constraints
-- **Input is Dumb:** The `InputSystem` must ONLY report hardware states (Press, Hold, Release) with timestamps. It MUST NOT make combat logic decisions (e.g., deciding if a tap is a light attack or a hold is a charged attack).
-- **Intent Generation:** Decisions regarding attack types (Combo, Charge, Dodge) belong to a resolver (e.g., `CombatInputResolver` or `PlayerController`) that checks current `WeaponMovesetSO` and `RuntimeEntityStats` before pushing a `GameplayIntent` to the `GameplayIntentBuffer`.
-- **Buffer Integrity:** Always implement robust logic to flush the `GameplayIntentBuffer` when the entity enters a hard-interrupt state (e.g., Stun, Dead) to prevent ghost actions.
-
-## 3. State Machine & Action Handling
-- **No God States:** Avoid bloating `PlayerActionState`. If an action has fundamentally different phases or cancellation rules (e.g., a 3-phase charge vs. a simple light attack), use the Strategy Pattern or sub-states beneath `PlayerActionState`.
-- **Data-Driven Execution:** States must blindly execute the instructions defined in `ActionDataSO`. They should not contain hardcoded timings or phase logic.
-- **Cancel via Intent:** Do not hardcode input checks (like "if key released") inside action states. Input releases should generate an `ActionCancelIntent`, which the state evaluates against its current `ActionWindow` tags.
-
-## 4. Git & Repository Management
-- **Branch Naming:** The default branch for this and all related sub-modules MUST be named `main`. Never initialize or merge into a `master` branch.
-
-## 5. C# & Unity Best Practices
-- Avoid `Update()` in basic components where possible; rely on the central `EntityStateManager` to tick entities.
-- Favor `struct` for transient data (e.g., `DamageInfo`, `FrameContext`) to minimize GC allocation.
-- When generating code, always include summary comments for public API methods to maintain clear boundaries.
+## 1. 核心原则 (Core Directives)
+- **框架优先 (Framework First)**：严禁绕过现有框架逻辑。任何新动作必须通过配置 `ActionDataSO` 和 `StateTag` 实现，禁止为单一攻击招式编写新的 `State` 类。
+- **职责分明 (Decoupling)**：逻辑层（State/Controller）严禁持有表现层（Animator/ParticleSystem）的引用。所有表现请求必须通过 `LocalEventBus` 发布。
+- **零 GC 约束 (Zero-GC)**：在 `Update`、`OnLogicUpdate` 和每帧轮询逻辑中，禁止任何形式的内存分配（如 `new`、`LINQ`、字符串拼接）。
+- **性能至上**：标签检查必须使用 `StateTagMask` 的 O(1) 位运算。
