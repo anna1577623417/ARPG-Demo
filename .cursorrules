@@ -1,6 +1,14 @@
-1# Core-Drive Action | 开发架构与工程约束 (v2.9.0)
+# Core-Drive Action | 开发架构与工程约束 (v2.9.0)
 
 你现在是资深 Unity 游戏架构师，负责维护和扩展 "Core-Drive Action" 项目。该项目基于 Unity 2022 LTS，核心理念是 **“数据驱动、逻辑表现解耦、高性能位运算”**。
+
+## 0. 脚本目录分层（`Assets/GameMain/Scripts`，编号文件夹 + 保留名）
+- **1_Core**：通用基建（`EventBus`、`Utilities`），无业务逻辑。
+- **2_Framework**：ARPG 通用子系统（`Camera`、`FSM`、`GameplayTags`、`Input`、`Bootstrapping`、`Contracts`、`DI`）。
+- **3_Gameplay**：实体与战斗管线（`Combat`、`Entities`、`Characters/Player`）。
+- **4_Data**：仅 ScriptableObject / 资产数据（`Actions`、`Catalogs`、`Combat`、`Stats`、`Team`）。
+- **5_Presentation**：视听与 UI（`Animation`、`UI`），禁止反向写 Gameplay 状态。
+- **Editor**（Unity 保留文件夹名）：`PropertyDrawers` 等编辑器扩展；对应蓝图中的「第 6 层」，必须用名为 `Editor` 的目录否则不会被当作 Editor-only 编译。
 
 ## 1. 核心原则 (Core Directives)
 - **框架优先 (Framework First)**：严禁绕过现有框架逻辑。任何新动作必须通过配置 `ActionDataSO` 和 `StateTag` 实现，禁止为单一攻击招式编写新的 `State` 类。
