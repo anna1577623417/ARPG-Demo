@@ -1,7 +1,6 @@
 /// <summary>
-/// 玩家业务事件定义。
-/// 所有事件都是 readonly struct + IGameEvent，零 GC。
-/// 由 Player 的各能力方法发布，状态机和其他系统监听。
+/// 玩家展示/反馈事件（readonly struct + IGameEvent）。
+/// 仅用于动画、音效、UI 等旁路通知；不参与输入—状态机—移动的确定性控制流。
 /// </summary>
 
 // ─── 攻击 ───
@@ -24,32 +23,6 @@ public readonly struct PlayerAttackEndedEvent : IGameEvent
     public readonly string PlayerName;
 
     public PlayerAttackEndedEvent(int playerInstanceId, string playerName)
-    {
-        PlayerInstanceId = playerInstanceId;
-        PlayerName = playerName;
-    }
-}
-
-// ─── 移动 ───
-
-public readonly struct PlayerMoveStartedEvent : IGameEvent
-{
-    public readonly int PlayerInstanceId;
-    public readonly string PlayerName;
-
-    public PlayerMoveStartedEvent(int playerInstanceId, string playerName)
-    {
-        PlayerInstanceId = playerInstanceId;
-        PlayerName = playerName;
-    }
-}
-
-public readonly struct PlayerMoveStoppedEvent : IGameEvent
-{
-    public readonly int PlayerInstanceId;
-    public readonly string PlayerName;
-
-    public PlayerMoveStoppedEvent(int playerInstanceId, string playerName)
     {
         PlayerInstanceId = playerInstanceId;
         PlayerName = playerName;

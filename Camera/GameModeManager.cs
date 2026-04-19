@@ -28,7 +28,7 @@ using UnityEngine;
 /// 4. 启动时自动激活 defaultMode 对应的控制器
 /// </summary>
 [AddComponentMenu("GameMain/Game/Game Mode Manager")]
-public class GameModeManager : MonoSingleton<GameModeManager>, IGameModule
+public class GameModeManager : MonoSingleton<GameModeManager>, IGameModule, IGameModeMovementContext
 {
     [Header("Camera Controllers")]
     [Tooltip("注册所有模式的相机控制器，顺序不限")]

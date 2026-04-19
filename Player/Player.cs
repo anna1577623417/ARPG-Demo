@@ -17,7 +17,7 @@ using UnityEngine;
 ///
 /// ═══ 表现解耦 ═══
 ///
-/// Player 不持有 Animator 引用。动画由 PlayerAnimController 监听 LocalEventBus 事件驱动。
+/// Player 不持有 Animator 引用。核心位移与逻辑不经 EventBus；表现层可通过 LocalEventBus 接收少量展示类通知（跳转/落地/动作剪辑等）。
 /// </summary>
 [RequireComponent(typeof(PlayerStateManager))]
 [RequireComponent(typeof(PlayerController))]
@@ -95,7 +95,6 @@ public class Player : Entity<Player>, IDamageable {
     private float m_attackTimer;
     private float m_dodgeCooldownTimer;
     private float m_swordDashCooldownTimer;
-    private bool m_isMoving;
     private Vector3 m_movementIntent;
     private bool m_runIntent;
     private float m_runLatchEndTime;
@@ -308,13 +307,10 @@ public class Player : Entity<Player>, IDamageable {
             var dir = currentSpeed > 0.01f ? m_planarVelocity.normalized : Vector3.zero;
             m_planarVelocity = dir * newSpeed;
         }
-
-        PublishMoveEvents(hasInput);
     }
 
     public void StopMove() {
         m_planarVelocity = Vector3.MoveTowards(m_planarVelocity, Vector3.zero, moveDeceleration * Time.deltaTime);
-        PublishMoveEvents(false);
     }
 
     // ─── 跳跃能力 ───
@@ -489,16 +485,6 @@ public class Player : Entity<Player>, IDamageable {
     }
 
     // ─── 内部辅助 ───
-
-    private void PublishMoveEvents(bool nowMoving) {
-        if (nowMoving == m_isMoving) return;
-        m_isMoving = nowMoving;
-
-        if (m_isMoving)
-            PublishEvent(new PlayerMoveStartedEvent(GetInstanceID(), name));
-        else
-            PublishEvent(new PlayerMoveStoppedEvent(GetInstanceID(), name));
-    }
 
     /// <summary>
     /// 核心修复：坚如磐石的地面检测与吸附。

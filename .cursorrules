@@ -2,7 +2,7 @@
 
 ## 1. Core Philosophy: Separation of Concerns & SSOT
 - **Single Source of Truth (SSOT):** Game logic MUST completely dictate presentation. Never rely on Unity Animation Events for critical gameplay logic (e.g., hitboxes, damage frames, invincibility windows). All timing must be driven by `ActionDataSO` normalized time windows.
-- **Strict Decoupling:** Modules must communicate via the `EventSystem` (Global/Local) or State Tag Masks. Direct strong references between unrelated managers are strictly forbidden.
+- **Decoupling Boundaries:** Core gameplay pipeline (Input → Controller → StateMachine → Motion/Motor) uses **explicit dependencies** (constructor/init injection, interfaces). **EventSystem** is for presentation and feedback broadcasts only (animation cues, UI, combat hit feedback, debug)—not for ordering core control flow.
 
 ## 2. Input & Intent System Constraints
 - **Input is Dumb:** The `InputSystem` must ONLY report hardware states (Press, Hold, Release) with timestamps. It MUST NOT make combat logic decisions (e.g., deciding if a tap is a light attack or a hold is a charged attack).

@@ -48,8 +48,9 @@ public class PlayerController : EntityController
 
     private readonly PrimaryAttackPressTracker _primaryAttackPress = new PrimaryAttackPressTracker();
 
-    private GameModeManager _gameModeManager;
+    private IGameModeMovementContext _movementContext;
     private bool _isInitialized;
+    private bool _loggedMissingMovementContext;
 
     private Vector2 _prevMoveInput;
 
@@ -85,13 +86,13 @@ public class PlayerController : EntityController
             inputReader = player.InputReader;
         }
 
-        _gameModeManager = GameModeManager.Instance;
-        if (_gameModeManager == null)
-        {
-            _gameModeManager = FindFirstObjectByType<GameModeManager>();
-        }
-
         _primaryAttackPress.Configure(in primaryAttackSplit);
+    }
+
+    /// <summary>由 <see cref="SystemRoot"/> 在启动时显式注入，提供相机相对移动参考；未注入时回退为保守缺省行为。</summary>
+    public void InjectMovementContext(IGameModeMovementContext context)
+    {
+        _movementContext = context;
     }
 
     private void OnEnable()
@@ -264,9 +265,9 @@ public class PlayerController : EntityController
 
         var input = Vector2.ClampMagnitude(rawInput, 1f);
 
-        if (_gameModeManager != null)
+        if (_movementContext != null)
         {
-            var activeCtrl = _gameModeManager.ActiveCameraController;
+            var activeCtrl = _movementContext.ActiveCameraController;
             if (activeCtrl != null && !activeCtrl.IsCameraRelativeMovement)
             {
                 return new Vector3(input.x, 0f, input.y);
@@ -275,12 +276,22 @@ public class PlayerController : EntityController
 
         Quaternion refRotation;
 
-        if (_gameModeManager != null)
+        if (_movementContext != null)
         {
-            refRotation = _gameModeManager.GetMovementReferenceRotation();
+            refRotation = _movementContext.GetMovementReferenceRotation();
         }
         else
         {
+#if UNITY_EDITOR
+            if (!_loggedMissingMovementContext)
+            {
+                _loggedMissingMovementContext = true;
+                Debug.LogWarning(
+                    "[PlayerController] 未通过 SystemRoot 注入 IGameModeMovementContext，" +
+                    "将使用 Camera.main 的 Y 角作为移动参考。请为场景添加 SystemRoot 并注册 GameModeManager。",
+                    this);
+            }
+#endif
             var mainCam = Camera.main;
             if (mainCam == null)
             {
