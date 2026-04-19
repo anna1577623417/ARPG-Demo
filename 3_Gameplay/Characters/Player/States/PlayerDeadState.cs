@@ -12,7 +12,10 @@ public class PlayerDeadState : PlayerState
 
         player.StopMove();
         if (player.InputReader != null)
-            player.InputReader.DisableAllInput();
+        {
+            // 不能整图 DisableAllInput：否则 Party* 也被关掉，阵亡后无法换人。
+            player.InputReader.DisableGameplayExceptPartySwitch();
+        }
     }
 
     protected override void OnExit(Player player)

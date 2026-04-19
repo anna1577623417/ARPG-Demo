@@ -88,6 +88,53 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
         return true;
     }
 
+    public bool ConsumePartyNextPressed()
+    {
+        if (!_partyNextPulse)
+        {
+            return false;
+        }
+
+        _partyNextPulse = false;
+        return true;
+    }
+
+    public bool ConsumePartyPrevPressed()
+    {
+        if (!_partyPrevPulse)
+        {
+            return false;
+        }
+
+        _partyPrevPulse = false;
+        return true;
+    }
+
+    /// <summary>调试用：PartyNext 脉冲是否尚未被消费。</summary>
+    public bool DebugPartyNextPulsePending => _partyNextPulse;
+
+    /// <summary>调试用：PartyPrev 脉冲是否尚未被消费。</summary>
+    public bool DebugPartyPrevPulsePending => _partyPrevPulse;
+
+    /// <summary>调试用：待消费的槽位脉冲（0～7），-1 表示无。</summary>
+    public int DebugPartySlotPulseIndex => _partySlotPulseIndex;
+
+    /// <summary>
+    /// 数字键 1～8 选择的槽位（0～7）；本帧若未触发则返回 false。
+    /// </summary>
+    public bool ConsumePartySlotSelectPressed(out int slotIndex0Based)
+    {
+        if (_partySlotPulseIndex < 0)
+        {
+            slotIndex0Based = -1;
+            return false;
+        }
+
+        slotIndex0Based = _partySlotPulseIndex;
+        _partySlotPulseIndex = -1;
+        return true;
+    }
+
     /// <summary>当前输入焦点模式。</summary>
     public InputFocusMode CurrentFocus => _currentFocus;
 
@@ -117,6 +164,12 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
     private bool _jumpPressedPulse;
     private bool _dodgePressedPulse;
     private bool _swordDashPressedPulse;
+
+    private bool _partyNextPulse;
+    private bool _partyPrevPulse;
+
+    /// <summary>-1 表示无；否则为 0～7 的队伍槽索引。</summary>
+    private int _partySlotPulseIndex = -1;
 
     // ═══ 生命周期 ═══
 
@@ -175,9 +228,69 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
         ClearGameplayCache();
     }
 
+    /// <summary>
+    /// 关闭 Gameplay 中除队伍切换（PartyNext/PartyPrev/PartySlot*）以外的动作。
+    /// 用于阵亡等需停操作但仍允许切人的场景；与 <see cref="DisableAllInput"/> 不同，不会关掉 Party*。
+    /// </summary>
+    public void DisableGameplayExceptPartySwitch()
+    {
+        if (_inputActions == null)
+        {
+            return;
+        }
+
+        InputActionMap map = _inputActions.GamePlay.Get();
+        for (var i = 0; i < map.actions.Count; i++)
+        {
+            var action = map.actions[i];
+            if (IsPartySwitchGameplayAction(action.name))
+            {
+                continue;
+            }
+
+            action.Disable();
+        }
+
+        ClearGameplayCache();
+    }
+
     public void EnableInput()
     {
         SetFocus(_currentFocus);
+        RestoreGameplayControlsWhileFocused();
+    }
+
+    /// <summary>
+    /// 在 Gameplay 焦点下重新启用 Gameplay 图中全部动作。
+    /// 阵亡时的 <see cref="DisableGameplayExceptPartySwitch"/> 会单独 Disable 非 Party 动作，换人成功后须调用本方法（或 <see cref="EnableInput"/>）恢复新上场角色的完整操作。
+    /// </summary>
+    public void RestoreGameplayControlsWhileFocused()
+    {
+        if (_inputActions == null || _currentFocus != InputFocusMode.Gameplay)
+        {
+            return;
+        }
+
+        InputActionMap map = _inputActions.GamePlay.Get();
+        if (!map.enabled)
+        {
+            map.Enable();
+        }
+
+        for (var i = 0; i < map.actions.Count; i++)
+        {
+            map.actions[i].Enable();
+        }
+    }
+
+    private static bool IsPartySwitchGameplayAction(string actionName)
+    {
+        if (actionName == "PartyNext" || actionName == "PartyPrev")
+        {
+            return true;
+        }
+
+        return actionName.StartsWith("PartySlot", System.StringComparison.Ordinal);
     }
 
     private void ClearGameplayCache()
@@ -190,6 +303,9 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
         _jumpPressedPulse = false;
         _dodgePressedPulse = false;
         _swordDashPressedPulse = false;
+        _partyNextPulse = false;
+        _partyPrevPulse = false;
+        _partySlotPulseIndex = -1;
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -302,8 +418,73 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
             _swordDashPressedPulse = true;
         }
     }
-    public void OnSwitchCamera(InputAction.CallbackContext context) {
-        if (context.performed) GlobalEventBus.Publish(new SwitchGameModeInputEvent());
+    public void OnSwitchCamera(InputAction.CallbackContext context)
+    {
+        if (context.performed)
+        {
+            GlobalEventBus.Publish(new SwitchGameModeInputEvent());
+        }
+    }
+
+    public void OnPartyNext(InputAction.CallbackContext context)
+    {
+        if (context.performed)
+        {
+            _partyNextPulse = true;
+        }
+    }
+
+    public void OnPartyPrev(InputAction.CallbackContext context)
+    {
+        if (context.performed)
+        {
+            _partyPrevPulse = true;
+        }
+    }
+
+    public void OnPartySlot1(InputAction.CallbackContext context)
+    {
+        if (context.performed) QueuePartySlot(0);
+    }
+
+    public void OnPartySlot2(InputAction.CallbackContext context)
+    {
+        if (context.performed) QueuePartySlot(1);
+    }
+
+    public void OnPartySlot3(InputAction.CallbackContext context)
+    {
+        if (context.performed) QueuePartySlot(2);
+    }
+
+    public void OnPartySlot4(InputAction.CallbackContext context)
+    {
+        if (context.performed) QueuePartySlot(3);
+    }
+
+    public void OnPartySlot5(InputAction.CallbackContext context)
+    {
+        if (context.performed) QueuePartySlot(4);
+    }
+
+    public void OnPartySlot6(InputAction.CallbackContext context)
+    {
+        if (context.performed) QueuePartySlot(5);
+    }
+
+    public void OnPartySlot7(InputAction.CallbackContext context)
+    {
+        if (context.performed) QueuePartySlot(6);
+    }
+
+    public void OnPartySlot8(InputAction.CallbackContext context)
+    {
+        if (context.performed) QueuePartySlot(7);
+    }
+
+    private void QueuePartySlot(int slotIndex0Based)
+    {
+        _partySlotPulseIndex = slotIndex0Based;
     }
 
     //UI ActionMap 回调（当前先保留最小处理，后续可接 UI 事件总线）

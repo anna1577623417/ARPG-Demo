@@ -15,3 +15,9 @@ MonoBehaviour:
   slots:
   - playerPrefab: {fileID: 5530918650834515018, guid: e91375fc036840d4fa2a917b00fe02ef,
       type: 3}
+  - playerPrefab: {fileID: 2350511788238439376, guid: 316bf6010f4259a4893c5e739f89fb3a,
+      type: 3}
+  - playerPrefab: {fileID: 7112141785550605415, guid: 7af45101c09032c4aa7a0d5b578b88e5,
+      type: 3}
+  - playerPrefab: {fileID: 5655653648666574578, guid: 98a76d1d890ef89489e4f04b9290e64d,
+      type: 3}

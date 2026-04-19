@@ -1,17 +1,27 @@
-# Core-Drive Action | 开发架构与工程约束 (v2.9.0)
+1# Core-Drive Action | 开发架构与工程约束 
 
-你现在是资深 Unity 游戏架构师，负责维护和扩展 "Core-Drive Action" 项目。该项目基于 Unity 2022 LTS，核心理念是 **“数据驱动、逻辑表现解耦、高性能位运算”**。
+I am developing a highly decoupled, data-driven ARPG with a strict 5-layer architecture. You must adhere to the following architectural constraints for every line of code you generate:
 
-## 0. 脚本目录分层（`Assets/GameMain/Scripts`，编号文件夹 + 保留名）
-- **1_Core**：通用基建（`EventBus`、`Utilities`），无业务逻辑。
-- **2_Framework**：ARPG 通用子系统（`Camera`、`FSM`、`GameplayTags`、`Input`、`Bootstrapping`、`Contracts`、`DI`）。
-- **3_Gameplay**：实体与战斗管线（`Combat`、`Entities`、`Characters/Player`）。
-- **4_Data**：仅 ScriptableObject / 资产数据（`Actions`、`Catalogs`、`Combat`、`Stats`、`Team`）。
-- **5_Presentation**：视听与 UI（`Animation`、`UI`），禁止反向写 Gameplay 状态。
-- **Editor**（Unity 保留文件夹名）：`PropertyDrawers` 等编辑器扩展；对应蓝图中的「第 6 层」，必须用名为 `Editor` 的目录否则不会被当作 Editor-only 编译。
+### 1. Architectural Layers (Strict 1-Way Dependency)
+- `1_Core/`: Pure C# infrastructure (EventBus, Utilities). Zero Unity business logic.
+- `2_Framework/`: Project-agnostic systems (DI, FSM, Camera base).
+- `3_Gameplay/`: Game-specific logic (Combat, Intents, Entity States).
+- `4_Data/`: ScriptableObjects ONLY (ActionDataSO, MotionProfileSO). No runtime state.
+- `5_Presentation/`: Pure View layer (Playables API, VFX). Listens to EventBus ONLY. NEVER referenced by Layer 3.
 
-## 1. 核心原则 (Core Directives)
-- **框架优先 (Framework First)**：严禁绕过现有框架逻辑。任何新动作必须通过配置 `ActionDataSO` 和 `StateTag` 实现，禁止为单一攻击招式编写新的 `State` 类。
-- **职责分明 (Decoupling)**：逻辑层（State/Controller）严禁持有表现层（Animator/ParticleSystem）的引用。所有表现请求必须通过 `LocalEventBus` 发布。
-- **零 GC 约束 (Zero-GC)**：在 `Update`、`OnLogicUpdate` 和每帧轮询逻辑中，禁止任何形式的内存分配（如 `new`、`LINQ`、字符串拼接）。
-- **性能至上**：标签检查必须使用 `StateTagMask` 的 O(1) 位运算。
+### 2. Core Constraints (The "Never Do This" List)
+- **NO Singletons**: Never use `Manager.Instance`. Use Dependency Injection or `LocalEventBus`/`GlobalEventBus` for cross-module communication.
+- **NO Transform Mutation in Logic**: States (e.g., `PlayerActionState`) MUST NOT use `transform.position += ...`. They calculate and output a `DesiredVelocity` to a dedicated Kinematic Character Motor which handles "Collide and Slide".
+- **NO Mecanim**: We strictly use the Playables API. The Presentation layer plays animations in response to Events from the Gameplay layer.
+- **NO Hardcoded Timers for Motion**: Always use Normalized Time ($t \in [0,1]$) by calculating `elapsedTime / baseDuration`. Use this $t$ to evaluate `AnimationCurve`s for animation playback speed and spatial displacement.
+- **Intent over Action**: Input generates a `GameplayIntent` -> goes to `IntentBuffer` -> consumed by `TransitionResolver` using bitwise `GameplayTagMask`.
+
+### TASK DIRECTIVE
+Your task is to implement the following feature:
+[ INSERT YOUR SPECIFIC FEATURE HERE - e.g., "A perfect dodge mechanic that slows down time and triggers a counter-attack" ]
+
+### OUTPUT REQUIREMENTS
+1. Briefly analyze how this feature maps to the 5 layers before coding.
+2. Provide production-ready C# 8.0+ code.
+3. Add summary XML comments explaining the "Why" behind the architectural choices in the code.
+4. Output only the code blocks and the brief analysis. No generic disclaimers.
