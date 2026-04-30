@@ -185,11 +185,19 @@ public class PlayerController : EntityController
         if (inputReader.ConsumeDodgePressed())
         {
             player.EnqueueGameplayIntent(PlayerIntentCatalog.Dodge(Time.time, null));
+            if (player.DebugInterruptFlow)
+            {
+                Debug.Log("[IntentInput] enqueue Dodge", this);
+            }
         }
 
         if (inputReader.ConsumeSwordDashPressed())
         {
             player.EnqueueGameplayIntent(PlayerIntentCatalog.SwordDash(Time.time, null));
+            if (player.DebugInterruptFlow)
+            {
+                Debug.Log("[IntentInput] enqueue SwordDash", this);
+            }
         }
     }
 

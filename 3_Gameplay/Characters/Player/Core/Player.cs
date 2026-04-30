@@ -87,6 +87,9 @@ public class Player : Entity<Player>, IDamageable {
     [Tooltip("在 Console 打印蓄力相关：输入按住、Action 是否启用 CanCharge、蓄力微阶段与归一化进度。")]
     [SerializeField] private bool debugChargeAttackFlow;
 
+    [Tooltip("在 Console 打印意图仲裁与 Action 打断窗口判定日志。")]
+    [SerializeField] private bool debugInterruptFlow;
+
     // ─── 运行时状态 ───
 
     private PlayerStateManager m_stateManager;
@@ -159,6 +162,7 @@ public class Player : Entity<Player>, IDamageable {
     }
     public bool WantsWalk => HasMovementIntent && !m_runIntent;
     public Vector3 MovementIntent => m_movementIntent;
+    public bool DebugInterruptFlow => debugInterruptFlow;
 
     public float NormalizedSpeed
     {

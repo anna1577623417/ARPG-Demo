@@ -9,8 +9,20 @@ public static class TransitionResolver
     /// </summary>
     public static bool CanOfferIntent(in FrameContext ctx, in GameplayIntent intent)
     {
+        return CanOfferIntent(in ctx, in intent, out _);
+    }
+
+    /// <summary>
+    /// 与 <see cref="CanOfferIntent(in FrameContext, in GameplayIntent)"/> 相同，
+    /// 但附带拒绝原因，供调试仲裁链路使用。
+    /// </summary>
+    public static bool CanOfferIntent(in FrameContext ctx, in GameplayIntent intent, out string rejectReason)
+    {
+        rejectReason = null;
+
         if (ctx.Time >= intent.ExpireTime)
         {
+            rejectReason = "expired";
             return false;
         }
 
@@ -18,16 +30,19 @@ public static class TransitionResolver
 
         if ((tags & intent.ForbiddenTags) != 0UL)
         {
+            rejectReason = "hit forbidden tags";
             return false;
         }
 
         if ((tags & intent.RequiredAllTags) != intent.RequiredAllTags)
         {
+            rejectReason = "missing required-all tags";
             return false;
         }
 
         if (intent.RequiredAnyTags != 0UL && (tags & intent.RequiredAnyTags) == 0UL)
         {
+            rejectReason = "missing required-any tags";
             return false;
         }
 

@@ -22,6 +22,7 @@ using UnityEngine;
 public class PlayerStateManager : EntityStateManager<Player>
 {
     [SerializeField] private int maxIntentConsumptionsPerFrame = 1;
+    [SerializeField] private bool debugIntentArbitration;
 
     protected override List<EntityState<Player>> BuildStateList()
     {
@@ -51,16 +52,35 @@ public class PlayerStateManager : EntityStateManager<Player>
             }
 
             var ctx = Entity.BuildFrameContext(deltaTime);
-            if (!TransitionResolver.CanOfferIntent(in ctx, in intent))
+            var canOffer = TransitionResolver.CanOfferIntent(in ctx, in intent, out var rejectReason);
+            if (!canOffer)
             {
+                if (debugIntentArbitration || Entity.DebugInterruptFlow)
+                {
+                    Debug.Log(
+                        $"[IntentArb] BLOCK by TransitionResolver | state={Current.StateId} | intent={intent.Kind} | reason={rejectReason} | tags=0x{ctx.CurrentTags.Value:X}",
+                        this);
+                }
                 break;
             }
 
             if (!Current.TryConsumeGameplayIntent(Entity, in ctx, in intent))
             {
+                if (debugIntentArbitration || Entity.DebugInterruptFlow)
+                {
+                    Debug.Log(
+                        $"[IntentArb] BLOCK by State gate | state={Current.StateId} | intent={intent.Kind}",
+                        this);
+                }
                 break;
             }
 
+            if (debugIntentArbitration || Entity.DebugInterruptFlow)
+            {
+                Debug.Log(
+                    $"[IntentArb] CONSUMED | state={Current.StateId} | intent={intent.Kind}",
+                    this);
+            }
             Entity.IntentBuffer.Pop();
         }
     }

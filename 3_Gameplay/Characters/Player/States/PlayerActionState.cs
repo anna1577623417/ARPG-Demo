@@ -36,7 +36,43 @@ public sealed class PlayerActionState : PlayerState
 
     public override bool TryConsumeGameplayIntent(Player player, in FrameContext ctx, in GameplayIntent intent)
     {
-        return false;
+        if (!IsInterruptIntent(intent.Kind))
+        {
+            return false;
+        }
+
+        if (m_action == null)
+        {
+            if (player.DebugInterruptFlow)
+            {
+                Debug.Log($"[ActionInterrupt] REJECT | incoming={intent.Kind} | reason=no current action data", player);
+            }
+            return false;
+        }
+
+        var normalized = ResolveCurrentActionNormalized(player);
+        if (!ActionInterruptResolver.CanInterrupt(m_action, normalized, intent.Kind))
+        {
+            if (player.DebugInterruptFlow)
+            {
+                Debug.Log(
+                    $"[ActionInterrupt] REJECT | action={m_action.name} | incoming={intent.Kind} | t={normalized:F3} | reason=window disallow",
+                    player);
+            }
+            return false;
+        }
+
+        var nextAction = ResolveActionForIntent(player, in intent);
+        if (player.DebugInterruptFlow)
+        {
+            var next = nextAction != null ? nextAction.name : "null";
+            Debug.Log(
+                $"[ActionInterrupt] PASS | action={m_action.name} | incoming={intent.Kind} | t={normalized:F3} | next={next}",
+                player);
+        }
+        player.ArmPendingAction(intent.Kind, nextAction);
+        player.States.ForceChange<PlayerActionState>();
+        return true;
     }
 
     protected override void OnEnter(Player player)
@@ -474,6 +510,88 @@ public sealed class PlayerActionState : PlayerState
         }
 
         player.GameplayTags.Add((ulong)StateTag.Invulnerable);
+    }
+
+    /// <summary>
+    /// Why: Action 内打断判定必须绑定当前动作时间轴（窗口），仅这些离散意图可触发重入 Action 状态。
+    /// </summary>
+    private static bool IsInterruptIntent(GameplayIntentKind kind)
+    {
+        switch (kind)
+        {
+            case GameplayIntentKind.Jump:
+            case GameplayIntentKind.LightAttack:
+            case GameplayIntentKind.HeavyAttack:
+            case GameplayIntentKind.ChargedAttack:
+            case GameplayIntentKind.Dodge:
+            case GameplayIntentKind.SwordDash:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// Why: 动作窗口用归一化时间驱动，不同子管线（Motion/Burst/Charge/Legacy）需统一一个采样口径。
+    /// </summary>
+    private float ResolveCurrentActionNormalized(Player player)
+    {
+        if (m_useMotionProfile && m_motionExecutor != null)
+        {
+            return m_motionExecutor.NormalizedTime;
+        }
+
+        if (m_isBurst)
+        {
+            if (m_burstDuration <= 0.001f)
+            {
+                return 1f;
+            }
+
+            return Mathf.Clamp01(TimeSinceEntered / m_burstDuration);
+        }
+
+        if (m_useChargeLogic)
+        {
+            return Mathf.Clamp01(m_attackNorm);
+        }
+
+        var durationForNorm = m_action != null && m_action.Duration > 0.001f
+            ? m_action.Duration
+            : player.AttackDuration;
+        if (durationForNorm <= 0.001f)
+        {
+            return 1f;
+        }
+
+        return Mathf.Clamp01(TimeSinceEntered / durationForNorm);
+    }
+
+    /// <summary>
+    /// Why: 打断后的目标动作来源保持与 Locomotion/Airborne 一致，优先使用意图内注入 Action（若有）。
+    /// </summary>
+    private static ActionDataSO ResolveActionForIntent(Player player, in GameplayIntent intent)
+    {
+        if (intent.Action != null)
+        {
+            return intent.Action;
+        }
+
+        switch (intent.Kind)
+        {
+            case GameplayIntentKind.LightAttack:
+                return player.ResolveLightAttackForCombo();
+            case GameplayIntentKind.HeavyAttack:
+                return player.ResolveHeavyAttackForCombo();
+            case GameplayIntentKind.ChargedAttack:
+                return player.ResolveChargedAttackForCombo();
+            case GameplayIntentKind.Dodge:
+                return player.ResolveDodgeActionFromMoveset();
+            case GameplayIntentKind.SwordDash:
+                return player.ResolveSwordDashActionFromMoveset();
+            default:
+                return null;
+        }
     }
 
     private void TickMotionProfile(Player player)

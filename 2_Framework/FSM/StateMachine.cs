@@ -87,6 +87,34 @@ public class StateMachine<TOwner> where TOwner : class {
         Current.Enter(_owner);
     }
 
+    /// <summary>
+    /// 强制重入目标状态：即使 to 与 Current 相同也会执行 Exit/Enter。
+    /// Why: 用于同状态不同数据上下文的刷新（如 ActionState 打断后重读 pending ActionData）。
+    /// </summary>
+    public void ForceChange(State<TOwner> to)
+    {
+        if (to == null)
+        {
+            return;
+        }
+
+        Current?.Exit(_owner);
+        Previous = Current;
+        Current = to;
+        Current.Enter(_owner);
+    }
+
+    /// <summary>
+    /// 按类型强制重入，等价于 ForceChange(GetState&lt;TState&gt;)。
+    /// </summary>
+    public void ForceChange<TState>() where TState : State<TOwner>
+    {
+        if (_stateMap.TryGetValue(typeof(TState), out var state))
+        {
+            ForceChange(state);
+        }
+    }
+
     // ─── 轮询驱动（deltaTime 由外部传入） ───
 
     /// <summary>逻辑帧更新（由外部 Update 调用，传入 Time.deltaTime）。</summary>

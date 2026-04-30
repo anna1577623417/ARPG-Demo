@@ -90,6 +90,17 @@ public abstract class EntityStateManager<T> : EntityStateManager where T : Entit
         OnStateChanged(prev, Current);
     }
 
+    /// <summary>
+    /// 强制重入指定状态（允许 from == to）。
+    /// Why: 某些状态依赖 OnEnter 刷新上下文（例如 Action 中断后切换同类状态实例）。
+    /// </summary>
+    public void ForceChange<TState>() where TState : EntityState<T>
+    {
+        var prev = Current;
+        _machine.ForceChange<TState>();
+        OnStateChanged(prev, Current);
+    }
+
     // ─── 碰撞转发 ───
 
     public virtual void OnContact(Collider other)
