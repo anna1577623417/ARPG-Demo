@@ -56,6 +56,10 @@ public class ActionDataSO : ScriptableObject
     [Tooltip("逻辑时长（秒）。与动画长度可不同，用于先行手感调参。")]
     public float Duration = 0.4f;
 
+    [Header("Motion (new pipeline)")]
+    [Tooltip("为空时走现有 legacy 逻辑；不为空时由 MotionExecutor 驱动位移。")]
+    public MotionProfileSO MotionProfile;
+
     [Tooltip("归一化时间轴上的标签切片。")]
     public List<ActionWindow> Windows = new List<ActionWindow>();
 
@@ -166,6 +170,15 @@ public class ActionDataSO : ScriptableObject
         }
 
         return 0.4f;
+    }
+
+    /// <summary>
+    /// Motion 新管线统一时长入口。
+    /// Why: 保持旧字段兼容的同时，给 ActionState 明确语义的调用点。
+    /// </summary>
+    public float ResolveMotionDurationSeconds()
+    {
+        return ResolveLogicalDurationSeconds();
     }
 
     /// <summary>按归一化进度计算本帧应叠加的标签并写入 mask（先清除 Phase 再叠加）。</summary>

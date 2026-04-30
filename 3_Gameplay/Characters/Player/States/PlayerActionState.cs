@@ -24,12 +24,15 @@ public sealed class PlayerActionState : PlayerState
     private bool m_chargedAttackFinishedCleanly;
 
     private bool m_useChargeLogic;
+    private bool m_useMotionProfile;
     private float m_attackNorm;
     private ChargeMicroPhase m_chargePhase;
     private float m_chargeHoldTimer;
     private bool m_didFreezeAtHold;
     private ulong m_appliedChargedTags;
     private ChargeMicroPhase m_lastLoggedChargePhase;
+    private MotionExecutor m_motionExecutor;
+    private PlayerMotorAdapter m_motionMotor;
 
     public override bool TryConsumeGameplayIntent(Player player, in FrameContext ctx, in GameplayIntent intent)
     {
@@ -42,6 +45,7 @@ public sealed class PlayerActionState : PlayerState
 
         m_appliedChargedTags = 0UL;
         m_useChargeLogic = false;
+        m_useMotionProfile = false;
         m_lastLoggedChargePhase = (ChargeMicroPhase)byte.MaxValue;
 
         if (!player.TryTakePendingAction(out m_kind, out m_action))
@@ -54,8 +58,27 @@ public sealed class PlayerActionState : PlayerState
         m_chargedAttackFinishedCleanly = false;
 
         m_isBurst = m_kind == GameplayIntentKind.Dodge || m_kind == GameplayIntentKind.SwordDash;
+        m_useMotionProfile = m_action != null && m_action.MotionProfile != null;
 
-        if (m_isBurst)
+        if (m_useMotionProfile)
+        {
+            EnsureMotionRuntime(player);
+            var motionDir = ResolveMotionDirection(player);
+            var duration = m_action.ResolveMotionDurationSeconds();
+            m_motionExecutor.Begin(m_action.MotionProfile, duration, motionDir, player.Position);
+
+            if (m_isBurst)
+            {
+                ApplyBurstEnterSideEffects(player, motionDir);
+            }
+            else if (m_kind == GameplayIntentKind.LightAttack
+                     || m_kind == GameplayIntentKind.HeavyAttack
+                     || m_kind == GameplayIntentKind.ChargedAttack)
+            {
+                player.BeginAttackWithManualCompletion();
+            }
+        }
+        else if (m_isBurst)
         {
             ConfigureBurst(player);
         }
@@ -134,6 +157,11 @@ public sealed class PlayerActionState : PlayerState
 
     protected override void OnExit(Player player)
     {
+        if (m_useMotionProfile && m_motionExecutor != null)
+        {
+            m_motionExecutor.End();
+        }
+
         if (m_appliedChargedTags != 0UL)
         {
             player.GameplayTags.Remove(m_appliedChargedTags);
@@ -170,6 +198,12 @@ public sealed class PlayerActionState : PlayerState
         if (player.IsDead)
         {
             player.States.Change<PlayerDeadState>();
+            return;
+        }
+
+        if (m_useMotionProfile)
+        {
+            TickMotionProfile(player);
             return;
         }
 
@@ -395,5 +429,82 @@ public sealed class PlayerActionState : PlayerState
         {
             player.States.Change<PlayerAirborneState>();
         }
+    }
+
+    private void EnsureMotionRuntime(Player player)
+    {
+        if (m_motionExecutor != null)
+        {
+            return;
+        }
+
+        m_motionMotor = new PlayerMotorAdapter(player);
+        var animSpeedCtrl = new EventBusAnimSpeedControl(player);
+        var statsProvider = new PlayerMotionStatsProvider(player);
+        m_motionExecutor = new MotionExecutor(m_motionMotor, animSpeedCtrl, statsProvider);
+    }
+
+    private Vector3 ResolveMotionDirection(Player player)
+    {
+        if (m_kind == GameplayIntentKind.SwordDash)
+        {
+            return player.Forward;
+        }
+
+        if (m_kind == GameplayIntentKind.Dodge)
+        {
+            return player.GetMovementDirectionOrForward();
+        }
+
+        return player.Forward;
+    }
+
+    private void ApplyBurstEnterSideEffects(Player player, Vector3 motionDir)
+    {
+        player.LookAtDirection(motionDir, true);
+
+        if (m_kind == GameplayIntentKind.SwordDash)
+        {
+            player.StartSwordDashCooldown();
+        }
+        else if (m_kind == GameplayIntentKind.Dodge)
+        {
+            player.StartDodgeCooldown();
+            player.PublishEvent(new PlayerDodgeStartedEvent(player.GetInstanceID(), player.name));
+        }
+
+        player.GameplayTags.Add((ulong)StateTag.Invulnerable);
+    }
+
+    private void TickMotionProfile(Player player)
+    {
+        if (m_motionExecutor == null || m_motionMotor == null)
+        {
+            TransitionToLocomotionOrAirborne(player);
+            return;
+        }
+
+        var dt = Time.deltaTime;
+        m_motionExecutor.Tick(dt, 1f, player.Position);
+        m_motionMotor.ApplyToPlayer();
+
+        var t = m_motionExecutor.NormalizedTime;
+        UpdatePhaseTagsForCurrentNormalized(player, t);
+
+        if (t < 1f)
+        {
+            return;
+        }
+
+        if (m_kind == GameplayIntentKind.LightAttack
+            || m_kind == GameplayIntentKind.HeavyAttack
+            || m_kind == GameplayIntentKind.ChargedAttack)
+        {
+            player.ForceEndAttackIfActive();
+            m_lightAttackFinishedCleanly = m_kind == GameplayIntentKind.LightAttack;
+            m_chargedAttackFinishedCleanly = m_kind == GameplayIntentKind.ChargedAttack;
+        }
+
+        TransitionToLocomotionOrAirborne(player);
     }
 }
