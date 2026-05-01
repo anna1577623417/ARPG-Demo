@@ -16,8 +16,13 @@ MonoBehaviour:
     type: 3}
   CrossfadeTime: 0.08
   AnimSpeed: 1.05
-  Duration: 0.4
-  Windows: []
+  Duration: 0.6
+  MotionProfile: {fileID: 11400000, guid: e44746fa438b5d54e8cf1839713cac11, type: 2}
+  Windows:
+  - NormalizedStart: 0
+    NormalizedEnd: 1
+    WindowSlotMask: 147456
+    _legacyDirectStateTagMask: 0
   Charge:
     CanCharge: 0
     ChargeHoldPoint: 0.32
@@ -25,12 +30,12 @@ MonoBehaviour:
     MaxChargeHoldTime: 2.5
     ExecutionSpeed: 1.35
     MinHoldTimeForChargedTag: 0
-    ChargedPayloadTags: 549755813888
+    ChargedPayloadTags: 274877906944
   BurstMovementSeconds: 0
   BurstTravelDistance: 4
   BurstPlanarSpeed: 22
   BurstUseFacingForward: 1
-  UseDisplacementVelocityCurve: 1
+  UseDisplacementVelocityCurve: 0
   DisplacementVelocityMultiplier:
     serializedVersion: 2
     m_Curve:

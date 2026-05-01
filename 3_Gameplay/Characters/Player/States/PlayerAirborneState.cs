@@ -13,38 +13,19 @@ public sealed class PlayerAirborneState : PlayerState
 
     public override bool TryConsumeGameplayIntent(Player player, in FrameContext ctx, in GameplayIntent intent)
     {
-        switch (intent.Kind)
+        // 空中不允许二段跳：Jump 在到达 Airborne 后被本状态显式拦截
+        // （未来若加入二段跳能力，由 RuntimeStats / 标签控制，无需修改路由表）
+        if (intent.Kind == GameplayIntentKind.Jump)
         {
-            case GameplayIntentKind.Jump:
-                return false;
-
-            case GameplayIntentKind.LightAttack:
-                player.ArmPendingAction(intent.Kind, player.ResolveLightAttackForCombo());
-                player.States.Change<PlayerActionState>();
-                return true;
-
-            case GameplayIntentKind.HeavyAttack:
-                player.ArmPendingAction(intent.Kind, player.ResolveHeavyAttackForCombo());
-                player.States.Change<PlayerActionState>();
-                return true;
-
-            case GameplayIntentKind.ChargedAttack:
-                player.ArmPendingAction(intent.Kind, player.ResolveChargedAttackForCombo());
-                player.States.Change<PlayerActionState>();
-                return true;
-
-            case GameplayIntentKind.Dodge:
-                player.ArmPendingAction(intent.Kind, player.ResolveDodgeActionFromMoveset());
-                player.States.Change<PlayerActionState>();
-                return true;
-
-            case GameplayIntentKind.SwordDash:
-                player.ArmPendingAction(intent.Kind, player.ResolveSwordDashActionFromMoveset());
-                player.States.Change<PlayerActionState>();
-                return true;
+            return false;
         }
 
-        return false;
+        if (!IntentRouter.IsRoutable(intent.Kind))
+        {
+            return false;
+        }
+
+        return IntentRouter.Route(player, in intent, forceActionReentry: false);
     }
 
     protected override void OnEnter(Player player)

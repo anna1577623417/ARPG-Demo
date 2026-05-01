@@ -36,11 +36,13 @@ public sealed class PlayerActionState : PlayerState
 
     public override bool TryConsumeGameplayIntent(Player player, in FrameContext ctx, in GameplayIntent intent)
     {
-        if (!IsInterruptIntent(intent.Kind))
+        // ① 过滤：仅本路由器认识的离散意图可触发打断
+        if (!IntentRouter.IsRoutable(intent.Kind))
         {
             return false;
         }
 
+        // ② 当前没有动作 SO 则没有窗口可查，直接拒
         if (m_action == null)
         {
             if (player.DebugInterruptFlow)
@@ -50,6 +52,7 @@ public sealed class PlayerActionState : PlayerState
             return false;
         }
 
+        // ③ 窗口仲裁：当前动作的 t 时刻是否允许被该意图打断
         var normalized = ResolveCurrentActionNormalized(player);
         if (!ActionInterruptResolver.CanInterrupt(m_action, normalized, intent.Kind))
         {
@@ -62,17 +65,17 @@ public sealed class PlayerActionState : PlayerState
             return false;
         }
 
-        var nextAction = ResolveActionForIntent(player, in intent);
         if (player.DebugInterruptFlow)
         {
-            var next = nextAction != null ? nextAction.name : "null";
             Debug.Log(
-                $"[ActionInterrupt] PASS | action={m_action.name} | incoming={intent.Kind} | t={normalized:F3} | next={next}",
+                $"[ActionInterrupt] PASS | action={m_action.name} | incoming={intent.Kind} | t={normalized:F3}",
                 player);
         }
-        player.ArmPendingAction(intent.Kind, nextAction);
-        player.States.ForceChange<PlayerActionState>();
-        return true;
+
+        // ④ 路由：Jump → Airborne / 其它 → ForceChange<Action>
+        //    Jump 历史 bug 在此处被根治：路由表唯一定义"Jump 去 Airborne"，
+        //    本状态再不会因 ResolveActionForIntent 返回 null 而把 Jump 装载成废 pending。
+        return IntentRouter.Route(player, in intent, forceActionReentry: true);
     }
 
     protected override void OnEnter(Player player)
@@ -442,6 +445,10 @@ public sealed class PlayerActionState : PlayerState
         var phaseMask = (ulong)(StateTag.PhaseStartup | StateTag.PhaseActive | StateTag.PhaseRecovery);
         player.GameplayTags.Remove(phaseMask);
 
+        // 物理标签：始终反映真实姿态，与所处支柱无关。
+        // 否则全局仲裁器在 Action 内永远见不到 Grounded —— Jump 等意图就算窗口允许打断也会卡在前置标签门。
+        SyncPhysicalGroundTag(player);
+
         if (m_action == null)
         {
             player.GameplayTags.Add((ulong)StateTag.PhaseActive);
@@ -453,6 +460,18 @@ public sealed class PlayerActionState : PlayerState
         {
             player.GameplayTags.Add((ulong)StateTag.PhaseActive);
         }
+    }
+
+    /// <summary>
+    /// 把"是否在地面"这一物理事实写入标签集。设计目的：
+    /// · 物理实情属于实体层语义，不应被支柱状态遮蔽；
+    /// · 让窗口仅需声明能力闸门（CanJump 等），无需重复声明 Grounded，简化策划配置。
+    /// </summary>
+    private static void SyncPhysicalGroundTag(Player player)
+    {
+        var groundMask = (ulong)(StateTag.Grounded | StateTag.Airborne);
+        player.GameplayTags.Remove(groundMask);
+        player.GameplayTags.Add(player.IsGrounded ? (ulong)StateTag.Grounded : (ulong)StateTag.Airborne);
     }
 
     private static void TransitionToLocomotionOrAirborne(Player player)
@@ -513,25 +532,6 @@ public sealed class PlayerActionState : PlayerState
     }
 
     /// <summary>
-    /// Why: Action 内打断判定必须绑定当前动作时间轴（窗口），仅这些离散意图可触发重入 Action 状态。
-    /// </summary>
-    private static bool IsInterruptIntent(GameplayIntentKind kind)
-    {
-        switch (kind)
-        {
-            case GameplayIntentKind.Jump:
-            case GameplayIntentKind.LightAttack:
-            case GameplayIntentKind.HeavyAttack:
-            case GameplayIntentKind.ChargedAttack:
-            case GameplayIntentKind.Dodge:
-            case GameplayIntentKind.SwordDash:
-                return true;
-            default:
-                return false;
-        }
-    }
-
-    /// <summary>
     /// Why: 动作窗口用归一化时间驱动，不同子管线（Motion/Burst/Charge/Legacy）需统一一个采样口径。
     /// </summary>
     private float ResolveCurrentActionNormalized(Player player)
@@ -565,33 +565,6 @@ public sealed class PlayerActionState : PlayerState
         }
 
         return Mathf.Clamp01(TimeSinceEntered / durationForNorm);
-    }
-
-    /// <summary>
-    /// Why: 打断后的目标动作来源保持与 Locomotion/Airborne 一致，优先使用意图内注入 Action（若有）。
-    /// </summary>
-    private static ActionDataSO ResolveActionForIntent(Player player, in GameplayIntent intent)
-    {
-        if (intent.Action != null)
-        {
-            return intent.Action;
-        }
-
-        switch (intent.Kind)
-        {
-            case GameplayIntentKind.LightAttack:
-                return player.ResolveLightAttackForCombo();
-            case GameplayIntentKind.HeavyAttack:
-                return player.ResolveHeavyAttackForCombo();
-            case GameplayIntentKind.ChargedAttack:
-                return player.ResolveChargedAttackForCombo();
-            case GameplayIntentKind.Dodge:
-                return player.ResolveDodgeActionFromMoveset();
-            case GameplayIntentKind.SwordDash:
-                return player.ResolveSwordDashActionFromMoveset();
-            default:
-                return null;
-        }
     }
 
     private void TickMotionProfile(Player player)

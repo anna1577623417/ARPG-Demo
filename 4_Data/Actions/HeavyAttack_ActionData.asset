@@ -17,13 +17,10 @@ MonoBehaviour:
   CrossfadeTime: 0.08
   AnimSpeed: 1
   Duration: 0.4
+  MotionProfile: {fileID: 0}
   Windows:
   - NormalizedStart: 0
-    NormalizedEnd: 0.32
-    WindowSlotMask: 0
-    _legacyDirectStateTagMask: 0
-  - NormalizedStart: 0.32
-    NormalizedEnd: 0.34
+    NormalizedEnd: 0
     WindowSlotMask: 0
     _legacyDirectStateTagMask: 0
   Charge:

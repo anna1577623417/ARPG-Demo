@@ -10,40 +10,13 @@ public sealed class PlayerLocomotionState : PlayerState
 {
     public override bool TryConsumeGameplayIntent(Player player, in FrameContext ctx, in GameplayIntent intent)
     {
-        switch (intent.Kind)
+        // 跨状态切换：常规 Change（Locomotion → Airborne / Action）
+        if (!IntentRouter.IsRoutable(intent.Kind))
         {
-            case GameplayIntentKind.Jump:
-                player.RequestJumpFromIntent();
-                player.States.Change<PlayerAirborneState>();
-                return true;
-
-            case GameplayIntentKind.LightAttack:
-                player.ArmPendingAction(intent.Kind, player.ResolveLightAttackForCombo());
-                player.States.Change<PlayerActionState>();
-                return true;
-
-            case GameplayIntentKind.HeavyAttack:
-                player.ArmPendingAction(intent.Kind, player.ResolveHeavyAttackForCombo());
-                player.States.Change<PlayerActionState>();
-                return true;
-
-            case GameplayIntentKind.ChargedAttack:
-                player.ArmPendingAction(intent.Kind, player.ResolveChargedAttackForCombo());
-                player.States.Change<PlayerActionState>();
-                return true;
-
-            case GameplayIntentKind.Dodge:
-                player.ArmPendingAction(intent.Kind, player.ResolveDodgeActionFromMoveset());
-                player.States.Change<PlayerActionState>();
-                return true;
-
-            case GameplayIntentKind.SwordDash:
-                player.ArmPendingAction(intent.Kind, player.ResolveSwordDashActionFromMoveset());
-                player.States.Change<PlayerActionState>();
-                return true;
+            return false;
         }
 
-        return false;
+        return IntentRouter.Route(player, in intent, forceActionReentry: false);
     }
 
     protected override void OnEnter(Player player)
