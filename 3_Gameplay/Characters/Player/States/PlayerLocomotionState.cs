@@ -1,3 +1,5 @@
+using UnityEngine;
+
 /// <summary>
 /// 地面运动支柱（Locomotion Pillar）— Idle/Walk/Run 的合一状态。
 ///
@@ -8,11 +10,36 @@
 /// </summary>
 public sealed class PlayerLocomotionState : PlayerState
 {
+    /// <summary>
+    /// 由 PlayerStateManager 注入的"打断许可掩码"（StateTag.AllowInterruptBy* 位）。
+    /// 设计：Locomotion 是无总时长的连续物理状态，没有 t∈[0,1] 概念，因此使用
+    /// 整段掩码做闸门，而非 ActionWindow 的时间切片。
+    /// </summary>
+    private readonly ulong m_allowedInterrupts;
+
+    public PlayerLocomotionState(ulong allowedInterrupts)
+    {
+        m_allowedInterrupts = allowedInterrupts;
+    }
+
     public override bool TryConsumeGameplayIntent(Player player, in FrameContext ctx, in GameplayIntent intent)
     {
-        // 跨状态切换：常规 Change（Locomotion → Airborne / Action）
         if (!IntentRouter.IsRoutable(intent.Kind))
         {
+            return false;
+        }
+
+        // 状态级闸门：用 AllowInterruptBy* 位与 m_allowedInterrupts 做交集。
+        // 与 ActionInterruptResolver 共用同一套 Intent → 标签映射，保持单一真相源。
+        var requiredTag = ActionInterruptResolver.MapIntentToInterruptTag(intent.Kind);
+        if (requiredTag != 0UL && (m_allowedInterrupts & requiredTag) == 0UL)
+        {
+            if (player.DebugInterruptFlow)
+            {
+                Debug.Log(
+                    $"[Locomotion] REJECT | intent={intent.Kind} | reason=not in locomotionAllowedInterrupts",
+                    player);
+            }
             return false;
         }
 

@@ -382,6 +382,23 @@ internal sealed class ActionWindowDrawer : PropertyDrawer
 // ───────────────────────────────────────────────────────────────────────────────
 //   ActionChargeConfig：ChargedPayloadTags 字段使用 StateTag 直接位
 // ───────────────────────────────────────────────────────────────────────────────
+// ───────────────────────────────────────────────────────────────────────────────
+//   [StateTagMask] 属性抽屉 — 让任意 ulong/long 字段获得分组折叠 UI
+// ───────────────────────────────────────────────────────────────────────────────
+[CustomPropertyDrawer(typeof(StateTagMaskAttribute))]
+internal sealed class StateTagMaskAttributeDrawer : PropertyDrawer
+{
+    public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
+    {
+        StateTagMaskDrawerUtility.DrawMaskField(position, property, label);
+    }
+
+    public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
+    {
+        return StateTagMaskDrawerUtility.GetMaskHeight(property, label);
+    }
+}
+
 [CustomPropertyDrawer(typeof(ActionChargeConfig))]
 internal sealed class ActionChargeConfigDrawer : PropertyDrawer
 {

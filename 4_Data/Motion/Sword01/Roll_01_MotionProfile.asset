@@ -10,7 +10,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 3c30fbadfb384604eb3acc4303290eb1, type: 3}
-  m_Name: Roll_MotionProfile
+  m_Name: Roll_01_MotionProfile
   m_EditorClassIdentifier: 
   DisplacementCurve:
     serializedVersion: 2

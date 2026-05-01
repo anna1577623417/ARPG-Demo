@@ -1,0 +1,64 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dc44221e6d158b148ad988016a948ef4, type: 3}
+  m_Name: HeavyAttack_01_ActionData
+  m_EditorClassIdentifier: 
+  MainClip: {fileID: -8061687084165900903, guid: 30e0c6f0ba714704faaf6b4df5acca56,
+    type: 3}
+  CrossfadeTime: 0.08
+  AnimSpeed: 1
+  Duration: 0.4
+  MotionProfile: {fileID: 0}
+  Windows:
+  - NormalizedStart: 0
+    NormalizedEnd: 0
+    WindowSlotMask: 0
+    _legacyDirectStateTagMask: 0
+  Charge:
+    CanCharge: 1
+    ChargeHoldPoint: 0.45
+    ChargeStartupSpeed: 0.65
+    MaxChargeHoldTime: 1
+    ExecutionSpeed: 1.35
+    MinHoldTimeForChargedTag: 0.12
+    ChargedPayloadTags: 549755813888
+  BurstMovementSeconds: 0
+  BurstTravelDistance: 0
+  BurstPlanarSpeed: 22
+  BurstUseFacingForward: 1
+  UseDisplacementVelocityCurve: 0
+  DisplacementVelocityMultiplier:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  DisplacementPeakForwardSpeed: 12
+  DrivesBurstMovement: 0

@@ -10,7 +10,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 3c30fbadfb384604eb3acc4303290eb1, type: 3}
-  m_Name: SwordDath_MotionProfile
+  m_Name: Roll_02_MotionProfile
   m_EditorClassIdentifier: 
   DisplacementCurve:
     serializedVersion: 2
@@ -26,10 +26,10 @@ MonoBehaviour:
       outWeight: 0
     - serializedVersion: 3
       time: 0.5
-      value: 0
-      inSlope: -0
-      outSlope: 1.4120381
-      tangentMode: 5
+      value: 0.2
+      inSlope: 1.2013344
+      outSlope: 1.2013344
+      tangentMode: 0
       weightedMode: 0
       inWeight: 0.33333334
       outWeight: 0.33333334
@@ -45,7 +45,7 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  BaseDistance: 4
+  BaseDistance: 2
   PeakSpeedMultiplier: 1
   LateralCurve:
     serializedVersion: 2

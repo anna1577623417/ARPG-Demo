@@ -24,12 +24,48 @@ public class PlayerStateManager : EntityStateManager<Player>
     [SerializeField] private int maxIntentConsumptionsPerFrame = 1;
     [SerializeField] private bool debugIntentArbitration;
 
+    // ───────────────────────────────────────────────────────────────────────────
+    //   连续状态的"打断许可掩码"
+    //   设计动机：Action 状态用归一化时间窗口（ActionWindow）描述打断；
+    //   而 Locomotion / Airborne 是无总时长的连续物理状态，没有 t ∈ [0,1] 概念。
+    //   这里改用"按物理相位切换的整段掩码"——
+    //     · Locomotion：单一掩码（地面相位单一）
+    //     · Airborne  ：上升 / 下落两份掩码（按 VerticalSpeed 切换）
+    //   每个掩码勾选 StateTag.AllowInterruptBy* 位，由各状态的 TryConsume 与
+    //   ActionInterruptResolver.MapIntentToInterruptTag 做位与判定。
+    // ───────────────────────────────────────────────────────────────────────────
+
+    [Header("Locomotion interrupt permissions")]
+    [Tooltip("地面状态允许哪些意图打断。默认全部允许（保持 v3.1.1 之前行为）。")]
+    [StateTagMask]
+    [SerializeField] private ulong locomotionAllowedInterrupts =
+        (ulong)(StateTag.AllowInterruptByDodge
+              | StateTag.AllowInterruptBySwordDash
+              | StateTag.AllowInterruptByLight
+              | StateTag.AllowInterruptByHeavy
+              | StateTag.AllowInterruptByCharged
+              | StateTag.AllowInterruptByJump);
+
+    [Header("Airborne interrupt permissions (phase-aware)")]
+    [Tooltip("空中上升阶段（VerticalSpeed > 0）允许哪些意图打断。默认空 = 起跳后保留动量、不允许任何打断。")]
+    [StateTagMask]
+    [SerializeField] private ulong airborneAscendingAllowedInterrupts;
+
+    [Tooltip("空中下落阶段（VerticalSpeed ≤ 0）允许哪些意图打断。默认允许各类攻击/闪避；不含 Jump（无二段跳）。")]
+    [StateTagMask]
+    [SerializeField] private ulong airborneDescendingAllowedInterrupts =
+        (ulong)(StateTag.AllowInterruptByDodge
+              | StateTag.AllowInterruptBySwordDash
+              | StateTag.AllowInterruptByLight
+              | StateTag.AllowInterruptByHeavy
+              | StateTag.AllowInterruptByCharged);
+
     protected override List<EntityState<Player>> BuildStateList()
     {
         return new List<EntityState<Player>>
         {
-            new PlayerLocomotionState(),
-            new PlayerAirborneState(),
+            new PlayerLocomotionState(locomotionAllowedInterrupts),
+            new PlayerAirborneState(airborneAscendingAllowedInterrupts, airborneDescendingAllowedInterrupts),
             new PlayerActionState(),
             new PlayerDeadState(),
         };
