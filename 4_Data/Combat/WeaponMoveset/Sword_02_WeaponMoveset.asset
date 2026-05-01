@@ -12,8 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 64b820d45a77e724ba3006391dc687c7, type: 3}
   m_Name: Sword_02_WeaponMoveset
   m_EditorClassIdentifier: 
-  DodgeAction: {fileID: 11400000, guid: 20d90f802c31fc949ad3462edeacbedb, type: 2}
-  SwordDashAction: {fileID: 11400000, guid: ec2d79717d4f0a145b5fbfc16966bb5a, type: 2}
+  DodgeAction: {fileID: 11400000, guid: 83f9a2c05d25cf34a90241ee988970c1, type: 2}
+  SwordDashAction: {fileID: 11400000, guid: 334c3d2c02c07a94a965a1f4d774e46c, type: 2}
   LightAttacks:
   - {fileID: 11400000, guid: 9f6e9385934813541a38ee69cfd3fe5f, type: 2}
   HeavyAttacks:

@@ -86,8 +86,17 @@ public sealed class MotionExecutor
             _animSpeed?.SetSpeed(_profile.SampleAnimSpeed(t));
         }
 
-        // 用物理执行后的真实位置回写，确保碰撞约束能反馈到下一帧差分。
-        _lastPos = currentPosition;
+        // 注意：_lastPos 必须由外部在马达执行后回写真实位置；
+        // 这里不能直接写 currentPosition（它是本帧物理前位置）。
+    }
+
+    /// <summary>
+    /// 回写马达执行后的真实位置，供下一帧位移差分使用。
+    /// Why: 若误用物理前位置，会让 desiredVelocity 持续偏大/抖动，破坏 MotionProfile 手感与时空一致性。
+    /// </summary>
+    public void SyncPostMotorPosition(Vector3 position)
+    {
+        _lastPos = position;
     }
 
     public void End()

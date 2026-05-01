@@ -17,7 +17,7 @@ MonoBehaviour:
   CrossfadeTime: 0.08
   AnimSpeed: 1.05
   Duration: 0.6
-  MotionProfile: {fileID: 11400000, guid: e44746fa438b5d54e8cf1839713cac11, type: 2}
+  MotionProfile: {fileID: 11400000, guid: 7cf96d0063d47a146a440a836892bd47, type: 2}
   Windows:
   - NormalizedStart: 0
     NormalizedEnd: 1

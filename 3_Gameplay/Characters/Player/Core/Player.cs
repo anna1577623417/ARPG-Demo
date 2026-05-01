@@ -454,7 +454,53 @@ public class Player : Entity<Player>, IDamageable {
 
     // ─── 物理驱动 ───
 
+    /// <summary>
+    /// 重力挂起标志：由 PlayerActionState 在动作 OnEnter 时按 MotionProfile.GravityBehavior 决定，
+    /// 在 OnExit 时强制释放（成对配对，幂等）。
+    /// 设计原则：Player 只暴露开关与读写口，不感知是哪个动作触发的——保持能力执行器的纯粹性。
+    /// </summary>
+    private bool m_gravitySuspended;
+
+    public bool IsGravitySuspended => m_gravitySuspended;
+
+    /// <summary>
+    /// 挂起重力：垂直速度立即清零（防止已积累的下落速度在解除瞬间表现为瞬移）。
+    /// 已挂起时再次调用是幂等的。
+    /// </summary>
+    public void SuspendGravity()
+    {
+        if (m_gravitySuspended)
+        {
+            if (debugInterruptFlow)
+            {
+                Debug.Log($"[GravitySuspend] Skip (already suspended) | y={transform.position.y:F3}", this);
+            }
+            return;
+        }
+        m_gravitySuspended = true;
+        m_verticalSpeed = 0f;
+        if (debugInterruptFlow)
+        {
+            Debug.Log($"[GravitySuspend] Applied | y={transform.position.y:F3} | grounded={IsGrounded}", this);
+        }
+    }
+
+    /// <summary>释放重力——必须由 OnExit 等成对调用确保不会卡住飞行状态。幂等。</summary>
+    public void ReleaseGravity()
+    {
+        if (debugInterruptFlow)
+        {
+            Debug.Log($"[GravitySuspend] Release | wasSuspended={m_gravitySuspended} | y={transform.position.y:F3} | grounded={IsGrounded}", this);
+        }
+        m_gravitySuspended = false;
+    }
+
     public void ApplySimpleGravity() {
+        // 重力被高层挂起：垂直速度强制为 0，跳过本帧重力累加
+        if (m_gravitySuspended) {
+            m_verticalSpeed = 0f;
+            return;
+        }
         // 如果在地上且没有向上运动的趋势，锁定垂直速度为0
         if (IsGrounded && m_verticalSpeed <= 0f) {
             m_verticalSpeed = 0f;

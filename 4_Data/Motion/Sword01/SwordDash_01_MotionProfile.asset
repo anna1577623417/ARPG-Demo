@@ -25,19 +25,10 @@ MonoBehaviour:
       inWeight: 0
       outWeight: 0
     - serializedVersion: 3
-      time: 0.5
-      value: 0
-      inSlope: -0
-      outSlope: 1.4120381
-      tangentMode: 5
-      weightedMode: 0
-      inWeight: 0.33333334
-      outWeight: 0.33333334
-    - serializedVersion: 3
       time: 1
       value: 1
-      inSlope: 0
-      outSlope: 0
+      inSlope: 2
+      outSlope: 2
       tangentMode: 0
       weightedMode: 0
       inWeight: 0
@@ -80,6 +71,7 @@ MonoBehaviour:
     m_RotationOrder: 4
   ReferenceSpeed: 3.5
   MatchAnimationSpeed: 1
+  GravityBehavior: 1
   ScaleType: 0
   WarpCurve:
     serializedVersion: 2

@@ -15,8 +15,8 @@ MonoBehaviour:
   MainClip: {fileID: 938527645004508068, guid: 30e0c6f0ba714704faaf6b4df5acca56, type: 3}
   CrossfadeTime: 0.05
   AnimSpeed: 4
-  Duration: 0.5
-  MotionProfile: {fileID: 11400000, guid: 3572783f3e9772a4497afdf0e8f0a0ab, type: 2}
+  Duration: 0.6
+  MotionProfile: {fileID: 11400000, guid: e6853855bdfb44047802334a3be14899, type: 2}
   Windows:
   - NormalizedStart: 0
     NormalizedEnd: 1

@@ -1,7 +1,28 @@
 using UnityEngine;
 
 /// <summary>
-/// 动作位移的时空模具（只描述“怎么动”，不描述“做什么”）。
+/// 动作期间的"重力规则"——属于 Motion 层（垂直运动数学），不属于 Action 层（业务意图）。
+/// </summary>
+public enum MotionGravityBehavior : byte
+{
+    /// <summary>
+    /// 常规重力：动作执行期间继续叠加重力（剑冲同时下落，偏写实物理）。
+    /// 这是默认值，保留 v3.1.1 之前的行为。
+    /// </summary>
+    DefaultPhysics = 0,
+
+    /// <summary>
+    /// 挂起重力：动作执行期间垂直速度强制为 0、重力暂停累加；
+    /// 状态退出（动作完成 / 被打断 / 死亡切换）时自动释放，重力恢复后继续下落。
+    /// 适合鬼泣式空中连段、滞空蓄力等需要"动作占用整个垂直时间片"的设计。
+    /// </summary>
+    Suspended = 1,
+
+    // 预留：CurveDriven —— 由 MotionProfile 的 3D 曲线接管 Y 轴（如砸地、抛物跳）
+}
+
+/// <summary>
+/// 动作位移的时空模具（只描述"怎么动"，不描述"做什么"）。
 /// Why: 将 Action 意图与运动数学解耦，支持多动作复用同一手感曲线。
 /// </summary>
 [CreateAssetMenu(menuName = "GameMain/Motion/Motion Profile", fileName = "MotionProfile")]
@@ -31,6 +52,10 @@ public class MotionProfileSO : ScriptableObject
 
     [Tooltip("是否用实际速度驱动动画速率，以降低滑步。")]
     public bool MatchAnimationSpeed = true;
+
+    [Header("Airborne Physics")]
+    [Tooltip("空中释放该动作时的重力规则：DefaultPhysics = 边动作边下落；Suspended = 动作期间挂起重力，结束后恢复下落。")]
+    public MotionGravityBehavior GravityBehavior = MotionGravityBehavior.DefaultPhysics;
 
     [Header("Stat Scaling")]
     public MotionScaleType ScaleType = MotionScaleType.None;

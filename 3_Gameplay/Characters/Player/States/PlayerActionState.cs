@@ -33,6 +33,7 @@ public sealed class PlayerActionState : PlayerState
     private ChargeMicroPhase m_lastLoggedChargePhase;
     private MotionExecutor m_motionExecutor;
     private PlayerMotorAdapter m_motionMotor;
+    private float m_nextGravityDebugLogTime;
 
     public override bool TryConsumeGameplayIntent(Player player, in FrameContext ctx, in GameplayIntent intent)
     {
@@ -86,6 +87,7 @@ public sealed class PlayerActionState : PlayerState
         m_useChargeLogic = false;
         m_useMotionProfile = false;
         m_lastLoggedChargePhase = (ChargeMicroPhase)byte.MaxValue;
+        m_nextGravityDebugLogTime = 0f;
 
         if (!player.TryTakePendingAction(out m_kind, out m_action))
         {
@@ -148,6 +150,28 @@ public sealed class PlayerActionState : PlayerState
             }
         }
 
+        // 重力规则：仅 MotionProfile 路径承担"挂起重力"语义。
+        // 旧 Burst / 旧 Charge / 旧 Timer 不读 GravityBehavior，需要挂起重力的动作必须迁移到 MotionProfile。
+        // 注意：Suspended 模式在地面（IsGrounded）时是 no-op（地面 verticalSpeed 本就为 0），无副作用。
+        var shouldSuspendGravity = m_action != null
+            && m_action.MotionProfile != null
+            && m_action.MotionProfile.GravityBehavior == MotionGravityBehavior.Suspended;
+        if (shouldSuspendGravity)
+        {
+            player.SuspendGravity();
+        }
+
+        if (player.DebugInterruptFlow)
+        {
+            var actionName = m_action != null ? m_action.name : "null";
+            var gravityBehavior = m_action != null && m_action.MotionProfile != null
+                ? m_action.MotionProfile.GravityBehavior.ToString()
+                : "LegacyOrNoProfile";
+            Debug.Log(
+                $"[ActionGravity] Enter | action={actionName} | useMotionProfile={m_useMotionProfile} | behavior={gravityBehavior} | shouldSuspend={shouldSuspendGravity} | suspendedNow={player.IsGravitySuspended} | grounded={player.IsGrounded}",
+                player);
+        }
+
         player.PublishEvent(new PlayerActionPresentationRequestEvent(
             player.GetInstanceID(), m_kind, m_action));
 
@@ -196,6 +220,13 @@ public sealed class PlayerActionState : PlayerState
 
     protected override void OnExit(Player player)
     {
+        if (player.DebugInterruptFlow)
+        {
+            Debug.Log(
+                $"[ActionGravity] Exit-BeforeRelease | action={(m_action != null ? m_action.name : "null")} | suspended={player.IsGravitySuspended} | grounded={player.IsGrounded}",
+                player);
+        }
+
         if (m_useMotionProfile && m_motionExecutor != null)
         {
             m_motionExecutor.End();
@@ -230,6 +261,18 @@ public sealed class PlayerActionState : PlayerState
         var phaseMask = (ulong)(StateTag.PhaseStartup | StateTag.PhaseActive | StateTag.PhaseRecovery);
         player.GameplayTags.Remove(phaseMask);
         player.GameplayTags.Remove((ulong)StateTag.Invulnerable);
+
+        // 重力释放：与 OnEnter 的 SuspendGravity 配对。幂等——未挂起时也安全。
+        // 任何退出路径（动作完成 / 被打断 / 死亡切换 / ForceChange 重入）都会落到这里，
+        // 保证不会出现"动作打断后玩家卡在空中飞行"的悬挂状态。
+        player.ReleaseGravity();
+
+        if (player.DebugInterruptFlow)
+        {
+            Debug.Log(
+                $"[ActionGravity] Exit-AfterRelease | action={(m_action != null ? m_action.name : "null")} | suspended={player.IsGravitySuspended} | grounded={player.IsGrounded}",
+                player);
+        }
     }
 
     protected override void OnLogicUpdate(Player player)
@@ -578,9 +621,18 @@ public sealed class PlayerActionState : PlayerState
         var dt = Time.deltaTime;
         m_motionExecutor.Tick(dt, 1f, player.Position);
         m_motionMotor.ApplyToPlayer();
+        m_motionExecutor.SyncPostMotorPosition(player.Position);
 
         var t = m_motionExecutor.NormalizedTime;
         UpdatePhaseTagsForCurrentNormalized(player, t);
+
+        if (player.DebugInterruptFlow && Time.time >= m_nextGravityDebugLogTime)
+        {
+            m_nextGravityDebugLogTime = Time.time + 0.15f;
+            Debug.Log(
+                $"[ActionGravity] TickMotion | t={t:F3} | suspended={player.IsGravitySuspended} | vSpeed={player.VerticalSpeed:F3} | y={player.Position.y:F3} | grounded={player.IsGrounded}",
+                player);
+        }
 
         if (t < 1f)
         {
