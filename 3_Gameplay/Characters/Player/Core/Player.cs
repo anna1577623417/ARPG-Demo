@@ -534,6 +534,19 @@ public class Player : Entity<Player>, IDamageable {
         RefreshGroundedState();
     }
 
+    /// <summary>
+    /// 离散瞬移：直接重置坐标，不经速度积分。
+    /// Why: 爆发位移事件是动作时间轴上的单帧语义，需与连续马达运动解耦。
+    /// </summary>
+    public void TeleportTo(Vector3 worldPosition)
+    {
+        transform.position = worldPosition;
+        m_planarVelocity = Vector3.zero;
+        m_verticalSpeed = 0f;
+        RefreshGroundedState();
+        PublishEvent(new PlayerTeleportedEvent(GetInstanceID(), name, worldPosition));
+    }
+
     // ─── 内部辅助 ───
 
     /// <summary>

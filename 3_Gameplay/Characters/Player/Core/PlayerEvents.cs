@@ -1,3 +1,5 @@
+using UnityEngine;
+
 /// <summary>
 /// 玩家展示/反馈事件（readonly struct + IGameEvent）。
 /// 仅用于动画、音效、UI 等旁路通知；不参与输入—状态机—移动的确定性控制流。
@@ -94,6 +96,20 @@ public readonly struct PlayerDodgeEndedEvent : IGameEvent
     {
         PlayerInstanceId = playerInstanceId;
         PlayerName = playerName;
+    }
+}
+
+public readonly struct PlayerTeleportedEvent : IGameEvent
+{
+    public readonly int PlayerInstanceId;
+    public readonly string PlayerName;
+    public readonly Vector3 WorldPosition;
+
+    public PlayerTeleportedEvent(int playerInstanceId, string playerName, Vector3 worldPosition)
+    {
+        PlayerInstanceId = playerInstanceId;
+        PlayerName = playerName;
+        WorldPosition = worldPosition;
     }
 }
 

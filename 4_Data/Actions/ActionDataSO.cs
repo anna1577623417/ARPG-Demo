@@ -36,6 +36,21 @@ public sealed class ActionChargeConfig
 }
 
 /// <summary>
+/// 动作归一化时间轴上的离散瞬移触发点。
+/// Why: 瞬移属于单帧事件，不应塞进连续位移曲线。
+/// </summary>
+[Serializable]
+public struct TeleportTrigger
+{
+    [Tooltip("触发时刻（归一化 0~1）。")]
+    [Range(0f, 1f)]
+    public float TriggerTime;
+
+    [Tooltip("沿角色前向的瞬移距离（米，可为负表示后撤）。")]
+    public float Distance;
+}
+
+/// <summary>
 /// 数据驱动动作资产 — 逻辑与表现的单一数据源（翻滚 / 剑冲 / 普攻等）。
 /// 爆发位移：用 <see cref="BurstMovementSeconds"/> 与动画墙钟对齐，用 <see cref="BurstTravelDistance"/> 反算速度，避免「动画停、人还在滑」。
 /// </summary>
@@ -94,6 +109,10 @@ public class ActionDataSO : ScriptableObject
     [Header("Legacy flag (optional)")]
     [Tooltip("预留：通用「由 SO 驱动爆发」标记；Dodge/SwordDash 由意图种类决定，可不勾选。")]
     public bool DrivesBurstMovement;
+
+    [Header("Teleport (discrete events)")]
+    [Tooltip("离散瞬移触发点；仅在归一化时间跨过触发点时执行一次。")]
+    public List<TeleportTrigger> TeleportTriggers = new List<TeleportTrigger>();
 
     /// <summary>
     /// 爆发段逻辑时长：优先 BurstMovementSeconds，否则与播放墙钟对齐，最后回退 Duration。

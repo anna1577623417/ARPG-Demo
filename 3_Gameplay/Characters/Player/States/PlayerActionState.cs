@@ -34,6 +34,7 @@ public sealed class PlayerActionState : PlayerState
     private MotionExecutor m_motionExecutor;
     private PlayerMotorAdapter m_motionMotor;
     private float m_nextGravityDebugLogTime;
+    private float m_prevNormalizedTime;
 
     public override bool TryConsumeGameplayIntent(Player player, in FrameContext ctx, in GameplayIntent intent)
     {
@@ -88,6 +89,7 @@ public sealed class PlayerActionState : PlayerState
         m_useMotionProfile = false;
         m_lastLoggedChargePhase = (ChargeMicroPhase)byte.MaxValue;
         m_nextGravityDebugLogTime = 0f;
+        m_prevNormalizedTime = 0f;
 
         if (!player.TryTakePendingAction(out m_kind, out m_action))
         {
@@ -296,6 +298,7 @@ public sealed class PlayerActionState : PlayerState
                 : 1f;
 
             UpdatePhaseTagsForCurrentNormalized(player, n);
+            EvaluateTeleportTriggers(player, n);
 
             var planarSpeed = m_burstPlanarSpeed;
             if (m_action != null)
@@ -321,6 +324,7 @@ public sealed class PlayerActionState : PlayerState
         {
             var ctx = player.BuildFrameContext(Time.deltaTime);
             UpdateChargeAttack(player, in ctx);
+            EvaluateTeleportTriggers(player, Mathf.Clamp01(m_attackNorm));
             player.MoveByLocomotionIntent(player.WalkSpeedMultiplier, wantsRun: false);
             player.ApplyMotor();
 
@@ -340,6 +344,7 @@ public sealed class PlayerActionState : PlayerState
 
         var normAttack = durationForNorm > 0.001f ? Mathf.Clamp01(TimeSinceEntered / durationForNorm) : 1f;
         UpdatePhaseTagsForCurrentNormalized(player, normAttack);
+        EvaluateTeleportTriggers(player, normAttack);
 
         player.MoveByLocomotionIntent(player.WalkSpeedMultiplier, wantsRun: false);
         player.TickAttackTimer();
@@ -610,6 +615,42 @@ public sealed class PlayerActionState : PlayerState
         return Mathf.Clamp01(TimeSinceEntered / durationForNorm);
     }
 
+    /// <summary>
+    /// 在归一化时间跨越触发点时执行离散瞬移（只触发一次）。
+    /// Why: 用跨越判定而非相等判定，避免低帧率跳帧丢事件。
+    /// </summary>
+    private void EvaluateTeleportTriggers(Player player, float currentNormalizedTime)
+    {
+        var currentT = Mathf.Clamp01(currentNormalizedTime);
+        if (m_action == null || m_action.TeleportTriggers == null || m_action.TeleportTriggers.Count == 0)
+        {
+            m_prevNormalizedTime = currentT;
+            return;
+        }
+
+        var prevT = Mathf.Clamp01(m_prevNormalizedTime);
+        for (var i = 0; i < m_action.TeleportTriggers.Count; i++)
+        {
+            var trigger = m_action.TeleportTriggers[i];
+            var triggerTime = Mathf.Clamp01(trigger.TriggerTime);
+            if (prevT < triggerTime && currentT >= triggerTime)
+            {
+                var positionBefore = player.Position;
+                var target = positionBefore + player.Forward * trigger.Distance;
+                player.TeleportTo(target);
+                var actualOffset = player.Position - positionBefore;
+
+                // MotionExecutor 仍以 _startPos 为锚点求绝对 targetPos；必须与 Teleport 共享同一坐标系。
+                if (m_useMotionProfile && m_motionExecutor != null && actualOffset.sqrMagnitude > 1e-12f)
+                {
+                    m_motionExecutor.ApplyTeleportOffset(actualOffset);
+                }
+            }
+        }
+
+        m_prevNormalizedTime = currentT;
+    }
+
     private void TickMotionProfile(Player player)
     {
         if (m_motionExecutor == null || m_motionMotor == null)
@@ -625,6 +666,7 @@ public sealed class PlayerActionState : PlayerState
 
         var t = m_motionExecutor.NormalizedTime;
         UpdatePhaseTagsForCurrentNormalized(player, t);
+        EvaluateTeleportTriggers(player, t);
 
         if (player.DebugInterruptFlow && Time.time >= m_nextGravityDebugLogTime)
         {

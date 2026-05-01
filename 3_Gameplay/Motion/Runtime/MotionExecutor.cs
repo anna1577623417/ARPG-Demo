@@ -99,6 +99,22 @@ public sealed class MotionExecutor
         _lastPos = position;
     }
 
+    /// <summary>
+    /// 外部离散瞬移后平移整条 Motion 求解坐标系，使连续位移与 Teleport 可叠加。
+    /// Why: <c>targetPos = _startPos + profileOffset</c>；若只改 Transform 而不同步 <c>_startPos</c>/<c>_lastPos</c>，
+    /// 下一帧 <c>(targetPos - _lastPos)/dt</c> 会得到反向速度把角色拽回。
+    /// </summary>
+    public void ApplyTeleportOffset(Vector3 worldOffset)
+    {
+        if (!_active || worldOffset.sqrMagnitude < 1e-12f)
+        {
+            return;
+        }
+
+        _startPos += worldOffset;
+        _lastPos += worldOffset;
+    }
+
     public void End()
     {
         _active = false;
