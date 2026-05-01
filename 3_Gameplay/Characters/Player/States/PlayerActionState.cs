@@ -289,7 +289,7 @@ public sealed class PlayerActionState : PlayerState
 
             // 无 MotionProfile：不产生程序化平面位移（根运动若由动画驱动由表现层处理）；仍叠加重力与地面吸附。
             player.StopMove();
-            player.ApplyMotor();
+            player.ApplyMotor(player.BuildActionMotorSolveContext());
 
             if (TimeSinceEntered >= m_burstDuration)
             {
@@ -305,7 +305,7 @@ public sealed class PlayerActionState : PlayerState
             UpdateChargeAttack(player, in ctx);
             EvaluateTeleportTriggers(player, Mathf.Clamp01(m_attackNorm));
             player.MoveByLocomotionIntent(player.WalkSpeedMultiplier, wantsRun: false);
-            player.ApplyMotor();
+            player.ApplyMotor(player.BuildActionMotorSolveContext());
 
             if (!player.IsAttacking)
             {
@@ -327,7 +327,7 @@ public sealed class PlayerActionState : PlayerState
 
         player.MoveByLocomotionIntent(player.WalkSpeedMultiplier, wantsRun: false);
         player.TickAttackTimer();
-        player.ApplyMotor();
+        player.ApplyMotor(player.BuildActionMotorSolveContext());
 
         if (!player.IsAttacking)
         {

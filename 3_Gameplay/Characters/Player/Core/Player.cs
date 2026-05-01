@@ -57,6 +57,10 @@ public class Player : Entity<Player>, IDamageable {
     [Tooltip("哪些层级被判定为地面。必须正确设置，否则永远浮空！")]
     [SerializeField] private LayerMask groundLayers = ~0;
 
+    [Header("Kinematic Motor (optional)")]
+    [Tooltip("非空：CapsuleSweep + Collide-and-Slide；地面策略由 MotorSolveContext + 合法坡角门控。\n留空：v3.2.8 Transform 直加 + 始终硬吸附（含凸角振荡风险）。")] [SerializeField]
+    private MotorSettingsSO motorSettings;
+
     // ─── 闪避 / 剑冲：Moveset 未返回 ActionDataSO 时的墙钟兜底；Gameplay 不施加程序化位移，仅占位时长 ───
 
     [Header("Fallback — Dodge (no ActionDataSO)")]
@@ -98,6 +102,11 @@ public class Player : Entity<Player>, IDamageable {
     private bool m_runIntent;
     private float m_runLatchEndTime;
     private bool m_isInitialized;
+
+    private Vector3 m_lastGroundNormal = Vector3.up;
+
+    /// <summary>Legacy 双轨：未挂 <see cref="MotorSettingsSO"/> 时用固定最大坡角拒绝「凸角尖」当支撑面。</summary>
+    private const float MaxSlopeDegreesLegacy = 50f;
 
     // ─── ARPG 决策链：标签 + 意图缓冲（零 GC 路径，仅 struct 入队）───
 
@@ -144,6 +153,7 @@ public class Player : Entity<Player>, IDamageable {
     public float JumpForce => jumpForce;
     public float AirMoveMultiplier => airMoveMultiplier;
     public float WalkSpeedMultiplier => walkSpeedMultiplier;
+    public bool UsesKinematicMotorPipeline => motorSettings != null;
     public bool HasMovementIntent => m_movementIntent.sqrMagnitude > 0.0001f;
     public bool WantsRun => m_runIntent;
 
@@ -184,7 +194,7 @@ public class Player : Entity<Player>, IDamageable {
         m_stateManager = GetComponent<PlayerStateManager>();
 
         m_stamina = maxStamina;
-        RefreshGroundedState();
+        RefreshGroundedState(MotorSolveContext.Locomotion);
     }
 
     void OnEnable()
@@ -510,90 +520,218 @@ public class Player : Entity<Player>, IDamageable {
         }
     }
 
-    public void ApplyMotor() {
-        ApplySimpleGravity();
-
-        Vector3 velocity = new Vector3(m_planarVelocity.x, m_verticalSpeed, m_planarVelocity.z);
-        transform.position += velocity * Time.deltaTime;
-
-        // 移动完毕后立刻进行地面检测与吸附修复
-        RefreshGroundedState();
-    }
-
-    /// <summary>
-    /// 由 MotionExecutor 等马达层使用的平面瞬时位移（重力仍经 <see cref="ApplySimpleGravity"/>）。
-    /// </summary>
-    public void ApplyPlanarBurstMotor(Vector3 direction, float planarSpeed)
+    public void ApplyMotor(in MotorSolveContext context)
     {
         ApplySimpleGravity();
-        var planar = direction.sqrMagnitude > 0.0001f ? direction.normalized : Vector3.zero;
-        var velocity = planar * planarSpeed + Vector3.up * m_verticalSpeed;
-        transform.position += velocity * Time.deltaTime;
-        RefreshGroundedState();
+        ClampTerminalVelocityVertical();
+
+        var velocity = new Vector3(m_planarVelocity.x, m_verticalSpeed, m_planarVelocity.z);
+
+        if (UsesKinematicMotorPipeline)
+        {
+            velocity = MaybeProjectVelocityOntoWalkableSlope(velocity, context);
+            var displacement = velocity * Time.deltaTime;
+            var delta = KinematicMotorSolver.SolveDisplacementFromPivot(
+                transform.position,
+                pivotToFootOffset,
+                motorSettings,
+                displacement,
+                motorSettings.ObstacleLayers);
+            transform.position += delta;
+        }
+        else
+        {
+            transform.position += velocity * Time.deltaTime;
+        }
+
+        RefreshGroundedState(in context);
+    }
+
+    public void ApplyMotorFromGameplayVelocity(Vector3 gameplayWorldVelocity, in MotorSolveContext context)
+    {
+        ApplySimpleGravity();
+        ClampTerminalVelocityVertical();
+
+        var velocity = gameplayWorldVelocity;
+        if (!m_gravitySuspended)
+        {
+            if (Mathf.Abs(gameplayWorldVelocity.y) < 0.001f)
+            {
+                velocity = new Vector3(gameplayWorldVelocity.x, m_verticalSpeed, gameplayWorldVelocity.z);
+            }
+        }
+        else
+        {
+            m_verticalSpeed = 0f;
+        }
+
+        if (UsesKinematicMotorPipeline)
+        {
+            velocity = MaybeProjectVelocityOntoWalkableSlope(velocity, context);
+            var displacement = velocity * Time.deltaTime;
+            var delta = KinematicMotorSolver.SolveDisplacementFromPivot(
+                transform.position,
+                pivotToFootOffset,
+                motorSettings,
+                displacement,
+                motorSettings.ObstacleLayers);
+            transform.position += delta;
+        }
+        else
+        {
+            transform.position += velocity * Time.deltaTime;
+        }
+
+        RefreshGroundedState(in context);
+    }
+
+    public MotorSolveContext BuildActionMotorSolveContext()
+    {
+        return IsGravitySuspended
+            ? MotorSolveContext.ActionSuspendedPhysics
+            : IsGrounded
+                ? MotorSolveContext.Locomotion
+                : MotorSolveContext.Airborne;
+    }
+
+    private void ClampTerminalVelocityVertical()
+    {
+        if (motorSettings == null || m_gravitySuspended)
+        {
+            return;
+        }
+
+        m_verticalSpeed = Mathf.Max(m_verticalSpeed, -Mathf.Abs(motorSettings.TerminalVelocity));
+    }
+
+    private Vector3 MaybeProjectVelocityOntoWalkableSlope(Vector3 worldVelocity, in MotorSolveContext context)
+    {
+        if (!context.AllowsHardGroundSnap || motorSettings == null || !motorSettings.EnablesSlopeProjection)
+        {
+            return worldVelocity;
+        }
+
+        if (!IsGrounded || m_lastGroundNormal.sqrMagnitude < 0.25f)
+        {
+            return worldVelocity;
+        }
+
+        var frameDisp = worldVelocity * Time.deltaTime;
+        var projectedDisp = KinematicMotorSolver.ProjectDisplacementOntoGroundPlaneIfWalkable(
+            frameDisp,
+            m_lastGroundNormal,
+            motorSettings);
+        return projectedDisp / Mathf.Max(Time.deltaTime, 1e-5f);
     }
 
     /// <summary>
-    /// 离散瞬移：直接重置坐标，不经速度积分。
-    /// Why: 爆发位移事件是动作时间轴上的单帧语义，需与连续马达运动解耦。
+    /// 离散瞬移：俯视射线落合法坡；随后按行走语义刷新 grounded（双轨）。
     /// </summary>
     public void TeleportTo(Vector3 worldPosition)
     {
-        transform.position = worldPosition;
+        var destination = worldPosition;
+
+        if (motorSettings != null && motorSettings.TeleportRayMaxDistance > 0.001f)
+        {
+            if (KinematicMotorSolver.ResolvePivotHeightFromAbove(
+                    destination.x,
+                    destination.z,
+                    destination.y,
+                    motorSettings.TeleportRayStartAbove,
+                    motorSettings.TeleportRayMaxDistance,
+                    pivotToFootOffset,
+                    groundLayers,
+                    motorSettings,
+                    out var yResolved))
+            {
+                destination.y = yResolved;
+            }
+        }
+
+        transform.position = destination;
         m_planarVelocity = Vector3.zero;
         m_verticalSpeed = 0f;
-        RefreshGroundedState();
-        PublishEvent(new PlayerTeleportedEvent(GetInstanceID(), name, worldPosition));
+        RefreshGroundedState(MotorSolveContext.Locomotion);
+        PublishEvent(new PlayerTeleportedEvent(GetInstanceID(), name, destination));
     }
 
     // ─── 内部辅助 ───
 
-    /// <summary>
-    /// 核心修复：坚如磐石的地面检测与吸附。
-    /// 抛弃平滑移动，抛弃复杂的 Bounds 计算。使用直接的位置覆写。
-    /// </summary>
-    private void RefreshGroundedState() {
-        // 1. 计算理论上的脚底中心点
-        Vector3 footPos = transform.position - Vector3.up * pivotToFootOffset;
+    private void RefreshGroundedState(in MotorSolveContext context)
+    {
+        var footPos = transform.position - Vector3.up * pivotToFootOffset;
+        var probeRadius = Mathf.Max(groundProbeRadius, motorSettings != null ? motorSettings.Radius : 0f);
 
-        // 2. SphereCast 起点：把球体稍微往上提一点点 (半径 + 0.1f安全距离)，防止球体直接刷新在地面以下导致检测失效
-        float startOffset = groundProbeRadius + 0.1f;
-        Vector3 origin = footPos + Vector3.up * startOffset;
+        var startOffset = probeRadius + 0.1f;
+        var origin = footPos + Vector3.up * startOffset;
 
-        // 3. 射线长度：从起点往下，打穿安全距离，再多打一个探测距离
-        float castDistance = 0.1f + groundCheckDistance;
+        var castReach = motorSettings != null && context.AllowsHardGroundSnap
+            ? Mathf.Max(groundCheckDistance, motorSettings.GroundSnapDistance)
+            : groundCheckDistance;
+        var castDistance = 0.1f + castReach;
 
-        bool hitGround = Physics.SphereCast(
+        var hitGround = Physics.SphereCast(
             origin,
-            groundProbeRadius,
+            probeRadius,
             Vector3.down,
-            out RaycastHit hit,
+            out var hit,
             castDistance,
             groundLayers,
             QueryTriggerInteraction.Ignore);
 
-        // Debug 辅助线：红色为探测起点和方向，绿色为命中点
         Debug.DrawRay(origin, Vector3.down * castDistance, Color.red);
-        if (hitGround) Debug.DrawLine(origin, hit.point, Color.green);
+        if (hitGround)
+        {
+            Debug.DrawLine(origin, hit.point, Color.green);
+        }
 
-        // 如果什么都没打到，或者正在起跳上升(垂直速度 > 0)，则处于浮空状态
-        if (!hitGround || m_verticalSpeed > 0f) {
+        var airborneSlopBand = motorSettings != null ? motorSettings.AirborneGroundContactSlop : float.MaxValue;
+        var groundedByProximity = motorSettings != null && !context.AllowsHardGroundSnap
+            ? hitGround && hit.distance <= airborneSlopBand
+            : hitGround;
+
+        var useHardSnapLegacy = motorSettings == null || context.AllowsHardGroundSnap;
+
+        if (!groundedByProximity || m_verticalSpeed > 0f)
+        {
             IsGrounded = false;
+            if (!hitGround)
+            {
+                m_lastGroundNormal = Vector3.up;
+            }
+
             return;
         }
 
-        // 走到这里说明：打到地面了，并且当前是下落或平移状态 (m_verticalSpeed <= 0)
+        if (motorSettings != null && hitGround && motorSettings.IsSlopeTooSteep(hit.normal))
+        {
+            IsGrounded = false;
+            m_lastGroundNormal = Vector3.up;
+            return;
+        }
+
+        if (motorSettings == null && hitGround &&
+            Vector3.Angle(Vector3.up, hit.normal) > MaxSlopeDegreesLegacy)
+        {
+            IsGrounded = false;
+            m_lastGroundNormal = Vector3.up;
+            return;
+        }
+
+        m_lastGroundNormal = hitGround ? hit.normal : Vector3.up;
         IsGrounded = true;
         m_verticalSpeed = 0f;
 
-        // 核心：直接进行硬吸附（Hard Snap）。
-        // Transform 驱动不要做平滑吸附，直接赋予准确的 Y 值才是消除抖动和陷地的唯一正解。
-        // hit.point.y 即为地面绝对高度。
-        float targetY = hit.point.y + pivotToFootOffset;
+        if (!useHardSnapLegacy)
+        {
+            return;
+        }
+
+        var targetY = hit.point.y + pivotToFootOffset;
 
         transform.position = new Vector3(
             transform.position.x,
             targetY,
-            transform.position.z
-        );
+            transform.position.z);
     }
 }

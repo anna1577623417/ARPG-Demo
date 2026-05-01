@@ -69,10 +69,8 @@ public sealed class PlayerMotorAdapter : IMotorAdapter
             return;
         }
 
-        var planar = new Vector3(_desiredVelocity.x, 0f, _desiredVelocity.z);
-        var planarSpeed = planar.magnitude;
-        var planarDir = planarSpeed > 0.0001f ? planar / planarSpeed : Vector3.zero;
-        _player.ApplyPlanarBurstMotor(planarDir, planarSpeed);
+        var ctx = _player.BuildActionMotorSolveContext();
+        _player.ApplyMotorFromGameplayVelocity(_desiredVelocity, in ctx);
     }
 }
 

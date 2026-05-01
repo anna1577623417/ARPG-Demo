@@ -80,7 +80,7 @@ public sealed class PlayerLocomotionState : PlayerState
             player.StopMove();
         }
 
-        player.ApplyMotor();
+        player.ApplyMotor(MotorSolveContext.Locomotion);
         player.TickMobilityCooldowns();
     }
 

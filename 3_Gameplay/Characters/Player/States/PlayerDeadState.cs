@@ -28,6 +28,6 @@ public class PlayerDeadState : PlayerState
     protected override void OnLogicUpdate(Player player)
     {
         player.StopMove();
-        player.ApplyMotor();
+        player.ApplyMotor(MotorSolveContext.DeadPhysics);
     }
 }
