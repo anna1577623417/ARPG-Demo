@@ -65,6 +65,26 @@ public class MotionProfileSO : ScriptableObject
     public AnimationCurve WarpCurve;
     public float MaxWarpDistance = 0.5f;
 
+    [Header("Burst authoring (Motion layer only)")]
+    [Tooltip(
+        "与 MainClip 墙钟对齐的参考时长（秒），供编辑器迁移/策划对照；Gameplay 运行时由 Action.ResolveMotionDurationSeconds 驱动 MotionExecutor 时钟。")]
+    public float BurstDurationSeconds;
+
+    [Tooltip(
+        "无 BaseDistance / 或未用位移积分近似时的恒定平面速度参考（m/s）；实际位移由位移曲线与本字段组合在 Inspector 上调参。")]
+    public float LegacyConstantPlanarSpeed;
+
+    [Tooltip("若为真，TrySamplePlanarBurstSpeed 将按下方曲线塑形（用于需要单独读速率形的工具链，不要求 Action 字段）。")]
+    public bool UsePlanarVelocityShape;
+
+    [Tooltip("爆发归一化时间 0~1 → 速率乘数，再乘以 PlanarPeakSpeed。")]
+    public AnimationCurve PlanarVelocityMultiplier = new AnimationCurve(
+        new Keyframe(0f, 0f),
+        new Keyframe(1f, 0f));
+
+    [Tooltip("与平面速率曲线相乘的峰值速率（m/s）。")]
+    public float PlanarPeakSpeed = 12f;
+
     public float SampleDisplacement(float t)
     {
         return Mathf.Clamp01(DisplacementCurve != null ? DisplacementCurve.Evaluate(Mathf.Clamp01(t)) : t);
@@ -98,5 +118,28 @@ public class MotionProfileSO : ScriptableObject
         }
 
         return WarpCurve.Evaluate(Mathf.Clamp01(t)) * Mathf.Max(0f, MaxWarpDistance);
+    }
+
+    /// <summary>
+    /// 采样「曲线塑形」平面爆发速率。
+    /// Why: Legacy Action 上用速度曲线；迁移后集中到 MotionProfile，Action 仅存意图与 Timeline。
+    /// </summary>
+    public bool TrySamplePlanarBurstSpeed(float normalizedBurstTime, out float speed)
+    {
+        speed = 0f;
+        if (!UsePlanarVelocityShape || PlanarVelocityMultiplier == null)
+        {
+            return false;
+        }
+
+        var keys = PlanarVelocityMultiplier.keys;
+        if (keys == null || keys.Length == 0)
+        {
+            return false;
+        }
+
+        var mult = Mathf.Max(0f, PlanarVelocityMultiplier.Evaluate(Mathf.Clamp01(normalizedBurstTime)));
+        speed = PlanarPeakSpeed * mult;
+        return true;
     }
 }

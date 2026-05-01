@@ -1,8 +1,8 @@
 using UnityEngine;
 
 /// <summary>
-/// Action 支柱：翻滚 / 剑冲 / 普攻。爆发位移与时长以 <see cref="ActionDataSO"/> 为权威，Player 上字段仅作无 SO 时的兜底。
-/// 蓄力攻击：<see cref="GameplayIntentKind.ChargedAttack"/> + <see cref="ActionChargeConfig"/> + <see cref="FrameContext.IsPrimaryAttackHeld"/>；轻击与蓄力共用主攻击键，由 <see cref="PrimaryAttackPressTracker"/> 在意图层分流。
+/// Action 支柱：翻滚 / 剑冲 / 普攻。<see cref="ActionDataSO.MotionProfile"/> 非空时由 MotionExecutor 驱动程序化位移；为空时Gameplay 不写平面爆发位移，仅占位时长 + 动画表现（仍可瞬移触发等）。
+/// 蓄力：<see cref="GameplayIntentKind.ChargedAttack"/> + <see cref="ActionChargeConfig"/> + <see cref="FrameContext.IsPrimaryAttackHeld"/>。
 /// </summary>
 public sealed class PlayerActionState : PlayerState
 {
@@ -17,8 +17,7 @@ public sealed class PlayerActionState : PlayerState
     private ActionDataSO m_action;
 
     private bool m_isBurst;
-    private Vector3 m_burstPlanarDir;
-    private float m_burstPlanarSpeed;
+    private Vector3 m_burstFaceDir;
     private float m_burstDuration;
     private bool m_lightAttackFinishedCleanly;
     private bool m_chargedAttackFinishedCleanly;
@@ -168,7 +167,7 @@ public sealed class PlayerActionState : PlayerState
             var actionName = m_action != null ? m_action.name : "null";
             var gravityBehavior = m_action != null && m_action.MotionProfile != null
                 ? m_action.MotionProfile.GravityBehavior.ToString()
-                : "LegacyOrNoProfile";
+                : "AnimOnly (no MotionProfile)";
             Debug.Log(
                 $"[ActionGravity] Enter | action={actionName} | useMotionProfile={m_useMotionProfile} | behavior={gravityBehavior} | shouldSuspend={shouldSuspendGravity} | suspendedNow={player.IsGravitySuspended} | grounded={player.IsGrounded}",
                 player);
@@ -182,39 +181,27 @@ public sealed class PlayerActionState : PlayerState
 
     private void ConfigureBurst(Player player)
     {
+        player.ClearPlanarVelocity();
+
         if (m_kind == GameplayIntentKind.SwordDash)
         {
-            m_burstPlanarDir = player.Forward;
-            if (m_action != null)
-            {
-                m_burstDuration = m_action.ResolveBurstMovementSeconds();
-                m_burstPlanarSpeed = m_action.ResolveBurstPlanarSpeed(m_burstDuration);
-            }
-            else
-            {
-                m_burstDuration = player.FallbackSwordDashDurationSeconds;
-                m_burstPlanarSpeed = player.FallbackSwordDashPlanarSpeed;
-            }
+            m_burstFaceDir = player.Forward;
+            m_burstDuration = m_action != null
+                ? m_action.ResolveAnimWallClockSeconds()
+                : player.FallbackSwordDashDurationSeconds;
 
-            player.LookAtDirection(m_burstPlanarDir, true);
+            player.LookAtDirection(m_burstFaceDir, true);
             player.StartSwordDashCooldown();
             player.GameplayTags.Add((ulong)StateTag.Invulnerable);
             return;
         }
 
-        m_burstPlanarDir = player.GetMovementDirectionOrForward();
-        if (m_action != null)
-        {
-            m_burstDuration = m_action.ResolveBurstMovementSeconds();
-            m_burstPlanarSpeed = m_action.ResolveBurstPlanarSpeed(m_burstDuration);
-        }
-        else
-        {
-            m_burstDuration = player.FallbackDodgeDurationSeconds;
-            m_burstPlanarSpeed = player.FallbackDodgePlanarSpeed;
-        }
+        m_burstFaceDir = player.GetMovementDirectionOrForward();
+        m_burstDuration = m_action != null
+            ? m_action.ResolveAnimWallClockSeconds()
+            : player.FallbackDodgeDurationSeconds;
 
-        player.LookAtDirection(m_burstPlanarDir, true);
+        player.LookAtDirection(m_burstFaceDir, true);
         player.StartDodgeCooldown();
         player.PublishEvent(new PlayerDodgeStartedEvent(player.GetInstanceID(), player.name));
         player.GameplayTags.Add((ulong)StateTag.Invulnerable);
@@ -300,17 +287,9 @@ public sealed class PlayerActionState : PlayerState
             UpdatePhaseTagsForCurrentNormalized(player, n);
             EvaluateTeleportTriggers(player, n);
 
-            var planarSpeed = m_burstPlanarSpeed;
-            if (m_action != null)
-            {
-                var curved = m_action.EvaluateDisplacementBurstSpeed(n);
-                if (curved >= 0f)
-                {
-                    planarSpeed = curved;
-                }
-            }
-
-            player.ApplyPlanarBurstMotor(m_burstPlanarDir, planarSpeed);
+            // 无 MotionProfile：不产生程序化平面位移（根运动若由动画驱动由表现层处理）；仍叠加重力与地面吸附。
+            player.StopMove();
+            player.ApplyMotor();
 
             if (TimeSinceEntered >= m_burstDuration)
             {

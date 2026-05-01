@@ -51,8 +51,8 @@ public struct TeleportTrigger
 }
 
 /// <summary>
-/// 数据驱动动作资产 — 逻辑与表现的单一数据源（翻滚 / 剑冲 / 普攻等）。
-/// 爆发位移：用 <see cref="BurstMovementSeconds"/> 与动画墙钟对齐，用 <see cref="BurstTravelDistance"/> 反算速度，避免「动画停、人还在滑」。
+/// 数据驱动动作资产 — 意图、时间轴切片、离散事件（如瞬移触发）及动画/剪辑元数据。
+/// <para><see cref="MotionProfile"/> 非空则由 MotionExecutor 施加程序化位移；为空则<strong>只做表现播放</strong>（无脚本层位移语义）。</para>
 /// </summary>
 [CreateAssetMenu(fileName = "NewAction", menuName = "GameMain/Action/Action Data")]
 public class ActionDataSO : ScriptableObject
@@ -71,8 +71,9 @@ public class ActionDataSO : ScriptableObject
     [Tooltip("逻辑时长（秒）。与动画长度可不同，用于先行手感调参。")]
     public float Duration = 0.4f;
 
-    [Header("Motion (new pipeline)")]
-    [Tooltip("为空时走现有 legacy 逻辑；不为空时由 MotionExecutor 驱动位移。")]
+    [Header("Motion")]
+    [Tooltip(
+        "非空：由 MotionExecutor 施加程序化位移（连续曲线等）。为空：不写 Transform，仅凭 MainClip/Duration 由表现层驱动动画（Gameplay 仍可跑标签与时间轴）。Dodge/SwordDash 同上。")]
     public MotionProfileSO MotionProfile;
 
     [Tooltip("归一化时间轴上的标签切片。")]
@@ -81,98 +82,21 @@ public class ActionDataSO : ScriptableObject
     [Header("Charge attack (single MainClip — light tap vs hold-release)")]
     public ActionChargeConfig Charge = new ActionChargeConfig();
 
-    [Header("Burst movement (Dodge / SwordDash — authoritative)")]
-    [Tooltip("爆发位移逻辑时长（秒）。0 = 与动画墙钟一致：MainClip.length / AnimSpeed（推荐，避免滑步）。")]
-    public float BurstMovementSeconds;
-
-    [Tooltip("爆发段总水平位移（米）。>0 时 速度 = 距离/时长，总位移与时长严格一致；0 则用 BurstPlanarSpeed 常量速度。")]
-    public float BurstTravelDistance;
-
-    [Tooltip("当 BurstTravelDistance 为 0 时使用的恒定平面速度（m/s）。")]
-    public float BurstPlanarSpeed = 8f;
-
-    [Tooltip("剑冲等是否沿角色 Forward；翻滚等用输入方向时在状态里覆盖。")]
-    public bool BurstUseFacingForward = true;
-
-    [Header("Curve-driven burst (optional)")]
-    [Tooltip("为真时，爆发段平面速度 = DisplacementPeakForwardSpeed × 曲线采样（与归一化爆发时间共用同一时钟）。")]
-    public bool UseDisplacementVelocityCurve;
-
-    [Tooltip("横轴：爆发段归一化时间 0~1；纵轴：速度乘数 0~1+（再乘以峰值速度）。")]
-    public AnimationCurve DisplacementVelocityMultiplier = new AnimationCurve(
-        new Keyframe(0f, 0f),
-        new Keyframe(1f, 0f));
-
-    [Tooltip("与曲线相乘得到本帧前进速度（m/s）。曲线为 0 时原地。")]
-    public float DisplacementPeakForwardSpeed = 12f;
-
-    [Header("Legacy flag (optional)")]
-    [Tooltip("预留：通用「由 SO 驱动爆发」标记；Dodge/SwordDash 由意图种类决定，可不勾选。")]
-    public bool DrivesBurstMovement;
-
     [Header("Teleport (discrete events)")]
     [Tooltip("离散瞬移触发点；仅在归一化时间跨过触发点时执行一次。")]
     public List<TeleportTrigger> TeleportTriggers = new List<TeleportTrigger>();
 
     /// <summary>
-    /// 爆发段逻辑时长：优先 BurstMovementSeconds，否则与播放墙钟对齐，最后回退 Duration。
+    /// Dodge/SwordDash 等「无 MotionProfile」时：<strong>不与 Duration 争抢</strong>，优先 MainClip 墙钟，语义为按动画实况播完再走逻辑。
     /// </summary>
-    public float ResolveBurstMovementSeconds()
+    public float ResolveAnimWallClockSeconds()
     {
-        if (BurstMovementSeconds > 0.001f)
-        {
-            return BurstMovementSeconds;
-        }
-
         if (MainClip != null)
         {
             return MainClip.length / Mathf.Max(0.01f, AnimSpeed);
         }
 
-        if (Duration > 0.001f)
-        {
-            return Duration;
-        }
-
-        return 0.25f;
-    }
-
-    /// <summary>
-    /// 爆发平面速度：若配置了行程则 distance/time，否则用 BurstPlanarSpeed。
-    /// </summary>
-    public float ResolveBurstPlanarSpeed(float movementSeconds)
-    {
-        if (movementSeconds < 0.0001f)
-        {
-            return BurstPlanarSpeed;
-        }
-
-        if (BurstTravelDistance > 0.001f)
-        {
-            return BurstTravelDistance / movementSeconds;
-        }
-
-        return BurstPlanarSpeed;
-    }
-
-    /// <summary>
-    /// 曲线驱动爆发：返回本帧平面速度大小（m/s）。未启用曲线时返回 -1，由调用方使用预先算好的恒定爆发速度。
-    /// </summary>
-    public float EvaluateDisplacementBurstSpeed(float normalizedBurstTime)
-    {
-        if (!UseDisplacementVelocityCurve || DisplacementVelocityMultiplier == null)
-        {
-            return -1f;
-        }
-
-        var keys = DisplacementVelocityMultiplier.keys;
-        if (keys == null || keys.Length == 0)
-        {
-            return -1f;
-        }
-
-        var mult = Mathf.Max(0f, DisplacementVelocityMultiplier.Evaluate(Mathf.Clamp01(normalizedBurstTime)));
-        return DisplacementPeakForwardSpeed * mult;
+        return ResolveLogicalDurationSeconds();
     }
 
     /// <summary>蓄力/普攻逻辑用：优先 <see cref="Duration"/>，否则按 Clip 墙钟。</summary>
@@ -191,10 +115,7 @@ public class ActionDataSO : ScriptableObject
         return 0.4f;
     }
 
-    /// <summary>
-    /// Motion 新管线统一时长入口。
-    /// Why: 保持旧字段兼容的同时，给 ActionState 明确语义的调用点。
-    /// </summary>
+    /// <summary>MotionExecutor 时钟：优先 <see cref="Duration"/>，否则主 Clip 墙钟。</summary>
     public float ResolveMotionDurationSeconds()
     {
         return ResolveLogicalDurationSeconds();

@@ -57,19 +57,15 @@ public class Player : Entity<Player>, IDamageable {
     [Tooltip("哪些层级被判定为地面。必须正确设置，否则永远浮空！")]
     [SerializeField] private LayerMask groundLayers = ~0;
 
-    // ─── 闪避 / 剑冲：仅当 WeaponMoveset 对应 ActionDataSO 未配置时的兜底（权威数据在 SO）───
+    // ─── 闪避 / 剑冲：Moveset 未返回 ActionDataSO 时的墙钟兜底；Gameplay 不施加程序化位移，仅占位时长 ───
 
     [Header("Fallback — Dodge (no ActionDataSO)")]
-    [SerializeField] private float fallbackDodgePlanarSpeed = 6f;
-
     [SerializeField] private float fallbackDodgeDurationSeconds = 0.35f;
 
     [Tooltip("翻滚冷却（全局平衡，可保留在 Player）。")]
     [SerializeField] private float dodgeCooldown = 0.8f;
 
     [Header("Fallback — SwordDash (no ActionDataSO)")]
-    [SerializeField] private float fallbackSwordDashPlanarSpeed = 10f;
-
     [SerializeField] private float fallbackSwordDashDurationSeconds = 0.35f;
 
     [SerializeField] private float swordDashCooldown = 1.1f;
@@ -143,9 +139,7 @@ public class Player : Entity<Player>, IDamageable {
     public bool CanSwordDash => m_swordDashCooldownTimer <= 0f;
     public WeaponMovesetSO WeaponMoveset => weaponMoveset;
     public float AttackDuration => attackDuration;
-    public float FallbackDodgePlanarSpeed => fallbackDodgePlanarSpeed;
     public float FallbackDodgeDurationSeconds => fallbackDodgeDurationSeconds;
-    public float FallbackSwordDashPlanarSpeed => fallbackSwordDashPlanarSpeed;
     public float FallbackSwordDashDurationSeconds => fallbackSwordDashDurationSeconds;
     public float JumpForce => jumpForce;
     public float AirMoveMultiplier => airMoveMultiplier;
@@ -315,6 +309,13 @@ public class Player : Entity<Player>, IDamageable {
 
     public void StopMove() {
         m_planarVelocity = Vector3.MoveTowards(m_planarVelocity, Vector3.zero, moveDeceleration * Time.deltaTime);
+    }
+
+    /// <summary>
+    /// 清空平面惯性，避免因上一帧跑动残留速度与「仅播动画」的 Dodge/SwordDash 语义打架。
+    /// </summary>
+    public void ClearPlanarVelocity() {
+        m_planarVelocity = Vector3.zero;
     }
 
     // ─── 跳跃能力 ───
@@ -519,12 +520,9 @@ public class Player : Entity<Player>, IDamageable {
         RefreshGroundedState();
     }
 
-    public void ApplyDodgeMotor(Vector3 direction)
-    {
-        ApplyPlanarBurstMotor(direction, fallbackDodgePlanarSpeed);
-    }
-
-    /// <summary>通用平面爆发位移（翻滚、剑冲、数据驱动 Burst）。</summary>
+    /// <summary>
+    /// 由 MotionExecutor 等马达层使用的平面瞬时位移（重力仍经 <see cref="ApplySimpleGravity"/>）。
+    /// </summary>
     public void ApplyPlanarBurstMotor(Vector3 direction, float planarSpeed)
     {
         ApplySimpleGravity();

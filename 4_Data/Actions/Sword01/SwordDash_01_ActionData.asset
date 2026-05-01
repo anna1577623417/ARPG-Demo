@@ -106,3 +106,4 @@ MonoBehaviour:
     m_RotationOrder: 4
   DisplacementPeakForwardSpeed: 20
   DrivesBurstMovement: 1
+  TeleportTriggers: []
