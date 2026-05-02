@@ -109,6 +109,29 @@ public sealed class MotorSettingsSO : ScriptableObject
     [Range(0.01f, 0.3f)]
     public float WallSanitizeNormalYThreshold = 0.1f;
 
+    [Header("Half-wall edge sanitization (anti-jitter)")]
+    [Tooltip("根治'半身墙顶边'抖动：胶囊侧面（位于两球心之间）命中带显著 Y 分量的法线时，强制展平为水平墙。\n背景：底球与墙顶边接触时，PhysX 因 Triangle Selection Non-determinism 在墙侧/墙顶/45°边缘三种法线间帧间跳变 → 投影方向高频抖 → 相机震动。本规则把三种法线全部归一到 (1,0,0)，根除帧间不一致。\n仅命中'上行边缘'时触发（n.y > 0），不影响走下凸边场景。")]
+    public bool SanitizeHalfWallEdgeContact = true;
+
+    [Tooltip("命中点 Y ≥ 底球球心 Y − 此容差时，视为'位于胶囊侧面'。默认 0.05。\n增大：覆盖更多接近底球底部的边缘命中（更激进），可能误吞低坡蹭斜上手感；减小：仅严格胶囊侧面才触发。")]
+    [Range(0f, 0.2f)]
+    public float EdgeContactBottomYSlop = 0.05f;
+
+    [Tooltip("命中点 Y ≤ 顶球球心 Y + 此容差时，视为'位于胶囊侧面'。默认 0.05。\n增大：覆盖刚刚高于胶囊顶部的边缘；减小：严格仅圆柱体范围内。")]
+    [Range(0f, 0.2f)]
+    public float EdgeContactTopYSlop = 0.05f;
+
+    [Tooltip("法线 Y 分量 > 此值才可能进入边缘消毒（排除纯水平墙——已由 Pass 0 处理）。默认 0.1。")]
+    [Range(0f, 0.5f)]
+    public float EdgeContactMinNormalY = 0.1f;
+
+    [Tooltip("法线 Y 分量 < 此值才进入边缘消毒（排除纯垂直地面/顶面——由 LowerHemisphere 与 Phase 0 处理）。默认 0.95。")]
+    [Range(0.5f, 0.99f)]
+    public float EdgeContactMaxNormalY = 0.95f;
+
+    [Tooltip("启用后向 Console 输出边缘消毒事件（约 0.12s 节流）。")]
+    public bool LogEdgeContactSanitizations;
+
     [Header("Ground probe — center raycast fallback")]
     [Tooltip("主 SphereCast 命中墙侧（W+A 沿墙摩擦时常见）时，再用一条胶囊轴心的细射线垂直下探作为兜底；细射线不会被胶囊侧面接触的墙面抢走，能精确穿过墙根缝隙找到地面。")]
     public bool EnableCenterRayGroundFallback = true;
@@ -170,6 +193,191 @@ public sealed class MotorSettingsSO : ScriptableObject
 
     [Tooltip("启用时向 Console 输出下半球法线过滤事件（约 0.12s 节流，避免刷屏）。")]
     public bool LogLowerHemisphereNormalFilters;
+
+    [Header("Obtuse seam stabilizer / 钝角接缝稳定器")]
+    [Tooltip(
+        "【开关 / Enable】启用后，对钝角墙角接缝（内角 > 90°）执行多策略稳定（法线合并 / 交棱锁定），消除乒乓抖动。\n" +
+        "关闭 = 仅对锐角接缝做交线投影（旧行为），钝角时回退为顺序 ProjectOnPlane，仍可能振荡。\n" +
+        "EN: When enabled, OBTUSE wall junctions (interior angle > 90°) use a stabilization strategy (normal merging or crevice lock) " +
+        "to eliminate ping-pong jitter. Disable = legacy sequential ProjectOnPlane.")]
+    public bool EnableObtuseSeamStabilizer = true;
+
+    [Tooltip(
+        "【钝角接缝判定阈值 / Obtuse Seam Normal Dot Threshold】\n" +
+        "同一帧内连续两次碰撞的法线点积高于此值时，视为钝角接缝并激活稳定器。\n" +
+        "增大（→ 0.95）：覆盖更大钝角范围（更激进），但过大可能误锁正常圆弧滑动。\n" +
+        "减小（→ 0.50）：仅锁定接近平行的法线对，对较宽钝角保护弱。推荐 0.70 ~ 0.85。\n" +
+        "EN: Two consecutive normals with dot product ABOVE this activate the stabilizer. " +
+        "Increase = wider obtuse coverage. Decrease = narrower (recommended 0.70–0.85).")]
+    [Range(0.3f, 0.98f)]
+    public float ObtuseSeamNormalDotThreshold = 0.75f;
+
+    [Tooltip(
+        "【法线合并阈值 / Normal Merging Dot Threshold】\n" +
+        "当两法线点积高于此值（极度近似），交棱叉积长度趋近于零会数值不稳；改为「平均法线 → 单平面投影」。\n" +
+        "应介于 ObtuseSeamNormalDotThreshold 与 1.0 之间。\n" +
+        "增大（→ 0.99）：仅在两面墙近乎平行时合并，更激进保留交棱方向；过大失去合并效果。\n" +
+        "减小（→ 0.80）：更早转入平均法线策略，更柔和但牺牲沿交棱滑动的能力。推荐 0.90 ~ 0.95。\n" +
+        "EN: Above this dot, the cross-product seam degenerates numerically; switch to averaged-normal single-plane projection. " +
+        "Recommended 0.90–0.95.")]
+    [Range(0.5f, 0.999f)]
+    public float NormalMergingDotThreshold = 0.92f;
+
+    [Tooltip(
+        "【调试：绘制钝角接缝交线 / Draw Obtuse Seam Vector】\n" +
+        "交线锁定激活时在命中点绘制洋红色射线，方向为两法线叉积（即两面墙的交棱方向）。\n" +
+        "增大 = n/a（开关）；关闭 = 不绘制。EN: Draw magenta ray at hit point showing crevice-lock direction when obtuse seam fires.")]
+    public bool DrawObtuseSeamVector;
+
+    [Tooltip(
+        "【调试：记录钝角接缝激活日志 / Log Obtuse Seam Activations】\n" +
+        "钝角稳定器触发时向 Console 输出法线点积、交线方向与速度变化（约 0.1s 节流）。\n" +
+        "EN: Log to Console when the obtuse seam stabilizer fires (throttled ~0.1s). " +
+        "Shows normal dot, seam direction, remaining velocity before/after.")]
+    public bool LogObtuseSeamActivations;
+
+    [Tooltip("钝角接缝交线的 Scene 视图绘制颜色 / Scene-view color for the obtuse seam vector ray.")]
+    public Color ObtuseSeamVectorColor = new Color(1f, 0.15f, 0.85f, 1f);
+
+    [Header("Inter-frame normal lock / 跨帧法线缓存（半身墙抖动根治）")]
+    [Tooltip(
+        "【启用跨帧法线锁定 / Enable Inter-frame Normal Lock】\n" +
+        "针对「半身墙顶边」「斜坡棱角」等位置 — PhysX 会在每一帧根据胶囊浮点漂移返回不同三角形的法线\n" +
+        "（top-face / side-face / 中间斜面交替），导致 ProjectOnPlane 输出每帧抖动 → 相机震荡。\n" +
+        "本机制：缓存上一帧同一 collider 的法线，本帧返回值与缓存「相似但不完全相同」时复用缓存，\n" +
+        "扼杀 PhysX 三角形选择的非确定性。这是「半身墙抖、超高墙不抖」的根因修复。\n" +
+        "EN: PhysX returns slightly different triangle normals each frame on edge contacts (half-wall tops, ramp corners). " +
+        "Cache last frame's normal per collider; if this frame's normal is 'similar-but-not-identical', reuse the cache. " +
+        "This kills triangle-selection non-determinism — the root cause of half-wall jitter.")]
+    public bool EnableInterframeNormalLock = true;
+
+    [Tooltip(
+        "【缓存有效期（秒） / Normal Cache TTL】缓存超过此时间自动失效。\n" +
+        "增大（→ 0.2）：长时间贴边时锁定更牢，但角色离开后再回来仍会用旧法线。\n" +
+        "减小（→ 0.02）：缓存只在连续帧内生效，安全但短暂离开就重置。推荐 0.05 ~ 0.1。\n" +
+        "EN: Cache entries expire after this. Recommended 0.05–0.10s.")]
+    [Range(0.02f, 0.5f)]
+    public float NormalCacheTTLSeconds = 0.08f;
+
+    [Tooltip(
+        "【缓存命中下界 / Cache Hit Min Dot】本帧法线与缓存的点积下限。\n" +
+        "增大（→ 0.95）：仅极相似时复用，更保守；过大失去抗抖动能力。\n" +
+        "减小（→ 0.7）：覆盖更多变化，但可能在真正的几何转角处错误冻结。推荐 0.85 ~ 0.95。\n" +
+        "EN: Min dot for cache hit. Recommended 0.85–0.95.")]
+    [Range(0.5f, 0.99f)]
+    public float NormalCacheMinDot = 0.9f;
+
+    [Tooltip(
+        "【边缘命中识别 / Edge Contact Sanitization】\n" +
+        "底半球撞到「半身墙顶边」时，法线呈 (0.7, 0.7, 0) 这类斜对角形态 —\n" +
+        "既不被 WallSanitization 捕获（|n.y|>0.1）也不被 LowerHemisphere 陡坡判据拦截（不算陡坡）。\n" +
+        "本机制：当 hit.point 低于胶囊中心 AND |n.y| 介于此区间，强制按「垂直墙」处理（清零 Y）。\n" +
+        "EN: When the lower hemisphere hits a HALF-WALL's top edge, PhysX returns a diagonal normal that " +
+        "escapes both wall-sanitize and steep-slope filters. Snap such edge normals to vertical-wall behavior.")]
+    public bool EnableEdgeContactSanitization = true;
+
+    [Tooltip(
+        "【边缘命中 |n.y| 上界 / Edge Contact Normal Y Upper Bound】\n" +
+        "底半球命中且 |n.y| ∈ (WallSanitizeNormalYThreshold, 此值) 时触发边缘消毒。\n" +
+        "增大（→ 0.95）：把更多「斜面命中」误归类为「半身墙顶边」，会让斜坡变难走。\n" +
+        "减小（→ 0.6）：仅最接近 45° 的边触发，对真正的半身墙顶（n.y≈0.7）覆盖弱。推荐 0.80 ~ 0.92。\n" +
+        "EN: Edge sanitization triggers when |n.y| is between WallSanitizeNormalYThreshold and this. Recommended 0.80–0.92.")]
+    [Range(0.3f, 0.99f)]
+    public float EdgeContactNormalYUpperBound = 0.85f;
+
+    [Tooltip("【调试：日志跨帧法线锁 / Log Normal Cache Hits】节流约 0.1s。\nEN: Throttled cache-hit log.")]
+    public bool LogNormalCacheHits;
+
+    [Tooltip(
+        "【调试：绘制跨帧法线锁 / Draw Normal Cache Rays】\n" +
+        "命中缓存复用时，在命中点绘制原始法线（橙）与复用法线（青），用于确认是否真的在“压平法线噪声”。\n" +
+        "EN: Draw raw (orange) and cached (cyan) normals when cache lock is applied.")]
+    public bool DrawNormalCacheRays;
+
+    [Tooltip("跨帧法线锁：原始法线颜色 / Normal cache: raw normal color.")]
+    public Color NormalCacheRawColor = new Color(1f, 0.55f, 0.15f, 1f);
+
+    [Tooltip("跨帧法线锁：复用法线颜色 / Normal cache: cached normal color.")]
+    public Color NormalCacheLockedColor = new Color(0.1f, 0.95f, 1f, 1f);
+
+    [Tooltip(
+        "【调试：绘制半身墙边缘消毒 / Draw Half-wall Edge Sanitization Rays】\n" +
+        "Pass 0.5 触发时绘制消毒前法线（红）与消毒后法线（绿），用于确认“中段斜法线是否被压成纯墙”。\n" +
+        "EN: Draw before/after normal rays when half-wall edge sanitization (Pass 0.5) triggers.")]
+    public bool DrawHalfWallEdgeSanitizeRays;
+
+    [Tooltip("半身墙边缘消毒：消毒前法线颜色 / Half-wall sanitize: raw normal color.")]
+    public Color HalfWallEdgeRawNormalColor = new Color(1f, 0.2f, 0.2f, 1f);
+
+    [Tooltip("半身墙边缘消毒：消毒后法线颜色 / Half-wall sanitize: sanitized normal color.")]
+    public Color HalfWallEdgeSanitizedNormalColor = new Color(0.2f, 1f, 0.35f, 1f);
+
+    [Header("N-Plane solver (MVP) / 多平面约束求解（最小可用版）")]
+    [Tooltip(
+        "【启用 N-Plane（MVP） / Enable N-Plane Solver】\n" +
+        "同一子步内缓存碰撞平面并联合求解，而不是单平面串行 ProjectOnPlane。\n" +
+        "2 面：按钝角规则做法线合并或交棱锁定；3 面：直接归零（死角阻挡）。\n" +
+        "EN: Cache planes within one sub-step and solve constraints jointly. 2-plane => merge/seam; 3-plane => hard stop.")]
+    public bool EnableNPlaneMvpSolver = true;
+
+    [Tooltip(
+        "【平面去重阈值 / Plane Dedup Dot Threshold】\n" +
+        "同一子步内新命中法线与已缓存平面点积高于此值时视为同一平面，不重复加入。\n" +
+        "增大（→0.999）：更严格去重，易保留微小噪声面；减小（→0.9）：更宽松去重，可能把真实不同面误合并。\n" +
+        "EN: If dot(new, existing) > threshold, treat as same plane and skip adding.")]
+    [Range(0.85f, 0.9999f)]
+    public float PlaneDedupDotThreshold = 0.98f;
+
+    [Tooltip(
+        "【过弹修正系数 / Overbounce Factor】\n" +
+        "联合投影时用于轻微“推出平面”以避免粘墙反复回撞。1.0=关闭，推荐 1.001~1.005。\n" +
+        "增大：更不容易粘墙，但过大会显得发飘；减小：更物理真实但易产生边缘回撞。\n" +
+        "EN: Slightly over-correct projection to avoid sticky re-penetration. 1.0 disables.")]
+    [Range(1f, 1.02f)]
+    public float NPlaneOverbounceFactor = 1.002f;
+
+    [Tooltip(
+        "【调试：绘制 N-Plane 求解方向 / Draw N-Plane Solve Ray】\n" +
+        "联合约束求解后，在命中点绘制紫色结果速度射线，便于观察是否仍在 ping-pong。\n" +
+        "EN: Draw the N-Plane solved velocity direction ray at hit point.")]
+    public bool DrawNPlaneSolveRay;
+
+    [Tooltip("N-Plane 求解结果射线颜色 / N-Plane solve result ray color.")]
+    public Color NPlaneSolveRayColor = new Color(0.8f, 0.35f, 1f, 1f);
+
+    [Header("Stability snapping / 速度稳定阈值")]
+    [Tooltip(
+        "【最小有效滑动速度（米/秒） / Min Effective Slide Speed】\n" +
+        "Collide-and-Slide 投影后剩余位移所代表的等效速度模长低于此值时，强制截断剩余迭代（视为「死角挤压」）。\n" +
+        "增大（→ 0.10）：更早静止、更稳，但可能在缓坡侧蹭时损失少量贴墙滑动距离。\n" +
+        "减小（→ 0.005）：保留亚像素级移动，连续紧贴墙跑更顺，但相机微抖风险变高。推荐 0.01 ~ 0.05。\n" +
+        "EN: After projection, if the remaining slide-equivalent speed falls below this, abort further iterations to prevent " +
+        "sub-pixel jitter feeding the camera. Recommended 0.01–0.05 m/s.")]
+    [Range(0.001f, 0.2f)]
+    public float StabilitySnapMinSlideSpeed = 0.02f;
+
+    [Tooltip(
+        "【单次投影进度损耗上限（0~1） / Max Magnitude Loss Per Projection】\n" +
+        "本帧某次 Slide 投影后，速度模长缩减比例超过此值视为「绝对死角」，截断剩余迭代避免反复折射放大噪声。\n" +
+        "增大（→ 0.95）：更宽容，复杂折射场景有效；过大可能放过真实死锁。\n" +
+        "减小（→ 0.7）：更早截断，反应灵敏；过小会在常规墙角误截影响沿墙滑动。推荐 0.85 ~ 0.92。\n" +
+        "EN: If a single Slide projection shrinks |v| by MORE than this fraction, treat as deadlock and abort the iteration. " +
+        "Recommended 0.85–0.92.")]
+    [Range(0.5f, 0.99f)]
+    public float DeadlockMaxMagnitudeLossPerProjection = 0.9f;
+
+    [Tooltip(
+        "【调试：记录稳定阅限触发 / Log Stability Aborts】\n" +
+        "速度阅限 / 进度看门狗触发时输出节流日志（约 0.1s）。\n" +
+        "EN: Log when stability snap or progress watchdog aborts the iteration (throttled).")]
+    public bool LogStabilityAborts;
+
+    [Tooltip(
+        "【调试：绘制滑动速度射线 / Draw Slide Velocity Rays】\n" +
+        "每次 Slide 投影后，在命中点额外绘制一条代表投影前后速度变化的对比射线（蓝=投影后，白=投影前）。\n" +
+        "EN: Draw before/after velocity comparison rays at hit point for each slide projection (blue=after, white=before). " +
+        "Helps spot ping-pong by seeing alternating slide directions across frames.")]
+    public bool DrawSlideVelocityComparison;
 
     [Header("Soft rigidity (future)")]
     public float MotorMassWeight = 1f;

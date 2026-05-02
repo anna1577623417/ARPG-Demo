@@ -30,13 +30,79 @@ MonoBehaviour:
   MaxSlideIterations: 4
   CreviceNormalDotThreshold: -0.2
   VelocityAgainstNormalRejectDot: 0.01
+  EnableLowerHemisphereNormalFilter: 1
+  LowerHemisphereOnlyWhenContactBelowBottomCenter: 1
+  LowerHemisphereBottomCenterYSlop: 0.02
+  LowerHemispherePoleRadiusFraction: 0
+  LowerHemisphereFlattenIfGroundNormalYBelow: 0
+  EnableExtraGroundStabilizationProbe: 1
+  ExtraGroundProbeExtension: 0.35
+  GroundSnapMaxUpwardVelocity: 0.08
+  GroundSnapOverlapGuard: 1
+  GroundSnapOverlapLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  GroundSnapOverlapRadiusScale: 0.99
+  ClampGroundedSlideRemainingY: 1
+  SanitizeNearVerticalWallNormals: 1
+  WallSanitizeNormalYThreshold: 0.1
+  SanitizeHalfWallEdgeContact: 1
+  EdgeContactBottomYSlop: 0.05
+  EdgeContactTopYSlop: 0.05
+  EdgeContactMinNormalY: 0.1
+  EdgeContactMaxNormalY: 0.95
+  LogEdgeContactSanitizations: 1
+  EnableCenterRayGroundFallback: 1
   DrawSweepHitsInSceneView: 1
+  SweepCrossHalfExtent: 0.08
+  SweepHitNormalDrawLength: 0.5
+  SweepSlideDrawLength: 0.42
+  SweepLowerHemisphereOriginalDrawLength: 0.45
+  SweepLowerHemisphereFilteredDrawLength: 0.52
+  DrawGroundProbeInSceneView: 1
+  GroundProbeRayLengthScale: 1
+  GroundProbeMainRayColor: {r: 1, g: 0.2, b: 0.2, a: 1}
+  GroundProbeHitLineColor: {r: 0.2, g: 0.95, b: 0.25, a: 1}
+  GroundProbeExtraHitLineColor: {r: 1, g: 0.45, b: 0.1, a: 1}
   SweepHitDebugLifetime: 0.35
   FlashObstacleColliderOnSweepHit: 1
+  SweepFlashHoldSeconds: 0.04
+  SweepFlashFadeSeconds: 0.22
   AutoAddCollisionFlasherOnObstacleIfMissing: 1
   SweepHitPointColor: {r: 1, g: 0.15, b: 0.1, a: 1}
   SweepIgnoredHitColor: {r: 1, g: 0.92, b: 0.2, a: 1}
   SweepHitNormalColor: {r: 0.2, g: 0.95, b: 0.25, a: 1}
   SweepSlideDirectionColor: {r: 0.2, g: 0.75, b: 1, a: 1}
+  DrawLowerHemisphereNormalFilter: 0
+  LowerHemisphereOriginalNormalColor: {r: 1, g: 0.92, b: 0.2, a: 1}
+  LowerHemisphereFilteredNormalColor: {r: 1, g: 0.35, b: 0.85, a: 1}
+  LogLowerHemisphereNormalFilters: 0
+  EnableObtuseSeamStabilizer: 1
+  ObtuseSeamNormalDotThreshold: 0.75
+  NormalMergingDotThreshold: 0.8
+  DrawObtuseSeamVector: 1
+  LogObtuseSeamActivations: 1
+  ObtuseSeamVectorColor: {r: 1, g: 0.15, b: 0.85, a: 1}
+  EnableInterframeNormalLock: 1
+  NormalCacheTTLSeconds: 0.08
+  NormalCacheMinDot: 0.9
+  EnableEdgeContactSanitization: 1
+  EdgeContactNormalYUpperBound: 0.85
+  LogNormalCacheHits: 0
+  DrawNormalCacheRays: 0
+  NormalCacheRawColor: {r: 1, g: 0.55, b: 0.15, a: 1}
+  NormalCacheLockedColor: {r: 0.1, g: 0.95, b: 1, a: 1}
+  DrawHalfWallEdgeSanitizeRays: 0
+  HalfWallEdgeRawNormalColor: {r: 1, g: 0.2, b: 0.2, a: 1}
+  HalfWallEdgeSanitizedNormalColor: {r: 0.2, g: 1, b: 0.35, a: 1}
+  EnableNPlaneMvpSolver: 1
+  PlaneDedupDotThreshold: 0.98
+  NPlaneOverbounceFactor: 1.002
+  DrawNPlaneSolveRay: 0
+  NPlaneSolveRayColor: {r: 0.8, g: 0.35, b: 1, a: 1}
+  StabilitySnapMinSlideSpeed: 0.02
+  DeadlockMaxMagnitudeLossPerProjection: 0.9
+  LogStabilityAborts: 1
+  DrawSlideVelocityComparison: 1
   MotorMassWeight: 1
   RepulsionStrength: 5

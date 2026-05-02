@@ -1,5 +1,10 @@
 1# Core-Drive Action | 开发架构与工程约束 
 
+使用中文展示AI过程的AI链条和正式回答
+
+（如果涉及代码输出）记得给出feat命名信息（中英）
+此外加一条限制，每次引入新系统，设计的可配置化字段，在代码和（输出代码的那次）答案中给出中英双语并解释其意图和增量意义（变大变小影响什么）
+
 use more capable AI model to handle coding,like opus4.7 or sonnet 4.6 
 
 I am developing a highly decoupled, data-driven ARPG with a strict 5-layer architecture. You must adhere to the following architectural constraints for every line of code you generate:
