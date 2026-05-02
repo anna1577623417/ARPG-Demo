@@ -112,6 +112,9 @@ public class Player : Entity<Player>, IDamageable {
     /// <summary>上一逻辑帧结束时是否接地（用于马达二次下探稳定，减轻低台阶蹭起后的单帧 IsGrounded 抖动）。</summary>
     private bool m_wasGroundedLastFrame;
 
+    private static readonly Collider[] s_groundSnapOverlapBuffer =
+        new Collider[KinematicMotorSolver.DefaultOverlapBufferSize];
+
     /// <summary>Legacy 双轨：未挂 <see cref="MotorSettingsSO"/> 时用固定最大坡角拒绝「凸角尖」当支撑面。</summary>
     private const float MaxSlopeDegreesLegacy = 50f;
 
@@ -538,12 +541,14 @@ public class Player : Entity<Player>, IDamageable {
         {
             velocity = MaybeProjectVelocityOntoWalkableSlope(velocity, context);
             var displacement = velocity * Time.deltaTime;
+            var applySlideYLock = ShouldApplyGroundedSlideDownwardLock(in context);
             var delta = KinematicMotorSolver.SolveDisplacementFromPivot(
                 transform.position,
                 pivotToFootOffset,
                 motorSettings,
                 displacement,
-                motorSettings.ObstacleLayers);
+                motorSettings.ObstacleLayers,
+                applySlideYLock);
             transform.position += delta;
         }
         else
@@ -576,12 +581,14 @@ public class Player : Entity<Player>, IDamageable {
         {
             velocity = MaybeProjectVelocityOntoWalkableSlope(velocity, context);
             var displacement = velocity * Time.deltaTime;
+            var applySlideYLock = ShouldApplyGroundedSlideDownwardLock(in context);
             var delta = KinematicMotorSolver.SolveDisplacementFromPivot(
                 transform.position,
                 pivotToFootOffset,
                 motorSettings,
                 displacement,
-                motorSettings.ObstacleLayers);
+                motorSettings.ObstacleLayers,
+                applySlideYLock);
             transform.position += delta;
         }
         else
@@ -590,6 +597,21 @@ public class Player : Entity<Player>, IDamageable {
         }
 
         RefreshGroundedState(in context);
+    }
+
+    private bool ShouldApplyGroundedSlideDownwardLock(in MotorSolveContext context)
+    {
+        if (motorSettings == null || !motorSettings.ClampGroundedSlideRemainingY)
+        {
+            return false;
+        }
+
+        if (!context.AllowsHardGroundSnap || !IsGrounded)
+        {
+            return false;
+        }
+
+        return m_verticalSpeed <= motorSettings.GroundSnapMaxUpwardVelocity;
     }
 
     public MotorSolveContext BuildActionMotorSolveContext()
@@ -687,8 +709,12 @@ public class Player : Entity<Player>, IDamageable {
             groundLayers,
             QueryTriggerInteraction.Ignore);
 
+        // ── 接缝盲区识别：W+A 沿墙摩擦时 SphereCast 常被墙壁侧蹭"先抢走"，命中法线呈水平。
+        //   把这种 hit 标记为"墙侧命中"，触发后续两级兜底（延伸 SphereCast / 中心射线）。
+        var primaryHitIsWall = hitGround && IsGroundNormalTooSteep(hit.normal);
+
         var usedExtraStabilizationProbe = false;
-        if (!hitGround
+        if ((!hitGround || primaryHitIsWall)
             && motorSettings != null
             && motorSettings.EnableExtraGroundStabilizationProbe
             && context.AllowsHardGroundSnap
@@ -696,30 +722,78 @@ public class Player : Entity<Player>, IDamageable {
             && m_verticalSpeed <= motorSettings.GroundSnapMaxUpwardVelocity)
         {
             var extDist = castDistance + motorSettings.ExtraGroundProbeExtension;
-            hitGround = Physics.SphereCast(
-                origin,
-                probeRadius,
-                Vector3.down,
-                out hit,
-                extDist,
-                groundLayers,
-                QueryTriggerInteraction.Ignore);
-            usedExtraStabilizationProbe = hitGround;
+            if (Physics.SphereCast(
+                    origin,
+                    probeRadius,
+                    Vector3.down,
+                    out var extraHit,
+                    extDist,
+                    groundLayers,
+                    QueryTriggerInteraction.Ignore)
+                && !IsGroundNormalTooSteep(extraHit.normal))
+            {
+                hit = extraHit;
+                hitGround = true;
+                primaryHitIsWall = false;
+                usedExtraStabilizationProbe = true;
+            }
         }
 
-        Debug.DrawRay(origin, Vector3.down * castDistance, Color.red);
-        if (hitGround)
+        // ── 兜底：胶囊轴心垂直 Raycast。
+        //   细射线穿过胶囊侧面接触的墙面，直击下方真实地面，根治"W+A 沿墙摩擦 → 滞空"。
+        //   仅在 SphereCast 仍未拿到合法地面时触发；命中后法线必须满足可踩坡度才采纳。
+        var usedCenterRayFallback = false;
+        if ((!hitGround || primaryHitIsWall)
+            && (motorSettings == null || motorSettings.EnableCenterRayGroundFallback)
+            && groundLayers.value != 0)
         {
-            Debug.DrawLine(origin, hit.point, usedExtraStabilizationProbe ? new Color(1f, 0.45f, 0.1f) : Color.green);
+            var centerOrigin = new Vector3(transform.position.x, origin.y, transform.position.z);
+            var centerDist = castDistance + probeRadius;
+            if (Physics.Raycast(
+                    centerOrigin,
+                    Vector3.down,
+                    out var centerHit,
+                    centerDist,
+                    groundLayers,
+                    QueryTriggerInteraction.Ignore)
+                && !IsGroundNormalTooSteep(centerHit.normal))
+            {
+                hit = centerHit;
+                hitGround = true;
+                primaryHitIsWall = false;
+                usedCenterRayFallback = true;
+            }
+        }
+
+        if (motorSettings != null && motorSettings.DrawGroundProbeInSceneView)
+        {
+            var rayLen = castDistance * Mathf.Max(0.1f, motorSettings.GroundProbeRayLengthScale);
+            Debug.DrawRay(origin, Vector3.down * rayLen, motorSettings.GroundProbeMainRayColor);
+            if (hitGround)
+            {
+                Debug.DrawLine(origin, hit.point,
+                    usedExtraStabilizationProbe
+                        ? motorSettings.GroundProbeExtraHitLineColor
+                        : motorSettings.GroundProbeHitLineColor);
+            }
+        }
+        else if (motorSettings == null)
+        {
+            Debug.DrawRay(origin, Vector3.down * castDistance, Color.red);
+            if (hitGround)
+            {
+                Debug.DrawLine(origin, hit.point, Color.green);
+            }
         }
 
         if (debugGroundProbe && Time.unscaledTime >= m_nextGroundProbeLogTime)
         {
             m_nextGroundProbeLogTime = Time.unscaledTime + 0.15f;
             Debug.Log(
-                $"[GroundProbe] hit={hitGround} extraProbe={usedExtraStabilizationProbe} " +
+                $"[GroundProbe] hit={hitGround} extraProbe={usedExtraStabilizationProbe} centerRay={usedCenterRayFallback} " +
                 $"wasGrounded={m_wasGroundedLastFrame} vy={m_verticalSpeed:F3} cast={castDistance:F3} " +
-                $"snapPolicy={context.AllowsHardGroundSnap} pt={(hitGround ? hit.point.ToString() : "-")}",
+                $"snapPolicy={context.AllowsHardGroundSnap} pt={(hitGround ? hit.point.ToString() : "-")} " +
+                $"n={(hitGround ? hit.normal.ToString("F3") : "-")}",
                 this);
         }
 
@@ -770,12 +844,44 @@ public class Player : Entity<Player>, IDamageable {
         }
 
         var targetY = hit.point.y + pivotToFootOffset;
+        var snapPosition = new Vector3(transform.position.x, targetY, transform.position.z);
+        var allowSnapY = true;
+        if (motorSettings != null && motorSettings.GroundSnapOverlapGuard)
+        {
+            var overlapMask = motorSettings.GroundSnapOverlapLayers.value != 0
+                ? motorSettings.GroundSnapOverlapLayers
+                : motorSettings.ObstacleLayers;
+            if (KinematicMotorSolver.OverlapCapsuleAtPivotBlocks(
+                    snapPosition,
+                    pivotToFootOffset,
+                    motorSettings,
+                    overlapMask,
+                    transform,
+                    s_groundSnapOverlapBuffer))
+            {
+                allowSnapY = false;
+            }
+        }
 
-        transform.position = new Vector3(
-            transform.position.x,
-            targetY,
-            transform.position.z);
+        if (allowSnapY)
+        {
+            transform.position = snapPosition;
+        }
 
         m_wasGroundedLastFrame = IsGrounded;
+    }
+
+    /// <summary>
+    /// 统一的"地面法线是否过陡"判定。motorSettings 路径用 SO 的 MaxSlopeAngle，
+    /// legacy 路径用硬编码 <see cref="MaxSlopeDegreesLegacy"/>。
+    /// 用于 RefreshGroundedState 内识别"墙侧命中"以触发 fallback 探针。
+    /// </summary>
+    private bool IsGroundNormalTooSteep(in Vector3 normal)
+    {
+        if (motorSettings != null)
+        {
+            return motorSettings.IsSlopeTooSteep(normal);
+        }
+        return Vector3.Angle(Vector3.up, normal) > MaxSlopeDegreesLegacy;
     }
 }

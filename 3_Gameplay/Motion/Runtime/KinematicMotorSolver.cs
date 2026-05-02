@@ -9,15 +9,20 @@ public static class KinematicMotorSolver
     private const float EpsilonSq = 1e-8f;
     private static float s_nextLowerHemisphereLogTime;
 
+    /// <summary>供地面吸附等使用的非分配重叠缓冲（调用方负责层与排除自身碰撞体）。</summary>
+    public const int DefaultOverlapBufferSize = 16;
+
     /// <summary>
     /// 以角色 Pivot 为世界原点，求解本帧允许的位移矢量（三维一体，含下落）。
     /// </summary>
+    /// <param name="applyGroundedSlideDownwardLock">上一帧接地且策略允许时，禁止滑动迭代产生向下剩余位移（防地陷）。</param>
     public static Vector3 SolveDisplacementFromPivot(
         Vector3 worldPivot,
         float pivotToFootOffset,
         MotorSettingsSO motor,
         Vector3 worldDisplacement,
-        LayerMask obstacleLayers)
+        LayerMask obstacleLayers,
+        bool applyGroundedSlideDownwardLock = false)
     {
         if (motor == null || worldDisplacement.sqrMagnitude < EpsilonSq)
         {
@@ -36,7 +41,8 @@ public static class KinematicMotorSolver
         for (var s = 0; s < subSteps; s++)
         {
             var step = worldDisplacement * (1f / subSteps);
-            var partial = SolveSubStepSweep(cursorPivot, pivotToFootOffset, motor, step, obstacleLayers);
+            var partial = SolveSubStepSweep(cursorPivot, pivotToFootOffset, motor, step, obstacleLayers,
+                applyGroundedSlideDownwardLock);
             deltaTotal += partial;
             cursorPivot += partial;
         }
@@ -49,7 +55,8 @@ public static class KinematicMotorSolver
         float pivotToFootOffset,
         MotorSettingsSO motor,
         Vector3 displacement,
-        LayerMask obstacleLayers)
+        LayerMask obstacleLayers,
+        bool applyGroundedSlideDownwardLock)
     {
         if (displacement.sqrMagnitude < EpsilonSq)
         {
@@ -120,11 +127,18 @@ public static class KinematicMotorSolver
 
             var slid = SlideOrCrevice(remaining, slideNormal, hadPreviousNormal, lastNormal,
                 motor.CreviceNormalDotThreshold, iter);
-            DrawSweepHitDiagnostics(motor, in hit, slid, rejectedAsNonBlocking: false, in slideNormal,
+            remaining = slid;
+
+            if (applyGroundedSlideDownwardLock
+                && motor.ClampGroundedSlideRemainingY
+                && remaining.y < 0f)
+            {
+                remaining.y = 0f;
+            }
+
+            DrawSweepHitDiagnostics(motor, in hit, remaining, rejectedAsNonBlocking: false, in slideNormal,
                 normalFiltered);
             MaybeFlashObstacle(motor, in hit);
-
-            remaining = slid;
 
             hadPreviousNormal = true;
             lastNormal = slideNormal;
@@ -148,28 +162,31 @@ public static class KinematicMotorSolver
 
         var t = SweepDebugSeconds(motor);
         var pointColor = rejectedAsNonBlocking ? motor.SweepIgnoredHitColor : motor.SweepHitPointColor;
-        DrawCross(hit.point, 0.08f, pointColor, t);
+        var cross = Mathf.Max(0.02f, motor.SweepCrossHalfExtent);
+        DrawCross(hit.point, cross, pointColor, t);
         if (!rejectedAsNonBlocking)
         {
-            Debug.DrawRay(hit.point, hit.normal * 0.5f, motor.SweepHitNormalColor, t);
+            Debug.DrawRay(hit.point, hit.normal * motor.SweepHitNormalDrawLength, motor.SweepHitNormalColor, t);
         }
 
         if (usedLowerHemisphereFilter && motor.DrawLowerHemisphereNormalFilter)
         {
-            Debug.DrawRay(hit.point, hit.normal * 0.45f, motor.LowerHemisphereOriginalNormalColor, t);
-            Debug.DrawRay(hit.point, resolvedSlideNormal * 0.52f, motor.LowerHemisphereFilteredNormalColor, t);
+            Debug.DrawRay(hit.point, hit.normal * motor.SweepLowerHemisphereOriginalDrawLength,
+                motor.LowerHemisphereOriginalNormalColor, t);
+            Debug.DrawRay(hit.point, resolvedSlideNormal * motor.SweepLowerHemisphereFilteredDrawLength,
+                motor.LowerHemisphereFilteredNormalColor, t);
         }
 
         if (slideVector.sqrMagnitude > EpsilonSq)
         {
             var sm = slideVector.sqrMagnitude;
-            var inv = 0.42f / Mathf.Sqrt(sm);
+            var inv = motor.SweepSlideDrawLength / Mathf.Sqrt(sm);
             Debug.DrawRay(hit.point, slideVector * inv, motor.SweepSlideDirectionColor, t);
         }
     }
 
     /// <summary>
-    /// 低台阶：底半球侧面刮到凸角时法线常带向上的寄生分量；在「非南极」且坡面不可行走时剥掉 Y，当作竖直挡板。
+    /// 低台阶：陡坡法线在底球区域剥掉 Y；不再依赖 XZ「南极」半径（WA/WD 易误触盲区），改以命中点相对底球球心高度 + 法线陡度。
     /// </summary>
     private static Vector3 ResolveContactNormalForSlide(
         MotorSettingsSO motor,
@@ -178,16 +195,40 @@ public static class KinematicMotorSolver
         out bool appliedLowerHemisphereFilter)
     {
         appliedLowerHemisphereFilter = false;
-        if (motor == null || !motor.EnableLowerHemisphereNormalFilter)
+        var n = hit.normal.normalized;
+
+        // ── Pass 0：墙面消毒（无条件优先于 LowerHemisphere 过滤）─────────────────
+        // 网格顶点的浮点漂移会让"理论垂直墙面"返回类似 (1, -0.005, 0.001) 的法线。
+        // 在跳跃（V.y>0）时撞这种墙，Vector3.ProjectOnPlane(V, n) 会把上行动能折射成下行动能，
+        // 表现为"沿墙跳跃 → 瞬间被压进地里"。强制把这类近垂直法线的 Y 分量归零并归一化即可根治。
+        if (motor != null && motor.SanitizeNearVerticalWallNormals
+            && Mathf.Abs(n.y) < motor.WallSanitizeNormalYThreshold)
         {
-            return hit.normal.normalized;
+            var nxz0 = new Vector3(n.x, 0f, n.z);
+            var nxz0Sq = nxz0.sqrMagnitude;
+            if (nxz0Sq > 1e-10f)
+            {
+                n = nxz0 * (1f / Mathf.Sqrt(nxz0Sq));
+            }
         }
 
-        var n = hit.normal.normalized;
+        if (motor == null || !motor.EnableLowerHemisphereNormalFilter)
+        {
+            return n;
+        }
+
+        if (motor.LowerHemisphereOnlyWhenContactBelowBottomCenter
+            && hit.point.y > bottomSphereCenter.y + motor.LowerHemisphereBottomCenterYSlop)
+        {
+            return n;
+        }
+
         var toContact = hit.point - bottomSphereCenter;
-        var poleAllow = Mathf.Max(0.01f, motor.Radius * motor.LowerHemispherePoleRadiusFraction);
         var horizSq = toContact.x * toContact.x + toContact.z * toContact.z;
-        if (horizSq <= poleAllow * poleAllow)
+        var poleAllow = motor.LowerHemispherePoleRadiusFraction > 0.0001f
+            ? Mathf.Max(0.001f, motor.Radius * motor.LowerHemispherePoleRadiusFraction)
+            : 0f;
+        if (poleAllow > 0.0005f && horizSq <= poleAllow * poleAllow)
         {
             return n;
         }
@@ -224,6 +265,52 @@ public static class KinematicMotorSolver
         return nxz;
     }
 
+    /// <summary>
+    /// 给定 Pivot 处胶囊是否与 layerMask 内任意非 Trigger 碰撞体重叠（不含 ignoreRoot 子层级）。
+    /// </summary>
+    public static bool OverlapCapsuleAtPivotBlocks(
+        Vector3 pivotWorld,
+        float pivotToFootOffset,
+        MotorSettingsSO motor,
+        LayerMask mask,
+        Transform ignoreRoot,
+        Collider[] overlapBuffer)
+    {
+        if (motor == null || overlapBuffer == null || overlapBuffer.Length == 0)
+        {
+            return false;
+        }
+
+        GetCapsuleWorld(pivotWorld, pivotToFootOffset, motor, out var p1, out var p2, out var r);
+        var rs = Mathf.Max(0.01f, r * motor.GroundSnapOverlapRadiusScale);
+        var n = Physics.OverlapCapsuleNonAlloc(
+            p1,
+            p2,
+            rs,
+            overlapBuffer,
+            mask,
+            QueryTriggerInteraction.Ignore);
+
+        for (var i = 0; i < n; i++)
+        {
+            var c = overlapBuffer[i];
+            if (c == null)
+            {
+                continue;
+            }
+
+            if (ignoreRoot != null && c.transform != null
+                                   && (c.transform == ignoreRoot || c.transform.IsChildOf(ignoreRoot)))
+            {
+                continue;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
     private static void DrawCross(Vector3 center, float halfExtent, Color color, float duration)
     {
         Debug.DrawLine(center - Vector3.right * halfExtent, center + Vector3.right * halfExtent, color,
@@ -252,7 +339,8 @@ public static class KinematicMotorSolver
         }
 
         var flashRgb = motor.SweepHitPointColor;
-        flasher?.Flash(new Color(flashRgb.r, flashRgb.g, flashRgb.b, 1f), 0.04f, 0.22f);
+        flasher?.Flash(new Color(flashRgb.r, flashRgb.g, flashRgb.b, 1f), motor.SweepFlashHoldSeconds,
+            motor.SweepFlashFadeSeconds);
     }
 
     private static Vector3 SlideOrCrevice(
