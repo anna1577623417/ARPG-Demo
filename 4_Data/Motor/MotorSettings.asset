@@ -1,0 +1,42 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3e6235f574769ba428dc7a2e92e00e08, type: 3}
+  m_Name: MotorSettings
+  m_EditorClassIdentifier: 
+  Radius: 0.5
+  Height: 2
+  SkinWidth: 0.015
+  ObstacleLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  MaxSlopeAngle: 45
+  AirborneGroundContactSlop: 0.14
+  StepOffset: 0.3
+  GroundSnapDistance: 0.4
+  ProjectHorizontalOntoSlope: 1
+  TeleportRayStartAbove: 2
+  TeleportRayMaxDistance: 12
+  TerminalVelocity: 50
+  MaxSubSteps: 3
+  MaxSlideIterations: 4
+  CreviceNormalDotThreshold: -0.2
+  VelocityAgainstNormalRejectDot: 0.01
+  DrawSweepHitsInSceneView: 1
+  SweepHitDebugLifetime: 0.35
+  FlashObstacleColliderOnSweepHit: 1
+  AutoAddCollisionFlasherOnObstacleIfMissing: 1
+  SweepHitPointColor: {r: 1, g: 0.15, b: 0.1, a: 1}
+  SweepIgnoredHitColor: {r: 1, g: 0.92, b: 0.2, a: 1}
+  SweepHitNormalColor: {r: 0.2, g: 0.95, b: 0.25, a: 1}
+  SweepSlideDirectionColor: {r: 0.2, g: 0.75, b: 1, a: 1}
+  MotorMassWeight: 1
+  RepulsionStrength: 5

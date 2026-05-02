@@ -7,6 +7,7 @@ using UnityEngine;
 public static class KinematicMotorSolver
 {
     private const float EpsilonSq = 1e-8f;
+    private static float s_nextLowerHemisphereLogTime;
 
     /// <summary>
     /// 以角色 Pivot 为世界原点，求解本帧允许的位移矢量（三维一体，含下落）。
@@ -24,7 +25,8 @@ public static class KinematicMotorSolver
         }
 
         var maxStep = Mathf.Max(0.01f, motor.Radius * 0.85f);
-        var dispMag = worldDisplacement.magnitude;
+        var dispSq = worldDisplacement.sqrMagnitude;
+        var dispMag = Mathf.Sqrt(dispSq);
         var subSteps = Mathf.CeilToInt(dispMag / maxStep);
         subSteps = Mathf.Clamp(subSteps, 1, Mathf.Max(1, motor.MaxSubSteps));
 
@@ -73,8 +75,9 @@ public static class KinematicMotorSolver
 
             GetCapsuleWorld(worldPivot + accumulated, pivotToFootOffset, motor, out var p1, out var p2, out _);
 
-            var dist = remaining.magnitude;
-            var dir = dist > 1e-6f ? remaining / dist : Vector3.forward;
+            var remSq = remaining.sqrMagnitude;
+            var dist = Mathf.Sqrt(remSq);
+            var dir = dist > 1e-6f ? remaining * (1f / dist) : Vector3.forward;
 
             if (!Physics.CapsuleCast(
                     p1,
@@ -90,10 +93,13 @@ public static class KinematicMotorSolver
                 break;
             }
 
-            var approachNormalDot = Vector3.Dot(dir, hit.normal.normalized);
+            var slideNormal = ResolveContactNormalForSlide(motor, p1, in hit, out var normalFiltered);
+
+            var approachNormalDot = Vector3.Dot(dir, slideNormal);
             if (approachNormalDot > motor.VelocityAgainstNormalRejectDot)
             {
-                DrawSweepHitDiagnostics(motor, in hit, remaining, rejectedAsNonBlocking: true);
+                DrawSweepHitDiagnostics(motor, in hit, remaining, rejectedAsNonBlocking: true, in slideNormal,
+                    normalFiltered);
                 MaybeFlashObstacle(motor, in hit);
                 accumulated += remaining;
                 break;
@@ -106,20 +112,22 @@ public static class KinematicMotorSolver
 
             if (remaining.sqrMagnitude < EpsilonSq)
             {
-                DrawSweepHitDiagnostics(motor, in hit, Vector3.zero, rejectedAsNonBlocking: false);
+                DrawSweepHitDiagnostics(motor, in hit, Vector3.zero, rejectedAsNonBlocking: false, in slideNormal,
+                    normalFiltered);
                 MaybeFlashObstacle(motor, in hit);
                 break;
             }
 
-            var slid = SlideOrCrevice(remaining, hit.normal, hadPreviousNormal, lastNormal,
+            var slid = SlideOrCrevice(remaining, slideNormal, hadPreviousNormal, lastNormal,
                 motor.CreviceNormalDotThreshold, iter);
-            DrawSweepHitDiagnostics(motor, in hit, slid, rejectedAsNonBlocking: false);
+            DrawSweepHitDiagnostics(motor, in hit, slid, rejectedAsNonBlocking: false, in slideNormal,
+                normalFiltered);
             MaybeFlashObstacle(motor, in hit);
 
             remaining = slid;
 
             hadPreviousNormal = true;
-            lastNormal = hit.normal;
+            lastNormal = slideNormal;
         }
 
         return accumulated;
@@ -131,7 +139,7 @@ public static class KinematicMotorSolver
     }
 
     private static void DrawSweepHitDiagnostics(MotorSettingsSO motor, in RaycastHit hit, Vector3 slideVector,
-        bool rejectedAsNonBlocking)
+        bool rejectedAsNonBlocking, in Vector3 resolvedSlideNormal, bool usedLowerHemisphereFilter)
     {
         if (motor == null || !motor.DrawSweepHitsInSceneView)
         {
@@ -146,10 +154,74 @@ public static class KinematicMotorSolver
             Debug.DrawRay(hit.point, hit.normal * 0.5f, motor.SweepHitNormalColor, t);
         }
 
+        if (usedLowerHemisphereFilter && motor.DrawLowerHemisphereNormalFilter)
+        {
+            Debug.DrawRay(hit.point, hit.normal * 0.45f, motor.LowerHemisphereOriginalNormalColor, t);
+            Debug.DrawRay(hit.point, resolvedSlideNormal * 0.52f, motor.LowerHemisphereFilteredNormalColor, t);
+        }
+
         if (slideVector.sqrMagnitude > EpsilonSq)
         {
-            Debug.DrawRay(hit.point, slideVector.normalized * 0.42f, motor.SweepSlideDirectionColor, t);
+            var sm = slideVector.sqrMagnitude;
+            var inv = 0.42f / Mathf.Sqrt(sm);
+            Debug.DrawRay(hit.point, slideVector * inv, motor.SweepSlideDirectionColor, t);
         }
+    }
+
+    /// <summary>
+    /// 低台阶：底半球侧面刮到凸角时法线常带向上的寄生分量；在「非南极」且坡面不可行走时剥掉 Y，当作竖直挡板。
+    /// </summary>
+    private static Vector3 ResolveContactNormalForSlide(
+        MotorSettingsSO motor,
+        Vector3 bottomSphereCenter,
+        in RaycastHit hit,
+        out bool appliedLowerHemisphereFilter)
+    {
+        appliedLowerHemisphereFilter = false;
+        if (motor == null || !motor.EnableLowerHemisphereNormalFilter)
+        {
+            return hit.normal.normalized;
+        }
+
+        var n = hit.normal.normalized;
+        var toContact = hit.point - bottomSphereCenter;
+        var poleAllow = Mathf.Max(0.01f, motor.Radius * motor.LowerHemispherePoleRadiusFraction);
+        var horizSq = toContact.x * toContact.x + toContact.z * toContact.z;
+        if (horizSq <= poleAllow * poleAllow)
+        {
+            return n;
+        }
+
+        var steep = motor.IsSlopeTooSteep(n);
+        var shallowSideScrape = motor.LowerHemisphereFlattenIfGroundNormalYBelow > 0.001f
+                                && n.y > 0.0001f
+                                && n.y < motor.LowerHemisphereFlattenIfGroundNormalYBelow;
+        if (!steep && !shallowSideScrape)
+        {
+            return n;
+        }
+
+        var nxz = new Vector3(n.x, 0f, n.z);
+        var nxzSq = nxz.sqrMagnitude;
+        if (nxzSq < 1e-10f)
+        {
+            return n;
+        }
+
+        nxz *= 1f / Mathf.Sqrt(nxzSq);
+        appliedLowerHemisphereFilter = true;
+
+        if (motor.LogLowerHemisphereNormalFilters && Time.unscaledTime >= s_nextLowerHemisphereLogTime)
+        {
+            s_nextLowerHemisphereLogTime = Time.unscaledTime + 0.12f;
+            Debug.Log(
+                $"[KinematicMotor] LowerHemisphereNormalFilter | point=({hit.point.x:F3},{hit.point.y:F3},{hit.point.z:F3}) " +
+                $"bottomY={bottomSphereCenter.y:F3} horizOff={Mathf.Sqrt(horizSq):F3} " +
+                $"nIn=({n.x:F3},{n.y:F3},{n.z:F3}) nOut=({nxz.x:F3},{nxz.y:F3},{nxz.z:F3}) collider={hit.collider?.name}",
+                hit.collider);
+        }
+
+        return nxz;
     }
 
     private static void DrawCross(Vector3 center, float halfExtent, Color color, float duration)

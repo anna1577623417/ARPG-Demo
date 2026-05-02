@@ -90,6 +90,9 @@ public class Player : Entity<Player>, IDamageable {
     [Tooltip("在 Console 打印意图仲裁与 Action 打断窗口判定日志。")]
     [SerializeField] private bool debugInterruptFlow;
 
+    [Tooltip("在 Console 打印地面探针：主命中、二次稳定下探、最终 IsGrounded（受节流，避免刷屏）。")]
+    [SerializeField] private bool debugGroundProbe;
+
     // ─── 运行时状态 ───
 
     private PlayerStateManager m_stateManager;
@@ -102,8 +105,12 @@ public class Player : Entity<Player>, IDamageable {
     private bool m_runIntent;
     private float m_runLatchEndTime;
     private bool m_isInitialized;
+    private float m_nextGroundProbeLogTime;
 
     private Vector3 m_lastGroundNormal = Vector3.up;
+
+    /// <summary>上一逻辑帧结束时是否接地（用于马达二次下探稳定，减轻低台阶蹭起后的单帧 IsGrounded 抖动）。</summary>
+    private bool m_wasGroundedLastFrame;
 
     /// <summary>Legacy 双轨：未挂 <see cref="MotorSettingsSO"/> 时用固定最大坡角拒绝「凸角尖」当支撑面。</summary>
     private const float MaxSlopeDegreesLegacy = 50f;
@@ -670,19 +677,50 @@ public class Player : Entity<Player>, IDamageable {
             : groundCheckDistance;
         var castDistance = 0.1f + castReach;
 
+        RaycastHit hit = default;
         var hitGround = Physics.SphereCast(
             origin,
             probeRadius,
             Vector3.down,
-            out var hit,
+            out hit,
             castDistance,
             groundLayers,
             QueryTriggerInteraction.Ignore);
 
+        var usedExtraStabilizationProbe = false;
+        if (!hitGround
+            && motorSettings != null
+            && motorSettings.EnableExtraGroundStabilizationProbe
+            && context.AllowsHardGroundSnap
+            && m_wasGroundedLastFrame
+            && m_verticalSpeed <= motorSettings.GroundSnapMaxUpwardVelocity)
+        {
+            var extDist = castDistance + motorSettings.ExtraGroundProbeExtension;
+            hitGround = Physics.SphereCast(
+                origin,
+                probeRadius,
+                Vector3.down,
+                out hit,
+                extDist,
+                groundLayers,
+                QueryTriggerInteraction.Ignore);
+            usedExtraStabilizationProbe = hitGround;
+        }
+
         Debug.DrawRay(origin, Vector3.down * castDistance, Color.red);
         if (hitGround)
         {
-            Debug.DrawLine(origin, hit.point, Color.green);
+            Debug.DrawLine(origin, hit.point, usedExtraStabilizationProbe ? new Color(1f, 0.45f, 0.1f) : Color.green);
+        }
+
+        if (debugGroundProbe && Time.unscaledTime >= m_nextGroundProbeLogTime)
+        {
+            m_nextGroundProbeLogTime = Time.unscaledTime + 0.15f;
+            Debug.Log(
+                $"[GroundProbe] hit={hitGround} extraProbe={usedExtraStabilizationProbe} " +
+                $"wasGrounded={m_wasGroundedLastFrame} vy={m_verticalSpeed:F3} cast={castDistance:F3} " +
+                $"snapPolicy={context.AllowsHardGroundSnap} pt={(hitGround ? hit.point.ToString() : "-")}",
+                this);
         }
 
         var airborneSlopBand = motorSettings != null ? motorSettings.AirborneGroundContactSlop : float.MaxValue;
@@ -700,6 +738,7 @@ public class Player : Entity<Player>, IDamageable {
                 m_lastGroundNormal = Vector3.up;
             }
 
+            m_wasGroundedLastFrame = IsGrounded;
             return;
         }
 
@@ -707,6 +746,7 @@ public class Player : Entity<Player>, IDamageable {
         {
             IsGrounded = false;
             m_lastGroundNormal = Vector3.up;
+            m_wasGroundedLastFrame = IsGrounded;
             return;
         }
 
@@ -715,6 +755,7 @@ public class Player : Entity<Player>, IDamageable {
         {
             IsGrounded = false;
             m_lastGroundNormal = Vector3.up;
+            m_wasGroundedLastFrame = IsGrounded;
             return;
         }
 
@@ -724,6 +765,7 @@ public class Player : Entity<Player>, IDamageable {
 
         if (!useHardSnapLegacy)
         {
+            m_wasGroundedLastFrame = IsGrounded;
             return;
         }
 
@@ -733,5 +775,7 @@ public class Player : Entity<Player>, IDamageable {
             transform.position.x,
             targetY,
             transform.position.z);
+
+        m_wasGroundedLastFrame = IsGrounded;
     }
 }

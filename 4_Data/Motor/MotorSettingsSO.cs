@@ -57,6 +57,28 @@ public sealed class MotorSettingsSO : ScriptableObject
         "位移方向·命中法线 点积大于该值视为「非阻挡」（凸角接缝、背向噪声、擦肩而过），\n本段剩余位移一次性放行并结束本子步折射，减轻钝角抖动与过矫正死锁。")] [Range(-0.05f, 0.25f)]
     public float VelocityAgainstNormalRejectDot = 0.01f;
 
+    [Header("Low step — lower-hemisphere normal filter")]
+    [Tooltip(
+        "底半球「侧向」刮到低台阶直角时，PhysX 法线常带向上的寄生分量导致 Capsule Riding。\n在命中点相对底球球心存在明显水平偏移且法线被判为不可行走时，剥离法线 Y 并重归一化，当作竖直挡板滑动。")]
+    public bool EnableLowerHemisphereNormalFilter = true;
+
+    [Tooltip("命中点相对底球球心在 XZ 上距离小于 半径×该系数 时视为南极极点接触（平底），不过滤法线。")] [Range(0.02f, 0.35f)]
+    public float LowerHemispherePoleRadiusFraction = 0.12f;
+
+    [Tooltip(
+        "0=禁用。>0 时：侧向刮蹭且法线 Y 在 (0,该值) 内也强制摊平，用于「斜向骑台阶」仍被判为可行走坡面的极端情况。\n可能误伤极缓坡侧缘，默认关闭；若仍抖动可试 0.88~0.94。")] [Range(0f, 0.99f)]
+    public float LowerHemisphereFlattenIfGroundNormalYBelow = 0f;
+
+    [Header("Ground stabilization (locomotion)")]
+    [Tooltip("主 SphereCast 未命中但上一帧接地且本帧无向上初速时，追加一次更长下探，减轻低台阶蹭起后的单帧悬空与 IsGrounded 抖动。")]
+    public bool EnableExtraGroundStabilizationProbe = true;
+
+    [Tooltip("追加下探在基础 castDistance 上额外延伸的米数。")] [Range(0f, 1.5f)]
+    public float ExtraGroundProbeExtension = 0.35f;
+
+    [Tooltip("允许执行追加下探时垂直速度上限（向上速度大于此值视为跳跃/受击，不强行贴地）。")] [Range(0f, 5f)]
+    public float GroundSnapMaxUpwardVelocity = 0.08f;
+
     [Header("Debug (Scene / Game)")]
     [Tooltip("在 Scene 视图绘制 Sweep 命中点、法线与滑动方向。")]
     public bool DrawSweepHitsInSceneView;
@@ -74,6 +96,15 @@ public sealed class MotorSettingsSO : ScriptableObject
     public Color SweepIgnoredHitColor = new Color(1f, 0.92f, 0.2f, 1f);
     public Color SweepHitNormalColor = new Color(0.2f, 0.95f, 0.25f, 1f);
     public Color SweepSlideDirectionColor = new Color(0.2f, 0.75f, 1f, 1f);
+
+    [Tooltip("下半球法线被过滤时，在命中点绘制原始法线与过滤后法线（需 DrawSweepHitsInSceneView）。")]
+    public bool DrawLowerHemisphereNormalFilter;
+
+    public Color LowerHemisphereOriginalNormalColor = new Color(1f, 0.92f, 0.2f, 1f);
+    public Color LowerHemisphereFilteredNormalColor = new Color(1f, 0.35f, 0.85f, 1f);
+
+    [Tooltip("启用时向 Console 输出下半球法线过滤事件（约 0.12s 节流，避免刷屏）。")]
+    public bool LogLowerHemisphereNormalFilters;
 
     [Header("Soft rigidity (future)")]
     public float MotorMassWeight = 1f;
