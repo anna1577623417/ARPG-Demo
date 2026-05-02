@@ -19,6 +19,30 @@ MonoBehaviour:
     Speed: 1.1
     ReferenceLocomotionSpeed: 0
     IsLooping: 1
+  - StateName: Locomotion_TurnLeft90
+    Clip: {fileID: -203655887218126122, guid: f813715e3e9b42d4b8628de36930cf7c, type: 3}
+    TransitionDuration: 0.2
+    Speed: 1
+    ReferenceLocomotionSpeed: 0
+    IsLooping: 0
+  - StateName: Locomotion_TurnRight90
+    Clip: {fileID: -203655887218126122, guid: 6e5ec981a3139c64a8e61250808cb480, type: 3}
+    TransitionDuration: 0.2
+    Speed: 1
+    ReferenceLocomotionSpeed: 0
+    IsLooping: 0
+  - StateName: Locomotion_TurnLeft180
+    Clip: {fileID: -203655887218126122, guid: 0d8c838ffd2dc674fbac6abe7df0b199, type: 3}
+    TransitionDuration: 0.2
+    Speed: 1
+    ReferenceLocomotionSpeed: 0
+    IsLooping: 0
+  - StateName: Locomotion_TurnRight180
+    Clip: {fileID: -203655887218126122, guid: 8492bb239cf628240a1bc01fa6f309f2, type: 3}
+    TransitionDuration: 0.2
+    Speed: 1
+    ReferenceLocomotionSpeed: 0
+    IsLooping: 0
   - StateName: Locomotion_Walk
     Clip: {fileID: -7003542030617561338, guid: c334125d0dbc3a544a089e659a9370d4, type: 3}
     TransitionDuration: 0.2

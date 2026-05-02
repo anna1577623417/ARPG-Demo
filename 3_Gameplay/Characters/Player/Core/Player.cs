@@ -178,6 +178,14 @@ public class Player : Entity<Player>, IDamageable {
     public Vector3 MovementIntent => m_movementIntent;
     public bool DebugInterruptFlow => debugInterruptFlow;
 
+    /// <summary>
+    /// 原地转身表现层快照，由 PlayerLocomotionState 每帧通过 <see cref="SetTurnInfo"/> 写入；
+    /// PlayerAnimController 根据其值决定是否切到 TurnLeft/Right 90/180 动画切片。
+    /// </summary>
+    private TurnInfo m_currentTurnInfo;
+    public TurnInfo CurrentTurnInfo => m_currentTurnInfo;
+    public void SetTurnInfo(in TurnInfo info) => m_currentTurnInfo = info;
+
     public float NormalizedSpeed
     {
         get

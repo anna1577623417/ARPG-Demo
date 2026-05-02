@@ -45,6 +45,20 @@ public class PlayerAnimController : EntityAnimController
     [Tooltip("起跳 Clip → 滞空循环 Clip 的混合时长（秒），略大更顺滑）。")]
     [SerializeField, Range(0f, 0.5f)] private float jumpToAirCrossfade = 0.2f;
 
+    [Header("Turn-In-Place blend")]
+    [Tooltip("Turn 状态权重场的平滑速度（与 MoveTowards(..., dt * speed) 等价）。8 ≈ 0.125s 完成推拉。")]
+    [SerializeField, Range(2f, 20f)] private float turnWeightBlendSpeed = 8f;
+
+    [Header("Turn-In-Place debugger (Console)")]
+    [Tooltip("开启后：输出转身切片播放细节。若仅勾选 Player State Manager 上的 Enable Trigger Debugger，也会自动输出 [TurnDbg:Anim] 边沿日志。")]
+    [SerializeField] private bool debugTurnPresentation;
+
+    [Tooltip("额外：在同一转身子状态停留时重复打印 Play（通常无需开启；边沿日志已足够确认是否播片）。")]
+    [SerializeField] private bool debugTurnPresentationRepeatPlay;
+
+    [Tooltip("Repeat 模式下的最小日志间隔（秒）。")]
+    [SerializeField, Range(0.05f, 1f)] private float turnPresentationLogInterval = 0.12f;
+
     private Entity _entity;
     private Player _player;
 
@@ -57,7 +71,21 @@ public class PlayerAnimController : EntityAnimController
     private bool _landingHold;
     private float _landingTimer;
 
-    private enum LocomotionSub : byte { None, Idle, Walk, Run }
+    private float _nextTurnPresentationLogTime;
+
+    private enum LocomotionSub : byte
+    {
+        None,
+        Idle,
+        Walk,
+        Run,
+        // ── v3.3.3 模块 14：原地转身（Turn-In-Place）。沿用现有 2 端口 Crossfade，
+        //    无需改造为 6 端口 mixer：Turn 子状态等价于一个"Idle 的特化分支"。
+        TurnLeft90,
+        TurnRight90,
+        TurnLeft180,
+        TurnRight180,
+    }
 
     // ─── 生命周期 ───
 
@@ -131,8 +159,13 @@ public class PlayerAnimController : EntityAnimController
             var target = ResolveLocomotionSub();
             if (target != _locoSub)
             {
+                var fromSub = _locoSub;
+                var wasTurn = IsTurnSub(fromSub);
+                var nowTurn = IsTurnSub(target);
                 _locoSub = target;
-                PlayLocomotionClipForSub(target);
+                // Turn 与普通 Locomotion 互切时使用统一时序，避免条目 transition 差异造成视觉抖动。
+                var transitionOverride = (wasTurn || nowTurn) ? ResolveTurnCrossfadeDuration() : -1f;
+                PlayLocomotionClipForSub(target, transitionOverride, fromSub);
             }
 
             ApplyLocomotionStrideMatching();
@@ -190,15 +223,36 @@ public class PlayerAnimController : EntityAnimController
 
     private LocomotionSub ResolveLocomotionSub()
     {
-        if (_player == null || !_player.HasMovementIntent)
+        if (_player == null) return LocomotionSub.Idle;
+
+        // 与 TurnSettings.EnableTurnInPlacePresentation 对齐：关开关时不播转身切片（防御性；逻辑层也会清除 Turn）。
+        if (_player.States != null && !_player.States.LocomotionTurnSettings.EnableTurnInPlacePresentation)
         {
-            return LocomotionSub.Idle;
+            if (!_player.HasMovementIntent) return LocomotionSub.Idle;
+            return _player.WantsRun ? LocomotionSub.Run : LocomotionSub.Walk;
         }
 
+        // 转身优先：TurnInfo 由 PlayerLocomotionState 每帧写入。
+        // IsTurning 时即便玩家在按方向键，本层也优先播 Turn 切片直到锁定解除。
+        var turn = _player.CurrentTurnInfo;
+        if (turn.IsTurning)
+        {
+            switch (turn.Type)
+            {
+                case TurnType.Turn180:
+                    return turn.Direction < 0 ? LocomotionSub.TurnLeft180 : LocomotionSub.TurnRight180;
+                case TurnType.Turn90:
+                    return turn.Direction < 0 ? LocomotionSub.TurnLeft90 : LocomotionSub.TurnRight90;
+            }
+        }
+
+        if (!_player.HasMovementIntent) return LocomotionSub.Idle;
         return _player.WantsRun ? LocomotionSub.Run : LocomotionSub.Walk;
     }
 
-    private void PlayLocomotionClipForSub(LocomotionSub target)
+    /// <param name="fromSub">切分前的 Locomotion 子状态；用于边沿日志（转身进出必须保留 from）。</param>
+    private void PlayLocomotionClipForSub(LocomotionSub target, float transitionOverride = -1f,
+        LocomotionSub fromSub = LocomotionSub.None)
     {
         if (animLibrary == null) return;
 
@@ -206,20 +260,93 @@ public class PlayerAnimController : EntityAnimController
         {
             LocomotionSub.Walk => "Locomotion_Walk",
             LocomotionSub.Run => "Locomotion_Run",
+            LocomotionSub.TurnLeft90 => "Locomotion_TurnLeft90",
+            LocomotionSub.TurnRight90 => "Locomotion_TurnRight90",
+            LocomotionSub.TurnLeft180 => "Locomotion_TurnLeft180",
+            LocomotionSub.TurnRight180 => "Locomotion_TurnRight180",
             _ => "Locomotion_Idle",
         };
 
         _currentLocoEntry = animLibrary.GetEntry(key);
         if (_currentLocoEntry != null && _currentLocoEntry.Clip != null)
         {
-            Play(_currentLocoEntry.Clip, _currentLocoEntry.TransitionDuration, _currentLocoEntry.Speed,
+            var transition = transitionOverride >= 0f ? transitionOverride : _currentLocoEntry.TransitionDuration;
+            Play(_currentLocoEntry.Clip, transition, _currentLocoEntry.Speed,
                 _currentLocoEntry.IsLooping);
+            LogTurnPresentationEdge(fromSub, target, key, _currentLocoEntry.Clip, transition);
+            MaybeLogTurnPresentationRepeat(target, key, _currentLocoEntry.Clip, transition);
+        }
+        else if (ShouldLogTurnPresentation && IsTurnSub(target))
+        {
+            Debug.LogWarning(
+                $"[TurnDbg:Anim] missing AnimLibrary entry or Clip | key={key} | player={_player?.name}",
+                this);
         }
     }
+
+    /// <summary>与 TurnSettings.EnableTriggerDebugger 联动，避免“只有逻辑日志、看不到是否播片”。</summary>
+    private bool ShouldLogTurnPresentation =>
+        debugTurnPresentation
+        || (_player != null && _player.States != null && _player.States.LocomotionTurnSettings.EnableTriggerDebugger);
+
+    private void LogTurnPresentationEdge(LocomotionSub from, LocomotionSub to, string libraryKey, AnimationClip clip,
+        float crossfade)
+    {
+        if (!ShouldLogTurnPresentation || clip == null)
+        {
+            return;
+        }
+
+        if (!IsTurnSub(from) && !IsTurnSub(to))
+        {
+            return;
+        }
+
+        var ti = _player != null ? _player.CurrentTurnInfo : default;
+        Debug.Log(
+            $"[TurnDbg:Anim] edge | {from} -> {to} | libKey={libraryKey} clip={clip.name} len={clip.length:F2}s " +
+            $"crossfade={crossfade:F3}s speedMul={(_currentLocoEntry != null ? _currentLocoEntry.Speed : 1f):F2} " +
+            $"loop={clip.isLooping} | primary={CurrentClipName} | TurnInfo t={ti.IsTurning} type={ti.Type} " +
+            $"∠={ti.Angle:F1}°",
+            this);
+    }
+
+    private void MaybeLogTurnPresentationRepeat(LocomotionSub sub, string libraryKey, AnimationClip clip, float transition)
+    {
+        if (!debugTurnPresentationRepeatPlay || !IsTurnSub(sub) || clip == null)
+        {
+            return;
+        }
+
+        var now = Time.unscaledTime;
+        if (now < _nextTurnPresentationLogTime)
+        {
+            return;
+        }
+
+        _nextTurnPresentationLogTime = now + Mathf.Max(0.05f, turnPresentationLogInterval);
+
+        var ti = _player != null ? _player.CurrentTurnInfo : default;
+        Debug.Log(
+            $"[TurnDbg:Anim] play_repeat | libKey={libraryKey} clip={clip.name} crossfade={transition:F3}s | " +
+            $"TurnInfo t={ti.IsTurning} type={ti.Type} ∠={ti.Angle:F1}°",
+            this);
+    }
+
+    private float ResolveTurnCrossfadeDuration()
+    {
+        return 1f / Mathf.Max(1f, turnWeightBlendSpeed);
+    }
+
+    /// <summary>转身切片是"原地旋转动画"，与角色平面速度无关，必须跳过步幅匹配，否则会因 currentSpeed≈0 把 playbackSpeed 推到 Clamp 下限。</summary>
+    private static bool IsTurnSub(LocomotionSub sub) =>
+        sub == LocomotionSub.TurnLeft90 || sub == LocomotionSub.TurnRight90
+        || sub == LocomotionSub.TurnLeft180 || sub == LocomotionSub.TurnRight180;
 
     private void ApplyLocomotionStrideMatching()
     {
         if (_player == null || _currentLocoEntry == null) return;
+        if (IsTurnSub(_locoSub)) return;
 
         var refSpeed = _currentLocoEntry.ReferenceLocomotionSpeed;
         if (refSpeed < 0.001f) return;

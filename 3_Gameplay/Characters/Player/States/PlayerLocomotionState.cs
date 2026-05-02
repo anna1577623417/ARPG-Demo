@@ -17,9 +17,13 @@ public sealed class PlayerLocomotionState : PlayerState
     /// </summary>
     private readonly ulong m_allowedInterrupts;
 
-    public PlayerLocomotionState(ulong allowedInterrupts)
+    /// <summary>原地转身解析器（仅在本状态生命周期内活跃；离开时 ClearLock）。</summary>
+    private readonly TurnResolver m_turnResolver;
+
+    public PlayerLocomotionState(ulong allowedInterrupts, in TurnSettings turnSettings)
     {
         m_allowedInterrupts = allowedInterrupts;
+        m_turnResolver = new TurnResolver(in turnSettings);
     }
 
     public override bool TryConsumeGameplayIntent(Player player, in FrameContext ctx, in GameplayIntent intent)
@@ -49,10 +53,15 @@ public sealed class PlayerLocomotionState : PlayerState
     protected override void OnEnter(Player player)
     {
         RefreshLocomotionTags(player);
+        m_turnResolver.ClearLock();
+        player.SetTurnInfo(default);
     }
 
     protected override void OnExit(Player player)
     {
+        // 离开 Locomotion 必须清除转身锁定，否则下次回到 Locomotion 第一帧仍会处于"locked"状态。
+        m_turnResolver.ClearLock();
+        player.SetTurnInfo(default);
     }
 
     protected override void OnLogicUpdate(Player player)
@@ -70,6 +79,28 @@ public sealed class PlayerLocomotionState : PlayerState
         }
 
         RefreshLocomotionTags(player);
+
+        // ★ 关键时序：在 MoveByLocomotionIntent (含 LookAtDirection) 之前采样转身意图。
+        //   否则 transform.forward 已被本帧旋转推近 intent，angleDiff 永远很小。
+        var turnSettings = player.States.LocomotionTurnSettings;
+        var turnInfo = m_turnResolver.Tick(player, Time.deltaTime, in turnSettings);
+        player.SetTurnInfo(in turnInfo);
+
+        if (turnSettings.DrawTurnDebugRays && player.HasMovementIntent)
+        {
+            var o = player.transform.position + Vector3.up * 0.08f;
+            var f = Vector3.ProjectOnPlane(player.transform.forward, Vector3.up);
+            var intent = Vector3.ProjectOnPlane(player.MovementIntent, Vector3.up);
+            if (f.sqrMagnitude > 1e-8f)
+            {
+                Debug.DrawRay(o, f.normalized * 1.25f, Color.cyan);
+            }
+
+            if (intent.sqrMagnitude > 1e-8f)
+            {
+                Debug.DrawRay(o, intent.normalized * 1.25f, Color.yellow);
+            }
+        }
 
         if (player.HasMovementIntent)
         {

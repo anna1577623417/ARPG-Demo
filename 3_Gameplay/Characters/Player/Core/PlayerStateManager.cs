@@ -60,11 +60,18 @@ public class PlayerStateManager : EntityStateManager<Player>
               | StateTag.AllowInterruptByHeavy
               | StateTag.AllowInterruptByCharged);
 
+    [Header("Turn-In-Place (locomotion presentation augmentation)")]
+    [Tooltip("原地转身的触发/解锁/分类阈值。详见 TurnSettings 字段 Tooltip。")]
+    [SerializeField] private TurnSettings turnSettings = TurnSettings.Default;
+
+    /// <summary>供 Locomotion 每帧传入 <see cref="TurnResolver"/>，使 Inspector 调试开关与阈值即时生效。</summary>
+    public TurnSettings LocomotionTurnSettings => turnSettings;
+
     protected override List<EntityState<Player>> BuildStateList()
     {
         return new List<EntityState<Player>>
         {
-            new PlayerLocomotionState(locomotionAllowedInterrupts),
+            new PlayerLocomotionState(locomotionAllowedInterrupts, turnSettings),
             new PlayerAirborneState(airborneAscendingAllowedInterrupts, airborneDescendingAllowedInterrupts),
             new PlayerActionState(),
             new PlayerDeadState(),
