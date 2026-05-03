@@ -33,8 +33,12 @@ using UnityEngine;
 [AddComponentMenu("GameMain/Camera/Action Camera Controller")]
 public class ActionCameraController : CameraController
 {
-    [Header("Follow Target")]
-    [Tooltip("玩家根节点下的空物体（不是骨骼子物体）。位置 ≈ 颈部高度。")]
+    [Header("Deadzone Proxy (scene)")]
+    [Tooltip("场景中预置的 CameraDeadzoneProxy 节点；VCam.Follow / LookAt 将指向它。\n玩家运行时生成后通过 RebindFollowAndLookAt 动态注入目标。")]
+    [SerializeField] private CameraDeadzoneProxy deadzoneProxy;
+
+    [Header("Follow Target (runtime)")]
+    [Tooltip("运行时由 RebindFollowAndLookAt 填入（PlayerCameraAnchor.FollowTarget）。\n仅用于每帧写入轨道旋转，不直接传给 VCam。")]
     [SerializeField] private Transform followTarget;
 
     [Header("Orbit Settings")]
@@ -48,6 +52,20 @@ public class ActionCameraController : CameraController
 
     public override GameModeType Mode => GameModeType.Action;
     public override bool IsCameraRelativeMovement => true;
+
+    private void Awake()
+    {
+        // 若 Inspector 未手动指派（运行时动态场景），自动在场景中查找唯一的 Proxy。
+        // 此处在 Start/PlayerManager.TrySpawnInitial 之前执行，可保证 Rebind 时 Proxy 已就绪。
+        if (deadzoneProxy == null)
+        {
+            deadzoneProxy = FindObjectOfType<CameraDeadzoneProxy>();
+            if (deadzoneProxy == null)
+            {
+                Debug.LogWarning("[ActionCamera] 场景中未找到 CameraDeadzoneProxy，相机死区无效。", this);
+            }
+        }
+    }
 
     protected override void OnEnable()
     {
@@ -99,22 +117,24 @@ public class ActionCameraController : CameraController
     }
 
     /// <summary>
-    /// 运行时把轨道控制与 Cinemachine 跟/看目标换到指定 Transform（玩家由代码生成且未在检视器里连线时使用）。
+    /// 动态绑定跟随与注视目标（角色运行时生成 / 队伍切换时由 PlayerManager 调用）。
+    ///
+    /// 绑定路径：
+    ///   PlayerCameraAnchor.FollowTarget → CameraDeadzoneProxy（死区过滤）→ VCam.Follow
+    ///   PlayerCameraAnchor.LookAtTarget → CameraDeadzoneProxy.LookAtTransform（精准镜像）→ VCam.LookAt
+    ///
+    /// ActionCameraController 本身仍持有 <paramref name="follow"/> 引用，
+    /// 用于 UpdateCamera() 每帧写入轨道偏航 / 俯仰旋转。
     /// </summary>
-    /// <param name="follow">跟随锚点（与预制体上 PlayerCameraAnchor 的 Follow 一致）。</param>
-    /// <param name="lookAt">LookAt；为 null 时与 <paramref name="follow"/> 相同。</param>
+    /// <param name="follow">跟随锚点（PlayerCameraAnchor.FollowTarget，Player 子物体）。</param>
+    /// <param name="lookAt">注视锚点；为 null 时与 <paramref name="follow"/> 相同。</param>
     public void RebindFollowAndLookAt(Transform follow, Transform lookAt = null)
     {
         if (follow == null)
         {
-            Debug.LogError("[ActionCamera] RebindFollowAndLookAt: follow 为 null。", this);
+            Debug.LogError("[ActionCamera] RebindFollowAndLookAt: follow 不能为 null。", this);
             return;
         }
-
-        var targetFollow = follow;
-        var targetLook = lookAt != null ? lookAt : follow;
-
-        followTarget = follow;
 
         if (virtualCamera == null)
         {
@@ -122,10 +142,26 @@ public class ActionCameraController : CameraController
             return;
         }
 
-        // FreeLook / 其他子类不是 CinemachineVirtualCamera，但均继承 VirtualCameraBase 的 Follow、LookAt
-        virtualCamera.Follow = targetFollow;
-        virtualCamera.LookAt = targetLook;
+        // 存储原始锚点：UpdateCamera() 每帧写旋转用
+        followTarget = follow;
 
+        // ── 优先路由到 Proxy（动态绑定的核心路径）──
+        if (deadzoneProxy != null)
+        {
+            deadzoneProxy.Rebind(follow, lookAt);
+            virtualCamera.Follow = deadzoneProxy.transform;
+            virtualCamera.LookAt = deadzoneProxy.LookAtTransform;
+        }
+        else
+        {
+            // 降级：无 Proxy 时直接绑定（兼容未配置 Proxy 的场景）
+            Debug.LogWarning("[ActionCamera] deadzoneProxy 未指派，直接绑定 VCam。相机可能出现物理微动。", this);
+            var targetLook = lookAt != null ? lookAt : follow;
+            virtualCamera.Follow = follow;
+            virtualCamera.LookAt = targetLook;
+        }
+
+        // 从锚点当前朝向初始化偏航 / 俯仰，防止激活瞬间相机跳变
         var euler = follow.eulerAngles;
         _yaw = euler.y;
         _pitch = euler.x;
