@@ -71,7 +71,7 @@ MonoBehaviour:
     m_RotationOrder: 4
   ReferenceSpeed: 12
   MatchAnimationSpeed: 1
-  GravityBehavior: 1
+  GravityBehavior: 0
   ScaleType: 0
   WarpCurve:
     serializedVersion: 2
@@ -80,3 +80,31 @@ MonoBehaviour:
     m_PostInfinity: 2
     m_RotationOrder: 4
   MaxWarpDistance: 0.5
+  BurstDurationSeconds: 0
+  LegacyConstantPlanarSpeed: 0
+  UsePlanarVelocityShape: 0
+  PlanarVelocityMultiplier:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  PlanarPeakSpeed: 12
