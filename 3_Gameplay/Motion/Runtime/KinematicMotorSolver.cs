@@ -346,9 +346,9 @@ public static class KinematicMotorSolver {
                 if (remainingMagSq < minDispSq) {
                     if (motor.LogStabilityAborts && Time.unscaledTime >= s_nextStabilityAbortLogTime) {
                         s_nextStabilityAbortLogTime = Time.unscaledTime + 0.1f;
-                        Debug.Log(
-                            $"[KinematicMotor][StabilitySnap] iter={iter} |v_remain|={Mathf.Sqrt(remainingMagSq) / Mathf.Max(dt, 1e-5f):F4} m/s " +
-                            $"< minSpeed={minSnapSpeed:F3} m/s → abort iter");
+                        //Debug.Log(
+                        //    $"[KinematicMotor][StabilitySnap] iter={iter} |v_remain|={Mathf.Sqrt(remainingMagSq) / Mathf.Max(dt, 1e-5f):F4} m/s " +
+                        //    $"< minSpeed={minSnapSpeed:F3} m/s → abort iter");
                     }
 
                     break;

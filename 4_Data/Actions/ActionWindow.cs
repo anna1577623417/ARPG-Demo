@@ -13,7 +13,7 @@ using UnityEngine.Serialization;
 ///   [0.3–0.5] PhaseActive | Invulnerable             — 判定帧，霸体
 ///   [0.5–1.0] PhaseRecovery | CanCancelToLocomotion   — 后摇，可取消
 ///
-/// Inspector 由 Editor/StateTagMaskPropertyDrawers 按槽位 0–63 勾选编辑。
+/// Inspector 由 Editor/StateTagMaskPropertyDrawers：分组下拉多选（槽位 0–63 ↔ StateTag）。
 /// </summary>
 [Serializable]
 public struct ActionWindow

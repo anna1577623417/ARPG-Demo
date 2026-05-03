@@ -35,10 +35,11 @@ public class PlayerStateManager : EntityStateManager<Player>
     //   ActionInterruptResolver.MapIntentToInterruptTag 做位与判定。
     // ───────────────────────────────────────────────────────────────────────────
 
-    [Header("Locomotion interrupt permissions")]
+    [Header("Locomotion — interrupt mask")]
     [Tooltip("地面状态允许哪些意图打断。默认全部允许（保持 v3.1.1 之前行为）。")]
     [StateTagMask]
-    [SerializeField] private ulong locomotionAllowedInterrupts =
+    [SerializeField, InspectorName("Locomotion — mask")]
+    private ulong locomotionAllowedInterrupts =
         (ulong)(StateTag.AllowInterruptByDodge
               | StateTag.AllowInterruptBySwordDash
               | StateTag.AllowInterruptByLight
@@ -46,14 +47,16 @@ public class PlayerStateManager : EntityStateManager<Player>
               | StateTag.AllowInterruptByCharged
               | StateTag.AllowInterruptByJump);
 
-    [Header("Airborne interrupt permissions (phase-aware)")]
+    [Header("Airborne — interrupt (ascending)")]
     [Tooltip("空中上升阶段（VerticalSpeed > 0）允许哪些意图打断。默认空 = 起跳后保留动量、不允许任何打断。")]
     [StateTagMask]
-    [SerializeField] private ulong airborneAscendingAllowedInterrupts;
+    [SerializeField, InspectorName("Airborne up — mask")]
+    private ulong airborneAscendingAllowedInterrupts;
 
     [Tooltip("空中下落阶段（VerticalSpeed ≤ 0）允许哪些意图打断。默认允许各类攻击/闪避；不含 Jump（无二段跳）。")]
     [StateTagMask]
-    [SerializeField] private ulong airborneDescendingAllowedInterrupts =
+    [SerializeField, InspectorName("Airborne down — mask")]
+    private ulong airborneDescendingAllowedInterrupts =
         (ulong)(StateTag.AllowInterruptByDodge
               | StateTag.AllowInterruptBySwordDash
               | StateTag.AllowInterruptByLight

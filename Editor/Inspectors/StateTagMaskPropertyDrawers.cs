@@ -7,13 +7,10 @@ using UnityEngine;
 // ═══════════════════════════════════════════════════════════════════════════════
 //   标签掩码 Inspector 绘制器（v3.1.2）
 // ───────────────────────────────────────────────────────────────────────────────
-//   核心改造：抛弃 64 个 checkbox 平铺，按 StateTag bit 分区折叠分组：
-//     · Physical (Bit  0–15)
-//     · Phase    (Bit 16–31)
-//     · Ability  (Bit 32–39)
-//     · Interrupt(Bit 40–47)
-//     · Reserved (Bit 48–63)
-//   未映射的槽位完全隐藏；顶部一行显示当前已选标签摘要。
+//   核心 UI：按 StateTag bit 分区；每组一行「分类标题 + 下拉按钮」，点击弹出 GenericMenu
+//   多选（带勾，行为类似 Layer/Mask）。标签文案主信息在前（如 Jump — Interrupt）。
+//     · Physical / Phase / Ability / Interrupt / Reserved
+//   顶部一行仍显示全局已选摘要。
 //
 //   存储兼容：
 //     · ChargedPayloadTags (ulong, StateTag 直接位)   — DrawStateTagMaskField
@@ -65,7 +62,7 @@ internal static class TagCatalog
             var bit = BitIndexOf(u);
             var slot = FindSlotIndex(u);                     // -1 = 未在 ActionWindowTagSlots 中（极端情况）
             var cat = InferCategory(bit);
-            var display = ObjectNames.NicifyVariableName(e.ToString());
+            var display = FormatTagDisplay(e, cat);
             list.Add(new TagEntry(e, bit, slot, cat, display));
         }
 
@@ -100,12 +97,60 @@ internal static class TagCatalog
         return TagCategory.Reserved;
     }
 
+    /// <summary>
+    /// Inspector 窄列友好：主语义在前（Jump / Dodge），修饰在后（Interrupt / Can）。
+    /// </summary>
+    static string FormatTagDisplay(StateTag tag, TagCategory cat)
+    {
+        switch (tag)
+        {
+            case StateTag.CanJump:
+                return "Jump — Can";
+            case StateTag.CanDodge:
+                return "Dodge — Can";
+            case StateTag.CanLightAttack:
+                return "Light — Can";
+            case StateTag.CanHeavyAttack:
+                return "Heavy — Can";
+            case StateTag.CanCancelToLocomotion:
+                return "Cancel Loco — Can";
+            case StateTag.Invulnerable:
+                return "Invuln — Can";
+            case StateTag.CanSwordDash:
+                return "Sword Dash — Can";
+            case StateTag.AttackCharged:
+                return "Charged — Tag";
+            case StateTag.AllowInterruptByDodge:
+                return "Dodge — Interrupt";
+            case StateTag.AllowInterruptBySwordDash:
+                return "Sword Dash — Interrupt";
+            case StateTag.AllowInterruptByLight:
+                return "Light — Interrupt";
+            case StateTag.AllowInterruptByHeavy:
+                return "Heavy — Interrupt";
+            case StateTag.AllowInterruptByCharged:
+                return "Charged — Interrupt";
+            case StateTag.AllowInterruptByJump:
+                return "Jump — Interrupt";
+            case StateTag.PhaseStartup:
+                return "Startup — Phase";
+            case StateTag.PhaseActive:
+                return "Active — Phase";
+            case StateTag.PhaseRecovery:
+                return "Recovery — Phase";
+            case StateTag.Stunned:
+                return "Stunned — Phase";
+            default:
+                return ObjectNames.NicifyVariableName(tag.ToString());
+        }
+    }
+
     public static string CategoryHeader(TagCategory c) => c switch
     {
-        TagCategory.Physical  => "Physical (姿态)",
-        TagCategory.Phase     => "Phase (动作阶段)",
-        TagCategory.Ability   => "Ability gates (实体能力闸门)",
-        TagCategory.Interrupt => "Interrupt permissions (打断许可)",
+        TagCategory.Physical  => "Physical",
+        TagCategory.Phase     => "Phase",
+        TagCategory.Ability   => "Ability",
+        TagCategory.Interrupt => "Interrupt",
         TagCategory.Reserved  => "Reserved",
         _ => c.ToString(),
     };
@@ -137,40 +182,39 @@ internal static class StateTagMaskDrawerUtility
     // ── 给 ActionChargeConfig.ChargedPayloadTags 用：ulong 直接是 StateTag 位 ──
     internal static float GetMaskHeight(SerializedProperty prop, GUIContent label)
     {
-        var stateTagMask = ReadULong(prop);
-        return GroupedTagDrawer.GetHeight(prop.propertyPath, stateTagMask);
+        return GroupedTagDrawer.GetHeight();
     }
 
     internal static void DrawMaskField(Rect rect, SerializedProperty prop, GUIContent label)
     {
-        var raw = ReadULong(prop);
-        var changed = GroupedTagDrawer.Draw(rect, prop.propertyPath, label, raw,
-            isSlotMode: false, out var newVal);
-        if (changed) WriteULong(prop, newVal);
+        GroupedTagDrawer.Draw(rect, prop, label, isSlotMode: false);
     }
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
-//   分组折叠绘制器主体
+//   分组下拉多选（仿 Layer/Mask 弹出菜单 + 勾选项）
 // ───────────────────────────────────────────────────────────────────────────────
 internal static class GroupedTagDrawer
 {
-    const int Cols = 2;
     static readonly TagCategory[] s_order =
     {
         TagCategory.Physical, TagCategory.Phase, TagCategory.Ability,
         TagCategory.Interrupt, TagCategory.Reserved,
     };
 
-    /// <summary>统一入口。<paramref name="isSlotMode"/>=true 时 rawMask 是 Slot 位（需 Slot↔StateTag 转换）。</summary>
-    public static bool Draw(Rect rect, string propertyPath, GUIContent label, ulong rawMask,
-        bool isSlotMode, out ulong newRawMask)
+    /// <summary>
+    /// <paramref name="isSlotMode"/>：true 时字段存 Slot 位，读写时与 StateTag 互转。
+    /// </summary>
+    public static void Draw(Rect rect, SerializedProperty ulongProp, GUIContent label, bool isSlotMode)
     {
+        EditorGUI.BeginProperty(rect, label, ulongProp);
+
+        var rawMask = StateTagMaskDrawerUtility.ReadULong(ulongProp);
         var stateTagMask = isSlotMode ? SlotMaskToStateTagMask(rawMask) : rawMask;
+
         var lineH = EditorGUIUtility.singleLineHeight;
         var space = 2f;
 
-        // ── 标题行：label + 选中摘要 ─────────────────────────────────────
         var headRect = new Rect(rect.x, rect.y, rect.width, lineH);
         var labelRect = new Rect(headRect.x, headRect.y, EditorGUIUtility.labelWidth, lineH);
         var summaryRect = new Rect(headRect.x + EditorGUIUtility.labelWidth, headRect.y,
@@ -179,81 +223,105 @@ internal static class GroupedTagDrawer
         DrawSelectionSummary(summaryRect, stateTagMask);
 
         var y = rect.y + lineH + space;
-        var changed = false;
 
-        // ── 每个分组一个 Foldout（状态存 SessionState，不污染 Asset）──
         foreach (var cat in s_order)
         {
             var entries = TagCatalog.ByCategory[cat];
             if (entries.Count == 0) continue;
 
-            var hasSelected = AnyEntrySelected(entries, stateTagMask);
-            var foldKey = $"TagDrawer.Foldout::{propertyPath}::{cat}";
-            var defaultExpanded = hasSelected;
-            var expanded = SessionState.GetBool(foldKey, defaultExpanded);
+            var rowRect = new Rect(rect.x, y, rect.width, lineH);
+            var prefix = TagCatalog.CategoryHeader(cat);
+            var countSel = CountSelected(entries, stateTagMask);
+            var prefixW = Mathf.Min(128f, rowRect.width * 0.32f);
+            var prefixRect = new Rect(rowRect.x, rowRect.y, prefixW, lineH);
+            var dropRect = new Rect(rowRect.x + prefixW + 4f, rowRect.y,
+                Mathf.Max(100f, rowRect.width - prefixW - 4f), lineH);
 
-            var foldRect = new Rect(rect.x, y, rect.width, lineH);
-            var newExpanded = EditorGUI.Foldout(foldRect, expanded,
-                BuildCategoryHeader(cat, entries, stateTagMask), true);
-            if (newExpanded != expanded) SessionState.SetBool(foldKey, newExpanded);
-            y += lineH + space;
+            var prefixStyle = EditorStyles.miniLabel;
+            EditorGUI.LabelField(prefixRect,
+                new GUIContent($"{prefix}  ({countSel}/{entries.Count})", prefix), prefixStyle);
 
-            if (!newExpanded) continue;
+            var summaryBtn = BuildCategorySelectionSummary(entries, stateTagMask);
+            var gc = new GUIContent(string.IsNullOrEmpty(summaryBtn) ? "(choose…)" : summaryBtn);
 
-            EditorGUI.indentLevel++;
-            var indentX = rect.x + 14f;
-            var contentW = rect.width - 14f;
-            var colW = contentW / Cols;
-
-            for (var i = 0; i < entries.Count; i++)
+            if (EditorGUI.DropdownButton(dropRect, gc, FocusType.Passive))
             {
-                var entry = entries[i];
-                var col = i % Cols;
-                var row = i / Cols;
-                var rr = new Rect(indentX + col * colW, y + row * (lineH + 1f),
-                    colW - 4f, lineH);
-
-                var on = (stateTagMask & (ulong)entry.Tag) != 0UL;
-                var newOn = EditorGUI.ToggleLeft(rr, entry.Display, on);
-                if (newOn != on)
-                {
-                    if (newOn) stateTagMask |= (ulong)entry.Tag;
-                    else stateTagMask &= ~(ulong)entry.Tag;
-                    changed = true;
-                }
+                ShowCategoryDropdown(dropRect, ulongProp, entries, isSlotMode);
             }
 
-            var rows = Mathf.CeilToInt((float)entries.Count / Cols);
-            y += rows * (lineH + 1f) + space;
-            EditorGUI.indentLevel--;
+            y += lineH + space;
         }
 
-        newRawMask = isSlotMode ? StateTagMaskToSlotMask(stateTagMask) : stateTagMask;
-        return changed;
+        EditorGUI.EndProperty();
     }
 
-    public static float GetHeight(string propertyPath, ulong stateTagMask)
+    public static float GetHeight()
     {
         var lineH = EditorGUIUtility.singleLineHeight;
         var space = 2f;
-        var h = lineH + space;                                 // 标题行
+        var h = lineH + space;
         foreach (var cat in s_order)
         {
             var entries = TagCatalog.ByCategory[cat];
             if (entries.Count == 0) continue;
-
-            h += lineH + space;                                // foldout header
-
-            var hasSelected = AnyEntrySelected(entries, stateTagMask);
-            var defaultExpanded = hasSelected;
-            var foldKey = $"TagDrawer.Foldout::{propertyPath}::{cat}";
-            var expanded = SessionState.GetBool(foldKey, defaultExpanded);
-            if (!expanded) continue;
-
-            var rows = Mathf.CeilToInt((float)entries.Count / Cols);
-            h += rows * (lineH + 1f) + space;
+            h += lineH + space;
         }
         return h;
+    }
+
+    static void ShowCategoryDropdown(Rect buttonRect, SerializedProperty ulongProp,
+        List<TagEntry> entries, bool isSlotMode)
+    {
+        var menu = new GenericMenu();
+        foreach (var e in entries)
+        {
+            var entry = e;
+            var on = (ReadSemanticMask(ulongProp, isSlotMode) & (ulong)entry.Tag) != 0UL;
+            menu.AddItem(new GUIContent(entry.Display), on, () =>
+            {
+                Undo.RecordObject(ulongProp.serializedObject.targetObject, "Toggle Gameplay Tag");
+                var semantic = ReadSemanticMask(ulongProp, isSlotMode);
+                semantic ^= (ulong)entry.Tag;
+                WriteSemanticMask(ulongProp, semantic, isSlotMode);
+                ulongProp.serializedObject.ApplyModifiedProperties();
+                GUI.changed = true;
+            });
+        }
+
+        menu.DropDown(buttonRect);
+    }
+
+    static ulong ReadSemanticMask(SerializedProperty prop, bool isSlotMode)
+    {
+        var raw = StateTagMaskDrawerUtility.ReadULong(prop);
+        return isSlotMode ? SlotMaskToStateTagMask(raw) : raw;
+    }
+
+    static void WriteSemanticMask(SerializedProperty prop, ulong semantic, bool isSlotMode)
+    {
+        var newRaw = isSlotMode ? StateTagMaskToSlotMask(semantic) : semantic;
+        StateTagMaskDrawerUtility.WriteULong(prop, newRaw);
+    }
+
+    static int CountSelected(List<TagEntry> entries, ulong mask)
+    {
+        var n = 0;
+        foreach (var e in entries)
+            if ((mask & (ulong)e.Tag) != 0UL) n++;
+        return n;
+    }
+
+    /// <summary>按钮上显示的已选项短列表（主信息在前，与 TagEntry.Display 一致）。</summary>
+    static string BuildCategorySelectionSummary(List<TagEntry> entries, ulong stateTagMask)
+    {
+        var selected = new List<string>(8);
+        foreach (var e in entries)
+            if ((stateTagMask & (ulong)e.Tag) != 0UL) selected.Add(e.Display);
+
+        if (selected.Count == 0) return string.Empty;
+        if (selected.Count == 1) return selected[0];
+        if (selected.Count == 2) return $"{selected[0]}, {selected[1]}";
+        return $"{selected[0]}, {selected[1]}  +{selected.Count - 2}";
     }
 
     // ── 摘要：右侧显示 [3 selected] Grounded, CanLightAttack, +1 ──
@@ -273,20 +341,6 @@ internal static class GroupedTagDrawer
 
         var style = new GUIStyle(EditorStyles.label) { richText = true };
         EditorGUI.LabelField(rect, $"[{selected.Count} selected] {text}", style);
-    }
-
-    static GUIContent BuildCategoryHeader(TagCategory cat, List<TagEntry> entries, ulong mask)
-    {
-        var count = 0;
-        foreach (var e in entries) if ((mask & (ulong)e.Tag) != 0UL) count++;
-        var head = TagCatalog.CategoryHeader(cat);
-        return new GUIContent(count > 0 ? $"{head}  ({count}/{entries.Count})" : $"{head}  ({entries.Count})");
-    }
-
-    static bool AnyEntrySelected(List<TagEntry> entries, ulong mask)
-    {
-        foreach (var e in entries) if ((mask & (ulong)e.Tag) != 0UL) return true;
-        return false;
     }
 
     // ── Slot ↔ StateTag 互转（Window 模式专用）──
@@ -313,17 +367,12 @@ internal static class ActionWindowSlotMaskDrawerUtility
 {
     internal static float GetMaskHeight(SerializedProperty prop)
     {
-        var slotMask = StateTagMaskDrawerUtility.ReadULong(prop);
-        var stateTagMask = SlotMaskToStateTagMask(slotMask);
-        return GroupedTagDrawer.GetHeight(prop.propertyPath, stateTagMask);
+        return GroupedTagDrawer.GetHeight();
     }
 
     internal static void DrawSlotMaskField(Rect rect, SerializedProperty prop, GUIContent label)
     {
-        var slotMask = StateTagMaskDrawerUtility.ReadULong(prop);
-        var changed = GroupedTagDrawer.Draw(rect, prop.propertyPath, label, slotMask,
-            isSlotMode: true, out var newSlotMask);
-        if (changed) StateTagMaskDrawerUtility.WriteULong(prop, newSlotMask);
+        GroupedTagDrawer.Draw(rect, prop, label, isSlotMode: true);
     }
 
     static ulong SlotMaskToStateTagMask(ulong slotMask)

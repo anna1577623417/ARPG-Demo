@@ -153,6 +153,15 @@ public class Player : Entity<Player>, IDamageable {
     /// <summary>Legacy 双轨：未挂 <see cref="MotorSettingsSO"/> 时用固定最大坡角拒绝「凸角尖」当支撑面。</summary>
     private const float MaxSlopeDegreesLegacy = 50f;
 
+    /// <summary>动作中垂直速度低于此值视为已受重力下落，切断接地与 Hard Snap（防高台边缘粘连）。</summary>
+    const float ActionFallBreakGroundedVy = -0.01f;
+
+    /// <summary>动作中探针命中点若距投射起点过远，禁止 Hard Snap（防Roll出边缘被拽回）。</summary>
+    const float ActionEdgeSnapMaxHitDistance = 0.1f;
+
+    /// <summary>动作求解：垂直速度低于此则走 Airborne 上下文，避免坡面投影与强耦合吸附。</summary>
+    const float ActionMotorAirborneVyThreshold = -0.1f;
+
     // ─── ARPG 决策链：标签 + 意图缓冲（零 GC 路径，仅 struct 入队）───
 
     /// <summary>当前帧用于仲裁与窗口判定的标签快照（各状态在 OnLogicUpdate 内维护）。</summary>
@@ -565,6 +574,16 @@ public class Player : Entity<Player>, IDamageable {
             m_verticalSpeed = 0f;
             return;
         }
+
+        // 动作中（非重力挂起）：始终累计重力。
+        //   防"边缘探针把 vy 反复清零 → 永远等不到下落"的死锁；
+        //   真正落地时 RefreshGroundedState 会重置 vy=0，不会因此漂移。
+        var inAction = States != null && States.Current is PlayerActionState;
+        if (inAction) {
+            m_verticalSpeed -= gravity * Time.deltaTime;
+            return;
+        }
+
         // 如果在地上且没有向上运动的趋势，锁定垂直速度为0
         if (IsGrounded && m_verticalSpeed <= 0f) {
             m_verticalSpeed = 0f;
@@ -665,11 +684,18 @@ public class Player : Entity<Player>, IDamageable {
 
     public MotorSolveContext BuildActionMotorSolveContext()
     {
-        return IsGravitySuspended
-            ? MotorSolveContext.ActionSuspendedPhysics
-            : IsGrounded
-                ? MotorSolveContext.Locomotion
-                : MotorSolveContext.Airborne;
+        if (IsGravitySuspended)
+        {
+            return MotorSolveContext.ActionSuspendedPhysics;
+        }
+
+        // 已下落或未接地：必须用 PhysicsPassThrough，否则 Hard Snap / 坡面投影会吃掉重力并产生边缘抖动。
+        if (m_verticalSpeed < ActionMotorAirborneVyThreshold || !IsGrounded)
+        {
+            return MotorSolveContext.Airborne;
+        }
+
+        return MotorSolveContext.Locomotion;
     }
 
     private void ClampTerminalVelocityVertical()
@@ -703,9 +729,13 @@ public class Player : Entity<Player>, IDamageable {
     }
 
     /// <summary>
-    /// 离散瞬移：俯视射线落合法坡；随后按行走语义刷新 grounded（双轨）。
+    /// 离散瞬移：可选障碍物截断；默认俯视射线贴地与 Locomotion 接地刷新。
     /// </summary>
-    public void TeleportTo(Vector3 worldPosition)
+    /// <param name="forceAirborne">
+    /// 为 true 时：不做 <see cref="KinematicMotorSolver.ResolvePivotHeightFromAbove"/>、不清垂直速度、
+    /// 以 <see cref="MotorSolveContext.Airborne"/> 刷新接地（无 Hard Snap），用于空中定点或技能位移。
+    /// </param>
+    public void TeleportTo(Vector3 worldPosition, bool forceAirborne = false)
     {
         var destination = worldPosition;
         if (motorSettings != null)
@@ -720,7 +750,9 @@ public class Player : Entity<Player>, IDamageable {
             destination = transform.position + clamped;
         }
 
-        if (motorSettings != null && motorSettings.TeleportRayMaxDistance > 0.001f)
+        if (!forceAirborne
+            && motorSettings != null
+            && motorSettings.TeleportRayMaxDistance > 0.001f)
         {
             if (KinematicMotorSolver.ResolvePivotHeightFromAbove(
                     destination.x,
@@ -740,8 +772,12 @@ public class Player : Entity<Player>, IDamageable {
         transform.position = destination;
         ResolveMotorOverlapsIfNeeded();
         m_planarVelocity = Vector3.zero;
-        m_verticalSpeed = 0f;
-        RefreshGroundedState(MotorSolveContext.Locomotion);
+        if (!forceAirborne)
+        {
+            m_verticalSpeed = 0f;
+        }
+
+        RefreshGroundedState(forceAirborne ? MotorSolveContext.Airborne : MotorSolveContext.Locomotion);
         PublishEvent(new PlayerTeleportedEvent(GetInstanceID(), name, destination));
     }
 
@@ -887,6 +923,36 @@ public class Player : Entity<Player>, IDamageable {
             m_hasSteepGroundHitForEdgeSlip = false;
         }
 
+        var inActionState = States != null && States.Current is PlayerActionState;
+
+        // 动作中已开始下落：不再把边缘/下探命中当「接地」，避免 vy 被清零 + Hard Snap 拽回高台。
+        //
+        // ★ 增加"近接地面"门控（修 Bug 3：地面攻击假性滞空）
+        //   病因：inAction 时 ApplySimpleGravity 无条件累加重力，单帧 vy 即跌破 -0.01；
+        //         平地攻击的探针明明命中近接地面（distance ≈ SkinWidth），却被本分支判为
+        //         "已脱离平台" → IsGrounded=false → 攻击结束 TransitionToLocomotionOrAirborne
+        //         走到 Airborne 支柱 → 闪现滞空动画 → 立即落地。
+        //   修法：仅当探针 ① 完全没命中 ② 命中距离 > 近接阈值（说明真的脱离了平台）
+        //         时才走"动作脱地"分支；否则把当前帧仍视作"贴地",让下面的成功接地路径
+        //         重置 vy=0、保持 IsGrounded=true。
+        if (inActionState && !IsGravitySuspended && m_verticalSpeed < ActionFallBreakGroundedVy)
+        {
+            var proximityBand = motorSettings != null
+                ? Mathf.Max(motorSettings.AirborneGroundContactSlop, motorSettings.SkinWidth * 4f)
+                : 0.05f;
+            var probeShowsCloseGround = hitGround
+                                        && !IsGroundNormalTooSteep(hit.normal)
+                                        && hit.distance <= proximityBand;
+            if (!probeShowsCloseGround)
+            {
+                IsGrounded = false;
+                m_lastGroundNormal = hitGround ? hit.normal : Vector3.up;
+                m_wasGroundedLastFrame = false;
+                return;
+            }
+            // 探针确认贴地：放行到下方"成功接地"路径，自动 vy=0 并保持 IsGrounded=true。
+        }
+
         var airborneSlopBand = motorSettings != null ? motorSettings.AirborneGroundContactSlop : float.MaxValue;
         var groundedByProximity = motorSettings != null && !context.AllowsHardGroundSnap
             ? hitGround && hit.distance <= airborneSlopBand
@@ -922,7 +988,8 @@ public class Player : Entity<Player>, IDamageable {
         //         (b) 空中下落到方块顶角（不应放行 → 否则 IsGrounded=true 后 Hard Snap
         //             把角色 Y 抬到 hit.point.y + pivotToFootOffset，相当于把人举到方块顶上）
         //   解药：仅当 m_wasGroundedLastFrame==true 才允许放行。下落到凸角的情况让 EdgeSlip 接管。
-        var canEdgeTolerate = enableEdgeGroundTolerance && m_wasGroundedLastFrame;
+        // 动作中禁用 Edge Tolerance：踏出台沿时不再把"陡边角命中"放行成接地，防止 Hard Snap 把 Y 拽回 → 抖动滞空。
+        var canEdgeTolerate = enableEdgeGroundTolerance && m_wasGroundedLastFrame && !inActionState;
         if (motorSettings != null && hitGround && motorSettings.IsSlopeTooSteep(hit.normal))
         {
             var allowEdgeGrounding = canEdgeTolerate && IsSteepHitWithinFootTolerance(hit, probeRadius);
@@ -1012,6 +1079,12 @@ public class Player : Entity<Player>, IDamageable {
             }
         }
 
+        // 动作中探针命中「脚下远处的地面」（滚落边缘）：禁止横向吸附回台沿。
+        if (allowSnapY && inActionState && hitGround && hit.distance > ActionEdgeSnapMaxHitDistance)
+        {
+            allowSnapY = false;
+        }
+
         if (allowSnapY)
         {
             transform.position = snapPosition;
@@ -1061,6 +1134,17 @@ public class Player : Entity<Player>, IDamageable {
     private void ApplyAirborneEdgeSlipIfStuck(in Vector3 solvedDelta)
     {
         if (!enableAirborneEdgeSlip || motorSettings == null || IsGrounded)
+        {
+            m_edgeSlipStuckFrameCount = 0;
+            return;
+        }
+
+        // ★ Action 状态下的 MotionProfile 自管理 desired velocity，把 edge slip 加进来会破坏轨迹。
+        //   修 Bug 2：DefaultPhysics 空中下落时，m_hasSteepGroundHitForEdgeSlip 误触发让
+        //   m_planarVelocity 每帧 += 0.5 m/s 抖动横推 → 视觉抖动。
+        //   动作内的下落由 ActionFallBreakGroundedVy + Airborne MotorSolveContext 已处理，
+        //   不需要 edge slip 这层"抢救机"，直接旁路。
+        if (States != null && States.Current is PlayerActionState)
         {
             m_edgeSlipStuckFrameCount = 0;
             return;

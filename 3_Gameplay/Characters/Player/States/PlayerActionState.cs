@@ -616,7 +616,9 @@ public sealed class PlayerActionState : PlayerState
             {
                 var positionBefore = player.Position;
                 var target = positionBefore + player.Forward * trigger.Distance;
-                player.TeleportTo(target);
+                // 空中触发的闪现：禁止贴地射线 + 禁止接地写回，避免"空中闪现完瞬间接地"。
+                var forceAirborne = !player.IsGrounded || player.VerticalSpeed < -0.1f;
+                player.TeleportTo(target, forceAirborne);
                 var actualOffset = player.Position - positionBefore;
 
                 // MotionExecutor 仍以 _startPos 为锚点求绝对 targetPos；必须与 Teleport 共享同一坐标系。
