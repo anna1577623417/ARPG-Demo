@@ -161,6 +161,20 @@ public sealed class PlayerActionState : PlayerState
         {
             player.SuspendGravity();
         }
+        else
+        {
+            // 空中起手锁：DefaultPhysics（非挂起）路径下，若进入动作前已离地（或已下落），
+            // 锁定整段动作的 motor 上下文为 Airborne，禁止 HardSnap / 假接地清 vy。
+            // 防探针刮蹭附近墙体/边缘 → 抖动滞空循环。落地由 motor 自动解锁。
+            var enteredAirborne = !player.IsGrounded || player.VerticalSpeed < -0.05f;
+            if (enteredAirborne)
+            {
+                player.SetActionAirborneLock(true);
+            }
+        }
+
+        // 冻结本段动作的 MotorSolveContext，禁止每帧 vy/grounded 微抖 → context 重算 → HardSnap 振荡。
+        player.BeginActionMotorSession();
 
         if (player.DebugInterruptFlow)
         {
@@ -255,6 +269,8 @@ public sealed class PlayerActionState : PlayerState
         // 任何退出路径（动作完成 / 被打断 / 死亡切换 / ForceChange 重入）都会落到这里，
         // 保证不会出现"动作打断后玩家卡在空中飞行"的悬挂状态。
         player.ReleaseGravity();
+        player.SetActionAirborneLock(false);
+        player.EndActionMotorSession();
 
         if (player.DebugInterruptFlow)
         {

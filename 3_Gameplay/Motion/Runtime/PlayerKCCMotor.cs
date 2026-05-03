@@ -71,6 +71,25 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
     [Tooltip("在 Console 打印地面探针：主命中、二次稳定下探、最终 IsGrounded（受节流，避免刷屏）。")]
     [SerializeField] bool debugGroundProbe;
 
+    [Tooltip("开启后：进入 Play 起前若干帧打印 Pivot / 胶囊 / 探针 / 反推 offset（见 Console [MotorCalib]）。用于重测 Pivot To Foot Offset；测完务必关闭。")]
+    [SerializeField] bool debugMotorCalibration;
+
+    [SerializeField, Range(1, 120)] int debugMotorCalibrationLogFrames = 30;
+
+    [Tooltip("勾选后：不写回 Transform（KCC 位移增量、HardSnap、去穿插挤出、EdgeSlip 强制位移均跳过）。仍会跑接地判定与 Log。\n用于静止读 [MotorCalib]；勿长期开启。")]
+    [SerializeField] bool debugFreezeMotorDisplacement;
+
+    [Header("Debug · Vertical authority (vy pipeline)")]
+    [Tooltip("每个 ApplyMotor / ApplyMotorFromGameplayVelocity 打一帧 [VertAuthority]，用于看谁改了 vy。")]
+    [SerializeField, InspectorName("VertAuthority · Enable")]
+    bool debugVerticalAuthority;
+
+    [Tooltip(
+        "勾选：仅在当前状态为 PlayerActionState 时打印（站立 / 走路 / PlayerAirborneState 不会打印，看起来像「没日志」）。\n" +
+        "取消勾选：Locomotion / Airborne 也会每帧打印（刷屏，仅排查时用）。")]
+    [SerializeField, InspectorName("VertAuthority · Action State Only")]
+    bool debugVerticalAuthorityActionOnly = true;
+
     // ─── 行为常量（与原 Player.cs 同名同值）────────────────────────────────
     const float MaxSlopeDegreesLegacy = 50f;
     const float ActionFallBreakGroundedVy = -0.01f;
@@ -94,6 +113,14 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
     float _verticalSpeed;
     bool _isGrounded;
     bool _gravitySuspended;
+
+    /// <summary>动作支柱「空中起手锁」：true 期间禁止把 IsGrounded 写真、禁止清 vy、上下文恒 Airborne。</summary>
+    bool _actionAirborneLock;
+
+    /// <summary>动作持续期内冻结的 <see cref="MotorSolveContext"/>，避免每帧重算 context。</summary>
+    bool _actionMotorSessionActive;
+
+    MotorSolveContext _frozenActionMotorContext;
     Vector3 _lastGroundNormal = Vector3.up;
     bool _wasGroundedLastFrame;
     bool _hasSteepGroundHitForEdgeSlip;
@@ -123,6 +150,14 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
     public void RefreshInitialGroundedState()
     {
         if (!_bound) return;
+        if (debugMotorCalibration && Time.frameCount < debugMotorCalibrationLogFrames)
+        {
+            Debug.Log(
+                $"[MotorCalib] RefreshInitialGroundedState (spawn) id={GetInstanceID()} pivotY={transform.position.y:F4} offset={pivotToFootOffset:F4} freeze={debugFreezeMotorDisplacement}\n" +
+                "  提示：Pivot 应在「脚底贴地」时高于地面约 pivotToFootOffset；若 Pivot 与地面对齐在同一 Y，逻辑脚底会在地面下方 → elevReject / 永不接地。",
+                this);
+        }
+
         RefreshGroundedState(MotorSolveContext.Locomotion);
     }
 
@@ -178,20 +213,69 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
         _gravitySuspended = false;
     }
 
+    public void SetActionAirborneLock(bool locked)
+    {
+        if (_actionAirborneLock == locked) return;
+        _actionAirborneLock = locked;
+        if (_debugInterruptFlow)
+        {
+            Debug.Log($"[ActionAirborneLock] {(locked ? "ENGAGE" : "RELEASE")} | y={transform.position.y:F3} | vy={_verticalSpeed:F3} | grounded={_isGrounded}", this);
+        }
+    }
+
+    public void BeginActionMotorSession()
+    {
+        EndActionMotorSession();
+        _frozenActionMotorContext = ComputeActionMotorSolveContext();
+        _actionMotorSessionActive = true;
+        if (_debugInterruptFlow)
+        {
+            Debug.Log(
+                $"[ActionMotorSession] BEGIN snap={_frozenActionMotorContext.GroundingPolicy} allowHardSnap={_frozenActionMotorContext.AllowsHardGroundSnap} vy={_verticalSpeed:F3} grounded={_isGrounded}",
+                this);
+        }
+    }
+
+    public void EndActionMotorSession()
+    {
+        if (!_actionMotorSessionActive) return;
+        _actionMotorSessionActive = false;
+        if (_debugInterruptFlow)
+        {
+            Debug.Log($"[ActionMotorSession] END vy={_verticalSpeed:F3} grounded={_isGrounded}", this);
+        }
+    }
+
+    /// <summary>
+    /// 接地刷新后把会话快照与 <see cref="ComputeActionMotorSolveContext"/> 对齐。
+    /// 修「起手接地 → 快照 Locomotion → 后半段已在空中仍 HardSnap」：离地后此处会把快照改为 PhysicsPassThrough。
+    /// </summary>
+    void RefreshFrozenActionMotorContextIfSession()
+    {
+        if (!_actionMotorSessionActive) return;
+        _frozenActionMotorContext = ComputeActionMotorSolveContext();
+    }
+
     // ─── IPlayerMotor 触发 ────────────────────────────────────────────────
     public void ApplyMotor(in MotorSolveContext context)
     {
+        var vyEnter = _verticalSpeed;
         ApplySimpleGravity();
+        var vyAfterGravity = _verticalSpeed;
         ClampTerminalVelocityVertical();
+        var vyAfterClamp = _verticalSpeed;
+
+        // 会话内：用瞬时推导上下文做本帧求解，勿用调用方传入的快照（可能仍是上一帧的 Locomotion）。
+        var solveCtx = _actionMotorSessionActive ? ComputeActionMotorSolveContext() : context;
 
         var velocity = new Vector3(_planarVelocity.x, _verticalSpeed, _planarVelocity.z);
         var solvedDelta = velocity * Time.deltaTime;
 
         if (motorSettings != null)
         {
-            velocity = MaybeProjectVelocityOntoWalkableSlope(velocity, in context);
+            velocity = MaybeProjectVelocityOntoWalkableSlope(velocity, in solveCtx);
             var displacement = velocity * Time.deltaTime;
-            var applySlideYLock = ShouldApplyGroundedSlideDownwardLock(in context);
+            var applySlideYLock = ShouldApplyGroundedSlideDownwardLock(in solveCtx);
             solvedDelta = KinematicMotorSolver.SolveDisplacementFromPivot(
                 transform.position,
                 pivotToFootOffset,
@@ -199,42 +283,72 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
                 displacement,
                 motorSettings.ObstacleLayers,
                 applySlideYLock);
-            transform.position += solvedDelta;
+            if (!debugFreezeMotorDisplacement)
+            {
+                transform.position += solvedDelta;
+            }
         }
         else
         {
-            transform.position += velocity * Time.deltaTime;
+            if (!debugFreezeMotorDisplacement)
+            {
+                transform.position += velocity * Time.deltaTime;
+            }
         }
 
         ResolveMotorOverlapsIfNeeded();
-        RefreshGroundedState(in context);
+        var vyAfterOverlap = _verticalSpeed;
+        RefreshGroundedState(in solveCtx);
+        RefreshFrozenActionMotorContextIfSession();
+        var vyAfterGrounded = _verticalSpeed;
         ApplyAirborneEdgeSlipIfStuck(in solvedDelta);
+        LogVerticalAuthorityIfEnabled("ApplyMotor", vyEnter, vyAfterGravity, vyAfterClamp, solvedDelta.y, vyAfterOverlap, vyAfterGrounded, in solveCtx);
     }
 
     public void ApplyMotorFromGameplayVelocity(Vector3 gameplayWorldVelocity, in MotorSolveContext context)
     {
+        var vyEnter = _verticalSpeed;
         ApplySimpleGravity();
+        var vyAfterGravity = _verticalSpeed;
         ClampTerminalVelocityVertical();
+        var vyAfterClamp = _verticalSpeed;
 
         var velocity = gameplayWorldVelocity;
         var solvedDelta = velocity * Time.deltaTime;
+        var gameplayDrivenVy = false;
         if (!_gravitySuspended)
         {
             if (Mathf.Abs(gameplayWorldVelocity.y) < 0.001f)
             {
                 velocity = new Vector3(gameplayWorldVelocity.x, _verticalSpeed, gameplayWorldVelocity.z);
             }
+            else
+            {
+                gameplayDrivenVy = true;
+            }
         }
         else
         {
             _verticalSpeed = 0f;
         }
+        var vyAfterGameplay = _verticalSpeed;
+
+        var solveCtx = _actionMotorSessionActive ? ComputeActionMotorSolveContext() : context;
+
+        // PhysicsPassThrough（滞空 / 不接 HardSnap）：垂直分量只用马达 vy，丢弃 Motion 曲线里的 world Y。
+        // 否则 sampled Y 与重力积分反向 → solver dY 与 expY 符号相反、eatenRatio≈1、与其它帧交替 → 抖动。
+        // 重力挂起（Suspended）仍允许曲线驱动 Y。
+        if (!solveCtx.AllowsHardGroundSnap && !_gravitySuspended)
+        {
+            velocity = new Vector3(velocity.x, _verticalSpeed, velocity.z);
+            gameplayDrivenVy = false;
+        }
 
         if (motorSettings != null)
         {
-            velocity = MaybeProjectVelocityOntoWalkableSlope(velocity, in context);
+            velocity = MaybeProjectVelocityOntoWalkableSlope(velocity, in solveCtx);
             var displacement = velocity * Time.deltaTime;
-            var applySlideYLock = ShouldApplyGroundedSlideDownwardLock(in context);
+            var applySlideYLock = ShouldApplyGroundedSlideDownwardLock(in solveCtx);
             solvedDelta = KinematicMotorSolver.SolveDisplacementFromPivot(
                 transform.position,
                 pivotToFootOffset,
@@ -242,16 +356,92 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
                 displacement,
                 motorSettings.ObstacleLayers,
                 applySlideYLock);
-            transform.position += solvedDelta;
+            if (!debugFreezeMotorDisplacement)
+            {
+                transform.position += solvedDelta;
+            }
         }
         else
         {
-            transform.position += velocity * Time.deltaTime;
+            if (!debugFreezeMotorDisplacement)
+            {
+                transform.position += velocity * Time.deltaTime;
+            }
         }
 
         ResolveMotorOverlapsIfNeeded();
-        RefreshGroundedState(in context);
+        var vyAfterOverlap = _verticalSpeed;
+        RefreshGroundedState(in solveCtx);
+        RefreshFrozenActionMotorContextIfSession();
+        var vyAfterGrounded = _verticalSpeed;
         ApplyAirborneEdgeSlipIfStuck(in solvedDelta);
+        LogVerticalAuthorityIfEnabled(
+            gameplayDrivenVy ? "ApplyMotorFromGameplay[Y-driven]" : "ApplyMotorFromGameplay",
+            vyEnter, vyAfterGravity, vyAfterClamp, solvedDelta.y, vyAfterOverlap, vyAfterGrounded, in solveCtx,
+            gameplayDrivenVy ? gameplayWorldVelocity.y : (float?)null,
+            vyAfterGameplay);
+    }
+
+    void LogVerticalAuthorityIfEnabled(
+        string entry,
+        float vyEnter,
+        float vyAfterGravity,
+        float vyAfterClamp,
+        float solvedDeltaY,
+        float vyAfterOverlap,
+        float vyAfterGrounded,
+        in MotorSolveContext context,
+        float? gameplayWorldVy = null,
+        float vyAfterGameplay = 0f)
+    {
+        if (!debugVerticalAuthority) return;
+        var inAction = _states != null && _states.Current is PlayerActionState;
+        if (debugVerticalAuthorityActionOnly && !inAction) return;
+
+        var dt = Mathf.Max(Time.deltaTime, 1e-5f);
+        var solvedVy = solvedDeltaY / dt;
+        var expectedY = vyAfterClamp * dt;
+        var verticalEatenRatio = Mathf.Abs(expectedY) > 1e-5f ? (1f - Mathf.Clamp01(solvedDeltaY / expectedY)) : 0f;
+        var vyAfterEdge = _verticalSpeed;
+
+        var sb = new System.Text.StringBuilder(384);
+        var ctxLine = _actionMotorSessionActive ? _frozenActionMotorContext : context;
+        sb.Append("[VertAuthority] f=").Append(Time.frameCount).Append(' ').Append(entry)
+          .Append(" ctx=").Append(ctxLine.GroundingPolicy)
+          .Append(" hardSnap=").Append(ctxLine.AllowsHardGroundSnap)
+          .Append(" frozen=").Append(_actionMotorSessionActive)
+          .Append(" airLock=").Append(_actionAirborneLock)
+          .Append(" suspended=").Append(_gravitySuspended).Append('\n')
+          .Append("  vy enter=").Append(vyEnter.ToString("F4"))
+          .Append(" → gravity=").Append(vyAfterGravity.ToString("F4"))
+          .Append(" → clamp=").Append(vyAfterClamp.ToString("F4"));
+        if (gameplayWorldVy.HasValue)
+        {
+            sb.Append(" → gameplay(Y=").Append(gameplayWorldVy.Value.ToString("F4")).Append(")=")
+              .Append(vyAfterGameplay.ToString("F4"));
+        }
+        sb.Append('\n')
+          .Append("  solver dY=").Append(solvedDeltaY.ToString("F5"))
+          .Append(" expY=").Append(expectedY.ToString("F5"))
+          .Append(" eatenRatio=").Append(verticalEatenRatio.ToString("F2"))
+          .Append(" solvedVy=").Append(solvedVy.ToString("F4")).Append('\n')
+          .Append("  vy → overlap=").Append(vyAfterOverlap.ToString("F4"))
+          .Append(" → grounded=").Append(vyAfterGrounded.ToString("F4"))
+          .Append(" → edgeSlip=").Append(vyAfterEdge.ToString("F4"))
+          .Append(" grounded=").Append(_isGrounded);
+
+        var changedByOverlap = !Mathf.Approximately(vyAfterClamp, vyAfterOverlap)
+                               && (!gameplayWorldVy.HasValue || !Mathf.Approximately(vyAfterGameplay, vyAfterOverlap));
+        var changedByGrounded = !Mathf.Approximately(vyAfterOverlap, vyAfterGrounded);
+        var changedByEdge = !Mathf.Approximately(vyAfterGrounded, vyAfterEdge);
+        if (changedByOverlap || changedByGrounded || changedByEdge)
+        {
+            sb.Append("  ★ vy mutated by:");
+            if (changedByOverlap) sb.Append(" Overlap");
+            if (changedByGrounded) sb.Append(" Grounded");
+            if (changedByEdge) sb.Append(" EdgeSlip");
+        }
+        Debug.Log(sb.ToString(), this);
     }
 
     public void TeleportTo(Vector3 worldPosition, bool forceAirborne = false)
@@ -307,9 +497,26 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
 
     public MotorSolveContext BuildActionMotorSolveContext()
     {
+        if (_actionMotorSessionActive)
+        {
+            return _frozenActionMotorContext;
+        }
+
+        return ComputeActionMotorSolveContext();
+    }
+
+    /// <summary>按当前瞬时状态推导动作上下文（无会话冻结时由 <see cref="BuildActionMotorSolveContext"/> 调用）。</summary>
+    MotorSolveContext ComputeActionMotorSolveContext()
+    {
         if (_gravitySuspended)
         {
             return MotorSolveContext.ActionSuspendedPhysics;
+        }
+
+        // 空中起手锁：整个动作期内强制 Airborne，禁 HardSnap / 坡面投影 / 强耦合吸附。
+        if (_actionAirborneLock)
+        {
+            return MotorSolveContext.Airborne;
         }
 
         if (_verticalSpeed < ActionMotorAirborneVyThreshold || !_isGrounded)
@@ -330,8 +537,8 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
             return;
         }
 
-        // 动作中（非重力挂起）：始终累计重力，防"边缘探针把 vy 反复清零 → 永远等不到下落"的死锁。
-        if (_states != null && _states.Current is PlayerActionState)
+        // 动作空中锁 / 动作态（非重力挂起）：始终累计重力，防"边缘探针把 vy 反复清零 → 永远等不到下落"的死锁。
+        if (_actionAirborneLock || (_states != null && _states.Current is PlayerActionState))
         {
             _verticalSpeed -= gravity * Time.deltaTime;
             return;
@@ -383,12 +590,19 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
                 transform,
                 out var resolvedPivot))
         {
-            transform.position = resolvedPivot;
+            if (!debugFreezeMotorDisplacement)
+            {
+                transform.position = resolvedPivot;
+            }
         }
     }
 
     void RefreshGroundedState(in MotorSolveContext context)
     {
+        // 默认与调用方一致；空中锁在本函数内自动落地后会刷新 _frozenActionMotorContext，再同步到 effective。
+        var effectiveContext = context;
+
+        var pivotAtRefreshEntry = transform.position;
         var footPos = transform.position - Vector3.up * pivotToFootOffset;
         float probeRadius;
         Vector3 origin;
@@ -412,7 +626,7 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
             origin = footPos + Vector3.up * startOffset;
         }
 
-        var castReach = motorSettings != null && context.AllowsHardGroundSnap
+        var castReach = motorSettings != null && effectiveContext.AllowsHardGroundSnap
             ? Mathf.Max(groundCheckDistance, motorSettings.GroundSnapDistance)
             : groundCheckDistance;
         var castDistance = Mathf.Max(0.1f, castReach);
@@ -426,7 +640,7 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
         if ((!hitGround || primaryHitIsWall)
             && motorSettings != null
             && motorSettings.EnableExtraGroundStabilizationProbe
-            && context.AllowsHardGroundSnap
+            && effectiveContext.AllowsHardGroundSnap
             && _wasGroundedLastFrame
             && _verticalSpeed <= motorSettings.GroundSnapMaxUpwardVelocity)
         {
@@ -458,6 +672,17 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
             }
         }
 
+        MaybeLogMotorCalibrationAfterProbes(
+            in effectiveContext,
+            pivotAtRefreshEntry,
+            origin,
+            probeRadius,
+            castDistance,
+            hitGround,
+            in hit,
+            usedExtraStabilizationProbe,
+            usedCenterRayFallback);
+
         if (motorSettings != null && motorSettings.DrawGroundProbeInSceneView)
         {
             var rayLen = castDistance * Mathf.Max(0.1f, motorSettings.GroundProbeRayLengthScale);
@@ -485,7 +710,7 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
             Debug.Log(
                 $"[GroundProbe] hit={hitGround} extraProbe={usedExtraStabilizationProbe} centerRay={usedCenterRayFallback} " +
                 $"wasGrounded={_wasGroundedLastFrame} vy={_verticalSpeed:F3} cast={castDistance:F3} " +
-                $"snapPolicy={context.AllowsHardGroundSnap} pt={(hitGround ? hit.point.ToString() : "-")} " +
+                $"snapPolicy={effectiveContext.AllowsHardGroundSnap} pt={(hitGround ? hit.point.ToString() : "-")} " +
                 $"n={(hitGround ? hit.normal.ToString("F3") : "-")}",
                 this);
         }
@@ -503,6 +728,47 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
 
         var inActionState = _states != null && _states.Current is PlayerActionState;
 
+        // 动作空中锁：整段动作内默认强制脱地，绝不允许 IsGrounded=true / vy 清零。
+        // 自动释放：探针 walkable + 距离极小 + 下行 vy → 真实落地，主动解锁并走下方正常接地流程，
+        // 防"动作时长长于落地时刻"导致穿地。
+        if (_actionAirborneLock)
+        {
+            var landingBand = motorSettings != null
+                ? Mathf.Max(motorSettings.AirborneGroundContactSlop, motorSettings.SkinWidth * 4f)
+                : 0.05f;
+            var landed = hitGround
+                         && !IsGroundNormalTooSteep(hit.normal)
+                         && hit.distance <= landingBand
+                         && _verticalSpeed <= 0.01f;
+            if (!landed)
+            {
+                _isGrounded = false;
+                _lastGroundNormal = hitGround && !IsGroundNormalTooSteep(hit.normal) ? hit.normal : Vector3.up;
+                _wasGroundedLastFrame = false;
+                _hasSteepGroundHitForEdgeSlip = hitGround && IsGroundNormalTooSteep(hit.normal);
+                if (_hasSteepGroundHitForEdgeSlip)
+                {
+                    _lastSteepGroundHitPoint = hit.point;
+                    _lastSteepGroundHitNormal = hit.normal;
+                }
+                MaybeLogMotorCalibrationEarlyExit("actionAirborneLock", pivotAtRefreshEntry);
+                return;
+            }
+
+            // 真实落地：解锁，让下方正常逻辑处理 IsGrounded=true / HardSnap；并刷新冻结的 Action context（Airborne → Locomotion）。
+            _actionAirborneLock = false;
+            RefreshFrozenActionMotorContextIfSession();
+            if (_debugInterruptFlow)
+            {
+                Debug.Log($"[ActionAirborneLock] AUTO-RELEASE on real landing | y={transform.position.y:F3} | hitDist={hit.distance:F3} | vy={_verticalSpeed:F3}", this);
+            }
+        }
+
+        if (_actionMotorSessionActive)
+        {
+            effectiveContext = _frozenActionMotorContext;
+        }
+
         // 动作中已开始下落：仅当探针确未近接地面才宣布脱地（修 Bug 3 假滞空闪现）
         if (inActionState && !_gravitySuspended && _verticalSpeed < ActionFallBreakGroundedVy)
         {
@@ -517,16 +783,17 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
                 _isGrounded = false;
                 _lastGroundNormal = hitGround ? hit.normal : Vector3.up;
                 _wasGroundedLastFrame = false;
+                MaybeLogMotorCalibrationEarlyExit("actionProximityBreak", pivotAtRefreshEntry);
                 return;
             }
         }
 
         var airborneSlopBand = motorSettings != null ? motorSettings.AirborneGroundContactSlop : float.MaxValue;
-        var groundedByProximity = motorSettings != null && !context.AllowsHardGroundSnap
+        var groundedByProximity = motorSettings != null && !effectiveContext.AllowsHardGroundSnap
             ? hitGround && hit.distance <= airborneSlopBand
             : hitGround;
 
-        var useHardSnapLegacy = motorSettings == null || context.AllowsHardGroundSnap;
+        var useHardSnapLegacy = motorSettings == null || effectiveContext.AllowsHardGroundSnap;
 
         var upwardDeadzone = motorSettings != null ? motorSettings.GroundSnapMaxUpwardVelocity : 0.05f;
         if (!groundedByProximity || _verticalSpeed > upwardDeadzone)
@@ -534,6 +801,7 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
             _isGrounded = false;
             if (!hitGround) _lastGroundNormal = Vector3.up;
             _wasGroundedLastFrame = _isGrounded;
+            MaybeLogMotorCalibrationEarlyExit("notGroundedByProximityOrVyDeadzone", pivotAtRefreshEntry);
             return;
         }
 
@@ -547,6 +815,7 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
                 _isGrounded = false;
                 _lastGroundNormal = Vector3.up;
                 _wasGroundedLastFrame = _isGrounded;
+                MaybeLogMotorCalibrationEarlyExit("steepSlopeNoEdgeTol", pivotAtRefreshEntry);
                 return;
             }
         }
@@ -560,6 +829,7 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
                 _isGrounded = false;
                 _lastGroundNormal = Vector3.up;
                 _wasGroundedLastFrame = _isGrounded;
+                MaybeLogMotorCalibrationEarlyExit("legacySteepNoEdgeTol", pivotAtRefreshEntry);
                 return;
             }
         }
@@ -577,19 +847,34 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
         var footPosForCheck = transform.position - Vector3.up * pivotToFootOffset;
         if (hitGround && hit.point.y > footPosForCheck.y + groundedHitElevationGuard)
         {
+            if (debugMotorCalibration && Time.frameCount < debugMotorCalibrationLogFrames)
+            {
+                var thresh = footPosForCheck.y + groundedHitElevationGuard;
+                Debug.Log(
+                    $"[MotorCalib][elevReject 蹭顶/棱角校验失败 · 也常用于「生成点 Pivot 过低」] f={Time.frameCount}\n" +
+                    $"  hit.point.y={hit.point.y:F4}  逻辑脚底平面 footPlaneY=pivotY-offset={footPosForCheck.y:F4}  guard={groundedHitElevationGuard:F4}  阈值={thresh:F4}\n" +
+                    $"  判定：hitY > 阈值 → 视为探针擦到高于脚底的上表面。\n" +
+                    $"  ★ 若地面实为平面、脚底应踩在 hitY 上：Pivot Y 应约为 hitY + pivotToFootOffset（例 hitY=0、offset=0.19 → Pivot Y≈0.19），不要把 Pivot 放在与地面对齐的 Y=0。\n" +
+                    $"  当前 pivotY={transform.position.y:F4}",
+                    this);
+            }
+
             _isGrounded = false;
             _lastGroundNormal = Vector3.up;
             _wasGroundedLastFrame = _isGrounded;
+            MaybeLogMotorCalibrationEarlyExit("hitElevationTooHighVsFoot", pivotAtRefreshEntry);
             return;
         }
 
         _lastGroundNormal = hitGround ? hit.normal : Vector3.up;
         _isGrounded = true;
-        _verticalSpeed = 0f;
+        // 垂直速度不由接地探针写入：避免与 ApplySimpleGravity / MotionProfile 路径竞争同一帧多次改 vy。
+        // 落地帧 vy 的归零由下一帧 ApplySimpleGravity（Locomotion/Airborne 分支）统一处理。
 
         if (!useHardSnapLegacy)
         {
             _wasGroundedLastFrame = _isGrounded;
+            MaybeLogMotorCalibrationEarlyExit("noHardSnapPolicy", pivotAtRefreshEntry);
             return;
         }
 
@@ -624,12 +909,93 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
             allowSnapY = false;
         }
 
-        if (allowSnapY)
+        if (allowSnapY && !debugFreezeMotorDisplacement)
         {
             transform.position = snapPosition;
         }
 
+        if (debugMotorCalibration && Time.frameCount < debugMotorCalibrationLogFrames)
+        {
+            var dy = transform.position.y - pivotAtRefreshEntry.y;
+            Debug.Log(
+                $"[MotorCalib][end f={Time.frameCount}] grounded={_isGrounded} allowSnap={allowSnapY} targetY={targetY:F4} " +
+                $"pivotY_after={transform.position.y:F4} ΔY_this_refresh={dy:F4} freeze={debugFreezeMotorDisplacement}",
+                this);
+        }
+
         _wasGroundedLastFrame = _isGrounded;
+    }
+
+    void MaybeLogMotorCalibrationAfterProbes(
+        in MotorSolveContext context,
+        Vector3 pivotWorld,
+        Vector3 origin,
+        float probeRadius,
+        float castDistance,
+        bool hitGround,
+        in RaycastHit hit,
+        bool usedExtraStabilizationProbe,
+        bool usedCenterRayFallback)
+    {
+        if (!debugMotorCalibration || Time.frameCount >= debugMotorCalibrationLogFrames) return;
+
+        var footY = pivotWorld.y - Mathf.Max(0f, pivotToFootOffset);
+        var sb = new System.Text.StringBuilder(1024);
+        sb.Append("[MotorCalib] 探针已解析 f=").Append(Time.frameCount)
+            .Append(" policy=").Append(context.GroundingPolicy)
+            .Append(" allowHardSnap=").Append(context.AllowsHardGroundSnap).Append('\n');
+        sb.Append("  pivotWorld ").Append(pivotWorld.ToString("F4")).Append("  pivotToFootOffset=").Append(pivotToFootOffset.ToString("F4"))
+            .Append("  → footY(逻辑胶囊最底)=").Append(footY.ToString("F4")).Append('\n');
+
+        if (motorSettings != null)
+        {
+            KinematicMotorSolver.GetCapsuleWorld(
+                pivotWorld, pivotToFootOffset, motorSettings, out var bottomSphere, out _, out var capR);
+            var lowestY = bottomSphere.y - capR;
+            sb.Append("  MotorSettings R=").Append(capR.ToString("F4")).Append(" H_eff=").Append(motorSettings.EffectiveHeight.ToString("F4"))
+                .Append(" Skin=").Append(motorSettings.SkinWidth.ToString("F4")).Append('\n');
+            sb.Append("  bottomSphereCenterY=").Append(bottomSphere.y.ToString("F4")).Append("  lowestCaps≈").Append(lowestY.ToString("F4")).Append('\n');
+        }
+
+        sb.Append("  probe originY=").Append(origin.y.ToString("F4")).Append(" probeR=").Append(probeRadius.ToString("F4"))
+            .Append(" castDist=").Append(castDistance.ToString("F4")).Append(" extra=").Append(usedExtraStabilizationProbe)
+            .Append(" centerRay=").Append(usedCenterRayFallback).Append('\n');
+
+        if (hitGround)
+        {
+            var implied = pivotWorld.y - hit.point.y;
+            sb.Append("  HIT dist=").Append(hit.distance.ToString("F4")).Append(" hitY=").Append(hit.point.y.ToString("F4"))
+                .Append(" n=").Append(hit.normal.ToString("F3")).Append('\n');
+            sb.Append("       collider=").Append(hit.collider != null ? hit.collider.name : "?").Append(" layer=");
+            if (hit.collider != null)
+            {
+                var ln = LayerMask.LayerToName(hit.collider.gameObject.layer);
+                sb.Append(string.IsNullOrEmpty(ln) ? hit.collider.gameObject.layer.ToString() : ln);
+            }
+
+            sb.Append('\n');
+            sb.Append("  ★ impliedPivotMinusHitY=").Append(implied.ToString("F4"))
+                .Append("  ← 脚底若贴在该命中面上，PivotToFootOffset 应对齐此量级（再按网格/骨骼微调）\n");
+        }
+        else
+        {
+            sb.Append("  HIT=FALSE — 检查 Ground Layers / 场景碰撞 / 起点是否在几何体内\n");
+        }
+
+        sb.Append("  debugFreezeMotorDisplacement=").Append(debugFreezeMotorDisplacement)
+            .Append(" vy=").Append(_verticalSpeed.ToString("F4")).Append('\n');
+
+        Debug.Log(sb.ToString(), this);
+    }
+
+    void MaybeLogMotorCalibrationEarlyExit(string tag, Vector3 pivotAtRefreshEntry)
+    {
+        if (!debugMotorCalibration || Time.frameCount >= debugMotorCalibrationLogFrames) return;
+
+        Debug.Log(
+            $"[MotorCalib][exit:{tag}] f={Time.frameCount} grounded={_isGrounded} pivotY={transform.position.y:F4} " +
+            $"ΔVsRefreshStart={(transform.position.y - pivotAtRefreshEntry.y):F4}",
+            this);
     }
 
     bool IsSteepHitWithinFootTolerance(in RaycastHit hit, float probeRadius)
@@ -689,7 +1055,11 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
 
         var horizontal = away * edgeSlipForceUnstickHorizontalStep;
         var down = Vector3.down * edgeSlipForceUnstickDownStep;
-        transform.position += horizontal + down;
+        if (!debugFreezeMotorDisplacement)
+        {
+            transform.position += horizontal + down;
+        }
+
         _verticalSpeed = 0f;
 
         ResolveMotorOverlapsIfNeeded();

@@ -41,4 +41,23 @@ public interface IPlayerMotor
 
     /// <summary>当前 motor 上下文构造便携助手（动作内常用）。</summary>
     MotorSolveContext BuildActionMotorSolveContext();
+
+    /// <summary>
+    /// 动作开始时拍一页快照：<see cref="BuildActionMotorSolveContext"/> 在动作持续期内固定返回该结果，
+    /// 直到 <see cref="EndActionMotorSession"/>；消除 vy / grounded 微抖 → context 每帧重算 → HardSnap 来回切的振荡。
+    /// 空中锁自动落地时会由 motor 内部刷新快照。
+    /// </summary>
+    void BeginActionMotorSession();
+
+    /// <summary>与 OnEnter 的 <see cref="BeginActionMotorSession"/> 配对；退出动作支柱或打断时必调。</summary>
+    void EndActionMotorSession();
+
+    /// <summary>
+    /// 动作支柱专用「空中锁」：动作 OnEnter 若识别为空中起手，置 true → 整个动作期内：
+    ///   · BuildActionMotorSolveContext 强制返回 Airborne；
+    ///   · RefreshGroundedState 即使探针刮蹭附近几何也不会把 IsGrounded 写真 / 不清 vy。
+    /// 防 DefaultPhysics 空中翻滚的「假接地 → HardSnap → 抖动滞空」循环。
+    /// 必须在 OnExit 释放（false）；幂等。
+    /// </summary>
+    void SetActionAirborneLock(bool locked);
 }

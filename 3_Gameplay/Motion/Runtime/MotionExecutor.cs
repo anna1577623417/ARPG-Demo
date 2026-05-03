@@ -70,7 +70,18 @@ public sealed class MotionExecutor
         var warpOffset = _direction * _profile.SampleWarp(t);
 
         var targetPos = _startPos + forwardOffset + lateralOffset + warpOffset;
-        var desiredVelocity = (targetPos - _lastPos) / deltaTime;
+        var delta = targetPos - _lastPos;
+
+        // DefaultPhysics：模具只在水平面内展开（forward/lateral/warp 均沿水平 _direction），
+        // 但差分速度会把「目标高度锁在起手 Y」与「_lastPos 因重力下落」写成 delta.y>0 → 虚假向上速度，
+        // 与马达重力积分对冲（用户 VertAuthority：eatenRatio=1、[Y-driven] 与纯重力帧交替抖动）。
+        // 垂直分量交给 PlayerKCCMotor 的 vy / Solver，与 v3.1.1 前「平面 Motion + 独立重力」一致。
+        if (_profile.GravityBehavior == MotionGravityBehavior.DefaultPhysics)
+        {
+            delta.y = 0f;
+        }
+
+        var desiredVelocity = delta / deltaTime;
         _motor?.SetDesiredVelocity(desiredVelocity);
 
         if (_profile.MatchAnimationSpeed && _profile.ReferenceSpeed > 0.001f)

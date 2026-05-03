@@ -469,6 +469,12 @@ public class Player : Entity<Player>, IDamageable {
     /// <summary>释放重力——必须由 OnExit 等成对调用。幂等。</summary>
     public void ReleaseGravity() => m_motor?.ReleaseGravity();
 
+    public void SetActionAirborneLock(bool locked) => m_motor?.SetActionAirborneLock(locked);
+
+    public void BeginActionMotorSession() => m_motor?.BeginActionMotorSession();
+
+    public void EndActionMotorSession() => m_motor?.EndActionMotorSession();
+
     public void ApplySimpleGravity() => m_motor?.ApplySimpleGravity();
 
     public void ApplyMotor(in MotorSolveContext context) => m_motor?.ApplyMotor(in context);
