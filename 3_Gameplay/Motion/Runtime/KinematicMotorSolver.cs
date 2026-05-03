@@ -25,6 +25,8 @@ public static class KinematicMotorSolver {
     /// <summary>供地面吸附等使用的非分配重叠缓冲（调用方负责层与排除自身碰撞体）。</summary>
     public const int DefaultOverlapBufferSize = 16;
 
+    private static readonly Collider[] s_stepOverlapBuffer = new Collider[DefaultOverlapBufferSize];
+
     /// <summary>
     /// 以角色 Pivot 为世界原点，求解本帧允许的位移矢量（三维一体，含下落）。
     /// </summary>
@@ -40,7 +42,8 @@ public static class KinematicMotorSolver {
             return Vector3.zero;
         }
 
-        var maxStep = Mathf.Max(0.01f, motor.Radius * 0.85f);
+        var frac = Mathf.Clamp(motor.KinematicSubStepRadiusFraction, 0.12f, 0.95f);
+        var maxStep = Mathf.Max(0.01f, motor.Radius * frac);
         var dispSq = worldDisplacement.sqrMagnitude;
         var dispMag = Mathf.Sqrt(dispSq);
         var subSteps = Mathf.CeilToInt(dispMag / maxStep);
@@ -60,6 +63,154 @@ public static class KinematicMotorSolver {
         return deltaTotal;
     }
 
+    /// <summary>
+    /// Lift→Forward→Drop：跨过 StepOffset 以内的立面阻挡（跑楼梯 / 矮槛），不走纯 Slide「立面即墙」模型。
+    /// </summary>
+    private static bool TryStepUp(
+        Vector3 worldPivot,
+        float pivotToFootOffset,
+        MotorSettingsSO motor,
+        Vector3 displacement,
+        LayerMask obstacleLayers,
+        out Vector3 stepDelta) {
+        stepDelta = Vector3.zero;
+        if (motor == null || !motor.EnableKinematicStepUp || motor.StepOffset <= 0.01f) {
+            return false;
+        }
+
+        var dispMag = displacement.magnitude;
+        if (dispMag < 1e-5f) {
+            return false;
+        }
+
+        var dirFull = displacement / dispMag;
+        if (dirFull.y > 0.35f) {
+            return false;
+        }
+
+        var horizFlat = new Vector3(displacement.x, 0f, displacement.z);
+        var horizMag = horizFlat.magnitude;
+        if (horizMag < 1e-5f) {
+            return false;
+        }
+
+        var dir = horizFlat * (1f / horizMag);
+        var skin = Mathf.Max(0.0005f, motor.SkinWidth);
+        var castRadius = Mathf.Max(0.01f, motor.Radius - skin * 0.5f);
+        GetCapsuleWorld(worldPivot, pivotToFootOffset, motor, out var p1, out var p2, out _);
+
+        if (!Physics.CapsuleCast(
+                p1,
+                p2,
+                castRadius,
+                dir,
+                out var hit,
+                Mathf.Max(horizMag, skin),
+                obstacleLayers,
+                QueryTriggerInteraction.Ignore)) {
+            return false;
+        }
+
+        if (hit.distance >= horizMag - skin * 1.5f) {
+            return false;
+        }
+
+        var footY = worldPivot.y - Mathf.Max(0f, pivotToFootOffset);
+        var hitRelFootY = hit.point.y - footY;
+        var maxStep = motor.StepOffset;
+        if (hitRelFootY > maxStep + 0.1f) {
+            return false;
+        }
+
+        var liftCap = Mathf.Clamp(maxStep, 0.05f, maxStep);
+        var liftDir = Vector3.up;
+        float actualLift;
+        if (!Physics.CapsuleCast(
+                p1,
+                p2,
+                castRadius,
+                liftDir,
+                out var upHit,
+                liftCap + skin,
+                obstacleLayers,
+                QueryTriggerInteraction.Ignore)) {
+            actualLift = liftCap;
+        }
+        else {
+            actualLift = Mathf.Max(0f, Mathf.Min(liftCap, upHit.distance - skin));
+        }
+
+        if (actualLift < 0.035f) {
+            return false;
+        }
+
+        var liftedPivot = worldPivot + Vector3.up * actualLift;
+        GetCapsuleWorld(liftedPivot, pivotToFootOffset, motor, out var lp1, out var lp2, out _);
+
+        float forwardTravel;
+        if (!Physics.CapsuleCast(
+                lp1,
+                lp2,
+                castRadius,
+                dir,
+                out var fHit,
+                horizMag,
+                obstacleLayers,
+                QueryTriggerInteraction.Ignore)) {
+            forwardTravel = horizMag;
+        }
+        else {
+            forwardTravel = Mathf.Max(0f, fHit.distance - skin);
+        }
+
+        if (forwardTravel < skin * 1.5f) {
+            return false;
+        }
+
+        var forwardMoved = dir * forwardTravel;
+        var midPivot = liftedPivot + forwardMoved;
+
+        GetCapsuleWorld(midPivot, pivotToFootOffset, motor, out var dp1, out var dp2, out _);
+        var dropMax = actualLift + Mathf.Max(0.05f, motor.StepDownProbeExtra);
+
+        if (!Physics.CapsuleCast(
+                dp1,
+                dp2,
+                castRadius,
+                Vector3.down,
+                out var dHit,
+                dropMax,
+                obstacleLayers,
+                QueryTriggerInteraction.Ignore)) {
+            return false;
+        }
+
+        if (motor.IsSlopeTooSteep(dHit.normal)) {
+            return false;
+        }
+
+        var targetPivotY = dHit.point.y + Mathf.Max(0f, pivotToFootOffset);
+        var resultPivot = new Vector3(midPivot.x, targetPivotY, midPivot.z);
+
+        if (motor.GroundSnapOverlapGuard) {
+            var overlapMask = motor.GroundSnapOverlapLayers.value != 0
+                ? motor.GroundSnapOverlapLayers
+                : motor.ObstacleLayers;
+            if (OverlapCapsuleAtPivotBlocks(
+                    resultPivot,
+                    pivotToFootOffset,
+                    motor,
+                    overlapMask,
+                    null,
+                    s_stepOverlapBuffer)) {
+                return false;
+            }
+        }
+
+        stepDelta = resultPivot - worldPivot;
+        return stepDelta.sqrMagnitude > 1e-10f;
+    }
+
     private static Vector3 SolveSubStepSweep(
         Vector3 worldPivot,
         float pivotToFootOffset,
@@ -69,6 +220,14 @@ public static class KinematicMotorSolver {
         bool applyGroundedSlideDownwardLock) {
         if (displacement.sqrMagnitude < EpsilonSq) {
             return Vector3.zero;
+        }
+
+        var stepHorizSq = displacement.x * displacement.x + displacement.z * displacement.z;
+        if (motor.EnableKinematicStepUp
+            && stepHorizSq > 1e-8f
+            && displacement.y > -0.28f
+            && TryStepUp(worldPivot, pivotToFootOffset, motor, displacement, obstacleLayers, out var stepDelta)) {
+            return stepDelta;
         }
 
         var skin = Mathf.Max(0.0005f, motor.SkinWidth);
@@ -391,13 +550,35 @@ public static class KinematicMotorSolver {
         appliedLowerHemisphereFilter = false;
         var n = hit.normal.normalized;
 
+        // ── Pass ∞：可行走坡面绝对豁免（最高优先级）──────────────────────────────
+        //    根因：楼梯/斜坡 collider 的法线本就带 Y 分量（如 (0.5,0.866,0)）。一旦 Pass −2 /
+        //          Pass 0.5 / Pass 1 把它压平成 (1,0,0)，Slide 投影自然失去上行分量，蓝色射线水平
+        //          → 角色"撞"在斜坡根部 → 反复滑/悬空。
+        //    解药：只要法线角 ≤ MaxSlopeAngle 即视为可行走坡面，直接返回原始法线，跳过一切 Y 剥离。
+        //    例外：自由落体（dir.y<-0.05）时仍允许下半球过滤把"凸角斜上法线"压平防悬浮。
+        if (motor != null && !isFalling) {
+            if (n.y > 0.0001f && !motor.IsSlopeTooSteep(n)) {
+                return WriteNormalCache(motor, hit.collider, n);
+            }
+        }
+
+        // 脚底参考：底球球心 Y − R = 脚底 Y（与 GetCapsuleWorld 一致）
+        var footY = bottomSphereCenter.y - motor.Radius;
+        var hitRelToFoot = hit.point.y - footY;
+        var stairBand = motor != null
+            && motor.EnableStairHeightNormalExemption
+            && !isFalling
+            && hitRelToFoot >= -0.08f
+            && hitRelToFoot <= motor.StepOffset + 0.08f;
+        var exemptYStrip = isFalling || stairBand;
+
         // ── Pass −2：边缘命中消毒（半身墙顶边 / 棱角斜对角法线）─────────────────────
         //    根因：底半球撞到半身墙的【顶边】时，PhysX 返回斜对角法线如 (0.7, 0.7, 0)，
         //    既逃过墙面消毒（|n.y|>0.1）也逃过陡坡判据（不算陡坡）→ 顺序投影使 V 在帧间
         //    在"沿墙滑"和"上台阶"两种模式间乒乓 → 相机抖动。
         //    解药：底半球命中 + |n.y| 落入边缘区间 → 强制按垂直墙处理（清零 Y）。
-        //    【下落豁免】：本帧位移在下落（isFalling）时不剥离 Y，让斜法线把重力折射成沿边缘滑落。
-        if (!isFalling
+        //    【下落 / 楼梯带宽豁免】：不剥离 Y，保留斜法线供重力折射或沿阶滑升。
+        if (!exemptYStrip
             && motor != null
             && motor.EnableEdgeContactSanitization
             && hit.point.y < bottomSphereCenter.y + (motor.LowerHemisphereBottomCenterYSlop)
@@ -459,8 +640,8 @@ public static class KinematicMotorSolver {
         //    LowerHemisphereFilter 又因 hit > bottomCenter 早返直接放过。
         //    本 Pass 把 PhysX 帧间随机选择的 (1,0,0)/(0,1,0)/(0.7,0.7,0) 三种法线
         //    全部归一为 (1,0,0)，根除 Triangle Selection Non-determinism 抖动。
-        // 【下落豁免】：本 Pass 同样会剥离 Y，下落时跳过避免重力被吃掉。
-        if (!isFalling
+        // 【下落 / 楼梯带宽豁免】
+        if (!exemptYStrip
             && motor != null
             && motor.SanitizeHalfWallEdgeContact
             && n.y > motor.EdgeContactMinNormalY
@@ -496,10 +677,8 @@ public static class KinematicMotorSolver {
             return WriteNormalCache(motor, hit.collider, n);
         }
 
-        // 【下落豁免】：Pass 1 是滞空死锁的最大元凶 — 把 (0.7,0.7,0) 压成 (1,0,0) 后
-        // 重力 (0,-9.8,0) 投影到 (1,0,0) 上 = (0,-9.8,0) 完全不变，下一轮迭代再撞同一顶点
-        // 距离为 0 → 角色无限挂在空中。下落时直接返回原始法线，让重力被斜面折射。
-        if (isFalling) {
+        // 【下落 / 楼梯带宽豁免】：Pass 1 勿展平，否则纯 Slide 在凸角/阶前重力死锁或无法上阶。
+        if (exemptYStrip) {
             return WriteNormalCache(motor, hit.collider, n);
         }
 
@@ -839,10 +1018,25 @@ public static class KinematicMotorSolver {
                     continue;
                 }
 
-                // 凸角上 ComputePenetration 常返回竖直向上方向 → 角色被举起 → 相机插入体内。
-                // 工程经验：Depenetration 只承担水平脱困，竖直方向交给重力 + 边缘下滑保险。
+                // 向下挤出会把胶囊压穿薄地面（冲刺瞬叠 / 接缝）
+                if (dir.y < -1e-5f) {
+                    continue;
+                }
+
+                // 凸角上 ComputePenetration 常返回竖直向上方向 → 角色被举上墙顶 → 相机插入体内。
+                // 例外：穿透深度极小时且分离方向几乎朝上 → 视为薄地面/接缝埋入，允许完整上移脱困。
+                // 否则 Depen 只做水平挤出 + Player 禁止大幅向上吸附 → 偶发永久陷地。
                 var d = dir;
                 if (d.y > 0f) {
+                    var dn = d.normalized;
+                    if (dist <= 0.065f && dn.y >= 0.88f) {
+                        resolvedPivot += d * (dist + extraPush);
+                        probe.transform.position = resolvedPivot;
+                        resolvedThisLoop = true;
+                        movedAny = true;
+                        continue;
+                    }
+
                     d.y = 0f;
                     var sq = d.sqrMagnitude;
                     if (sq < 1e-10f) {

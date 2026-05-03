@@ -952,7 +952,15 @@ public class Player : Entity<Player>, IDamageable {
         //   病因：大半径 SphereCast 会擦到角色侧面的方块顶边 → 命中点高于脚底十几公分。
         //         若此时无条件 IsGrounded=true，重力被清零、Edge Slip 不触发 → 角色悬浮。
         //   解药：命中点高于脚底超过 GroundedHitElevationGuard 视为假阳性接地，让重力接管。
-        const float groundedHitElevationGuard = 0.04f;
+        // 斜坡命中点相对脚底会上抬 ≈ R·(1−cosθ)（球落在倾斜面上的几何）。
+        // 30° 坡 + R=0.5 → 0.067 m，远超固定 0.04 → 误判滞空。按命中法线角动态放宽。
+        const float groundedHitElevationGuardFlat = 0.04f;
+        var groundedHitElevationGuard = groundedHitElevationGuardFlat;
+        if (hitGround && hit.normal.y > 0.001f) {
+            var capR = motorSettings != null ? motorSettings.Radius : groundProbeRadius;
+            var ny = Mathf.Clamp(hit.normal.y, 0f, 1f);
+            groundedHitElevationGuard = Mathf.Max(groundedHitElevationGuardFlat, capR * (1f - ny) + 0.02f);
+        }
         var footPosForCheck = transform.position - Vector3.up * pivotToFootOffset;
         if (hitGround && hit.point.y > footPosForCheck.y + groundedHitElevationGuard)
         {
@@ -976,15 +984,15 @@ public class Player : Entity<Player>, IDamageable {
         var snapPosition = new Vector3(transform.position.x, targetY, transform.position.z);
         var allowSnapY = true;
 
-        // ── Hard Snap 单向约束：只允许向下吸附，永远禁止把角色 Y 向上拉 ───────────
-        //   病因：当角色从侧面贴过方块顶边时，大半径 SphereCast 会擦到方块顶（命中点高于
-        //         角色脚底），此时 targetY > transform.y。无条件吸附会把角色举到方块上方，
-        //         脚下悬空 → 下一帧仍命中同一顶边 → 永久悬浮。
-        //   解药：硬吸附本意是"下台阶 / 下坡时不让角色脱地"，本身就只该做向下牵引。
+        // ── Hard Snap 垂直约束：默认禁止大幅向上举升（蹭方块顶边 → 永久悬浮）
+        //   小幅向上（MaxGroundSnapUpwardPull）允许：薄地面穿透 / 去穿插只做水平挤出后，
+        //   脚底略低于探针支撑面时 targetY 会略高于 Pivot，旧逻辑一律禁止向上 → 永久陷地。
         const float snapUpwardSafetyEpsilon = 0.005f;
         if (targetY > transform.position.y + snapUpwardSafetyEpsilon)
         {
-            allowSnapY = false;
+            var pull = targetY - transform.position.y;
+            var maxUp = motorSettings != null ? motorSettings.MaxGroundSnapUpwardPull : 0f;
+            allowSnapY = maxUp > 1e-5f && pull <= maxUp;
         }
 
         if (allowSnapY && motorSettings != null && motorSettings.GroundSnapOverlapGuard)

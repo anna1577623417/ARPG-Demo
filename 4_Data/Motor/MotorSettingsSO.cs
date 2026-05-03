@@ -25,9 +25,22 @@ public sealed class MotorSettingsSO : ScriptableObject
     [Tooltip("PhysicsPassThrough 策略下允许的「脚掌—探测命中」空隙上限；过大易空中误判贴地。\n")] [Range(0.05f, 0.55f)]
     public float AirborneGroundContactSlop = 0.14f;
 
-    [Header("Terrain coupling (Grounded pillar)")]
-    [Tooltip("满阶梯辅助高度（下一阶段 StepSolver 接线）。当前版本预留，不参与求解。")] [Range(0f, 1f)]
+    [Header("Terrain coupling — Step-Up & stairs")]
+    [Tooltip("启用 KinematicMotorSolver 内 Lift→Forward→Drop 阶梯跨越（跑楼梯 / 矮槛）。")]
+    public bool EnableKinematicStepUp = true;
+
+    [Tooltip(
+        "单级可跨越的最大垂直高度（米）。与 CharacterController.stepOffset 同类语义；过大易「飞台阶」，过小仍蹭立面。")]
+    [Range(0.05f, 1f)]
     public float StepOffset = 0.3f;
+
+    [Tooltip("阶梯接地探测：从抬起并前移后的位置向下 CapsuleCast 的额外长度（米）。")]
+    [Range(0.05f, 0.6f)]
+    public float StepDownProbeExtra = 0.22f;
+
+    [Tooltip(
+        "命中点相对脚底高度在 [0, StepOffset] 带宽内时，法线消毒不剥离 Y，便于 Slide 沿立面「滑上」台阶。\n与下落豁免互补：上楼 ≠ 自由落体凸角。")]
+    public bool EnableStairHeightNormalExemption = true;
 
     [Tooltip("下坡/高速运动时允许向下吸附以保持贴地的最大落空距离（米）。\n仅在 FullTerrainCoupling 生效。")] [Range(0f, 2f)]
     public float GroundSnapDistance = 0.4f;
@@ -44,7 +57,12 @@ public sealed class MotorSettingsSO : ScriptableObject
     [Tooltip("下落终端速度上限，防止 Δt·v 单帧击穿薄碰撞。")] [Range(10f, 120f)]
     public float TerminalVelocity = 50f;
 
-    [Range(1, 8)] public int MaxSubSteps = 3;
+    [Tooltip(
+        "子步位移上限 = Radius × 该系数（越小单帧切段越多，冲刺越不易穿薄墙 / 楼梯转角）。\n旧版固定 0.85·R；默认 0.5 偏保守。")]
+    [Range(0.15f, 0.95f)]
+    public float KinematicSubStepRadiusFraction = 0.5f;
+
+    [Range(1, 12)] public int MaxSubSteps = 6;
 
     [Tooltip("单次子步内 Collide-and-Slide 的最大折射次数（含接缝滑出迭代）。")] [Range(1, 6)]
     public int MaxSlideIterations = 4;
@@ -96,6 +114,11 @@ public sealed class MotorSettingsSO : ScriptableObject
 
     [Tooltip("Overlap 半径相对马达半径的缩放（略小于 1 减少边缘误报）。")] [Range(0.85f, 0.999f)]
     public float GroundSnapOverlapRadiusScale = 0.99f;
+
+    [Tooltip(
+        "硬吸附允许的最大向上修正（米）。>0：探针给出的合法地面略高于当前 Pivot 时，仅在该幅度内允许上移，用于抗薄地/去穿插未挤出导致的轻微陷地；过大仍会被视为「蹭顶举升」而拒绝（见 Player 单向吸附逻辑）。\n0 = 完全禁止向上吸附（旧行为）。")]
+    [Range(0f, 0.35f)]
+    public float MaxGroundSnapUpwardPull = 0.12f;
 
     [Header("Slide — grounded sink lock")]
     [Tooltip("接地且本帧无显著向上初速时，禁止滑动剩余位移带向下分量，防止复合投影把角色往地里推。")]
