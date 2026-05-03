@@ -135,9 +135,11 @@ public class CameraDeadzoneProxy : MonoBehaviour
     {
         if (_followTarget == null) return;
 
-        // ── 1. 旋转：直接镜像，不过死区 ──────────────────────────────────────────
-        // Cinemachine 3rdPersonFollow 依赖 Follow 目标的旋转确定轨道方向，不能延迟。
-        transform.rotation = _followTarget.rotation;
+        // ── 1. 旋转：仅镜像 yaw（水平偏航），不传 pitch / roll。 ─────────────────
+        // 角色被边缘脱困位移、动画 root motion 等场景下 followTarget 的 pitch/roll 会瞬时跳变，
+        // 直接全量镜像会让 3rdPersonFollow 轨道俯仰被拉扯，相机插入角色体内。
+        var fwdEuler = _followTarget.eulerAngles;
+        transform.rotation = Quaternion.Euler(0f, fwdEuler.y, 0f);
 
         // ── 2. XZ 死区牵引 ────────────────────────────────────────────────────────
         Vector3 targetPos = _followTarget.position;
@@ -176,16 +178,25 @@ public class CameraDeadzoneProxy : MonoBehaviour
         _currentProxyPos = new Vector3(smoothedXZ.x, smoothedY, smoothedXZ.y);
         transform.position = _currentProxyPos;
 
-        // ── 5. LookAt 子代理：XZ 复用已过滤坐标，Y 独立平滑 ─────────────────────
-        // 原理：LookAt 的 XZ 与 Follow 完全同步，相机不会因水平微震而旋转；
-        //       Y 轴独立 SmoothDamp，高度变化（楼梯 / 斜坡）仍平滑响应。
+        // ── 5. LookAt 子代理：XZ 复用已过滤坐标，Y 走与 Follow 同等的死区逻辑 ─────
+        // 旧版仅 SmoothDamp，瞬时大幅 Y 跳（如 depenetration 把角色顶起 0.3m）会直接被
+        // 镜头看到 → 镜头插进角色身体。新版先过死区再 SmoothDamp，与 Follow Y 保持一致。
         if (_lookAtProxy != null && _lookAtTarget != null)
         {
+            float lookTargetY = _lookAtTarget.position.y;
+            float dy = lookTargetY - _lookAtProxyY;
+            float adY = Mathf.Abs(dy);
+            float lookDesiredY = _lookAtProxyY;
+            if (adY > radiusY)
+            {
+                lookDesiredY += Mathf.Sign(dy) * (adY - radiusY);
+            }
+
             _lookAtProxyY = Mathf.SmoothDamp(
                 _lookAtProxyY,
-                _lookAtTarget.position.y,
+                lookDesiredY,
                 ref _lookAtVelocityY,
-                smoothTime * verticalSmoothMultiplier);
+                smoothTime * Mathf.Max(0.01f, verticalSmoothMultiplier));
 
             _lookAtProxy.position = new Vector3(_currentProxyPos.x, _lookAtProxyY, _currentProxyPos.z);
         }

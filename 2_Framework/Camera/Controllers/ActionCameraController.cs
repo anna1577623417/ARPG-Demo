@@ -47,6 +47,13 @@ public class ActionCameraController : CameraController
     [SerializeField] private float verticalMinAngle = -30f;
     [SerializeField] private float verticalMaxAngle = 70f;
 
+    [Header("Self-occlusion guard")]
+    [Tooltip("从相机防遮挡 LayerMask 中【剔除】的层（玩家自身 / 武器 / Hitbox / IgnoreRaycast 等）。\n空旷场景跳跃时若相机贴脸，把'Player' 层勾入此处即可——相机的防穿墙射线将忽略玩家自身碰撞体，恢复正常距离。\nRebindFollowAndLookAt 时一次性注入到 VCam 的 Cinemachine3rdPersonFollow.CameraCollisionFilter。")]
+    [SerializeField] private LayerMask cameraIgnoreLayers;
+
+    [Tooltip("自动把 followTarget 所在层加入 cameraIgnoreLayers（即便 Inspector 漏勾也能兜底）。")]
+    [SerializeField] private bool autoIgnoreFollowTargetLayer = true;
+
     private float _yaw;
     private float _pitch;
 
@@ -168,6 +175,39 @@ public class ActionCameraController : CameraController
         if (_pitch > 180f)
         {
             _pitch -= 360f;
+        }
+
+        // 将"自遮挡 LayerMask"注入到 VCam 的 3rdPersonFollow 防穿墙过滤器：
+        //   病因：默认 CameraCollisionFilter = Everything，跳跃时玩家自身的碰撞体（武器/Hitbox/胶囊体等）
+        //         会被 3rdPersonFollow 的肩部射线击中，相机被误判为"被遮挡"而拉近到玩家面前。
+        //   解药：把玩家所在层从过滤器里剔除——相机只会被【真实环境】阻挡，不再被自身遮挡。
+        ApplyCameraSelfOcclusionFilter(follow);
+    }
+
+    /// <summary>
+    /// 将 cameraIgnoreLayers 注入到 VCam 的 Cinemachine3rdPersonFollow.CameraCollisionFilter。
+    /// 注：3rdPersonFollow.CameraCollisionFilter 接受"会阻挡相机的层" — 因此用 ~ignore 取反。
+    /// </summary>
+    private void ApplyCameraSelfOcclusionFilter(Transform follow)
+    {
+        if (virtualCamera == null) return;
+
+        // 兜底：把 followTarget（PlayerCameraAnchor 子物体）所在层也算入忽略集
+        var ignoreMask = cameraIgnoreLayers.value;
+        if (autoIgnoreFollowTargetLayer && follow != null)
+        {
+            ignoreMask |= 1 << follow.gameObject.layer;
+        }
+
+        // Cinemachine 2.x：CinemachineVirtualCamera.GetCinemachineComponent<T>()
+        if (virtualCamera is CinemachineVirtualCamera vcam)
+        {
+            var thirdPerson = vcam.GetCinemachineComponent<Cinemachine3rdPersonFollow>();
+            if (thirdPerson != null)
+            {
+                // CameraCollisionFilter = "可阻挡相机的层"，所以把忽略层取反
+                thirdPerson.CameraCollisionFilter = ~ignoreMask;
+            }
         }
     }
 }

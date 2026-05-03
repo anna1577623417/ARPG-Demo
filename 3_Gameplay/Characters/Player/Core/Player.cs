@@ -57,6 +57,37 @@ public class Player : Entity<Player>, IDamageable {
     [Tooltip("哪些层级被判定为地面。必须正确设置，否则永远浮空！")]
     [SerializeField] private LayerMask groundLayers = ~0;
 
+    [Header("Edge grounding recovery")]
+    [Tooltip("允许将'命中但法线过陡'且落点位于脚底中心附近的接触，当作边缘落地放行，避免顶点法线导致的假滞空。")]
+    [SerializeField] private bool enableEdgeGroundTolerance = true;
+
+    [Tooltip("边缘落地放行时，命中点到脚底中心的水平容差（相对探针半径）。")]
+    [SerializeField, Range(0.5f, 1.5f)] private float edgeGroundToleranceRadiusScale = 1.05f;
+
+    [Tooltip("边缘落地放行时，命中点高于脚底平面的最大容差（米）。")]
+    [SerializeField, Range(0f, 0.1f)] private float edgeGroundToleranceVerticalSlop = 0.03f;
+
+    [Tooltip("反滞空：空中且垂直速度应下落却被碰撞吃掉时，沿边缘法线施加微小水平推离速度。")]
+    [SerializeField] private bool enableAirborneEdgeSlip = true;
+
+    [Tooltip("反滞空滑落的水平推离速度（m/s）。")]
+    [SerializeField, Range(0f, 2f)] private float edgeSlipPushSpeed = 0.5f;
+
+    [Tooltip("触发反滞空滑落所需的最小下落速度（m/s）。")]
+    [SerializeField, Range(0f, 3f)] private float edgeSlipMinFallingSpeed = 0.08f;
+
+    [Tooltip("触发反滞空滑落时，求解后垂直速度阈值。高于该值（接近 0）视为'下落被吃掉'。")]
+    [SerializeField, Range(-1f, 0.2f)] private float edgeSlipSolvedVerticalSpeedThreshold = -0.02f;
+
+    [Tooltip("连续多少帧检测到滞空死锁后，启用强制位移脱困（直接写入 Transform）。")]
+    [SerializeField, Range(2, 20)] private int edgeSlipForceUnstickFrameThreshold = 4;
+
+    [Tooltip("强制脱困时，每帧的水平外推距离（米）。")]
+    [SerializeField, Range(0f, 0.2f)] private float edgeSlipForceUnstickHorizontalStep = 0.04f;
+
+    [Tooltip("强制脱困时，每帧的向下位移（米），打破竖直死锁。")]
+    [SerializeField, Range(0f, 0.2f)] private float edgeSlipForceUnstickDownStep = 0.05f;
+
     [Header("Kinematic Motor (optional)")]
     [Tooltip("非空：CapsuleSweep + Collide-and-Slide；地面策略由 MotorSolveContext + 合法坡角门控。\n留空：v3.2.8 Transform 直加 + 始终硬吸附（含凸角振荡风险）。")] [SerializeField]
     private MotorSettingsSO motorSettings;
@@ -111,6 +142,10 @@ public class Player : Entity<Player>, IDamageable {
 
     /// <summary>上一逻辑帧结束时是否接地（用于马达二次下探稳定，减轻低台阶蹭起后的单帧 IsGrounded 抖动）。</summary>
     private bool m_wasGroundedLastFrame;
+    private bool m_hasSteepGroundHitForEdgeSlip;
+    private Vector3 m_lastSteepGroundHitPoint;
+    private Vector3 m_lastSteepGroundHitNormal = Vector3.up;
+    private int m_edgeSlipStuckFrameCount;
 
     private static readonly Collider[] s_groundSnapOverlapBuffer =
         new Collider[KinematicMotorSolver.DefaultOverlapBufferSize];
@@ -544,27 +579,30 @@ public class Player : Entity<Player>, IDamageable {
         ClampTerminalVelocityVertical();
 
         var velocity = new Vector3(m_planarVelocity.x, m_verticalSpeed, m_planarVelocity.z);
+        var solvedDelta = velocity * Time.deltaTime;
 
         if (UsesKinematicMotorPipeline)
         {
             velocity = MaybeProjectVelocityOntoWalkableSlope(velocity, context);
             var displacement = velocity * Time.deltaTime;
             var applySlideYLock = ShouldApplyGroundedSlideDownwardLock(in context);
-            var delta = KinematicMotorSolver.SolveDisplacementFromPivot(
+            solvedDelta = KinematicMotorSolver.SolveDisplacementFromPivot(
                 transform.position,
                 pivotToFootOffset,
                 motorSettings,
                 displacement,
                 motorSettings.ObstacleLayers,
                 applySlideYLock);
-            transform.position += delta;
+            transform.position += solvedDelta;
         }
         else
         {
             transform.position += velocity * Time.deltaTime;
         }
 
+        ResolveMotorOverlapsIfNeeded();
         RefreshGroundedState(in context);
+        ApplyAirborneEdgeSlipIfStuck(in solvedDelta);
     }
 
     public void ApplyMotorFromGameplayVelocity(Vector3 gameplayWorldVelocity, in MotorSolveContext context)
@@ -573,6 +611,7 @@ public class Player : Entity<Player>, IDamageable {
         ClampTerminalVelocityVertical();
 
         var velocity = gameplayWorldVelocity;
+        var solvedDelta = velocity * Time.deltaTime;
         if (!m_gravitySuspended)
         {
             if (Mathf.Abs(gameplayWorldVelocity.y) < 0.001f)
@@ -590,21 +629,23 @@ public class Player : Entity<Player>, IDamageable {
             velocity = MaybeProjectVelocityOntoWalkableSlope(velocity, context);
             var displacement = velocity * Time.deltaTime;
             var applySlideYLock = ShouldApplyGroundedSlideDownwardLock(in context);
-            var delta = KinematicMotorSolver.SolveDisplacementFromPivot(
+            solvedDelta = KinematicMotorSolver.SolveDisplacementFromPivot(
                 transform.position,
                 pivotToFootOffset,
                 motorSettings,
                 displacement,
                 motorSettings.ObstacleLayers,
                 applySlideYLock);
-            transform.position += delta;
+            transform.position += solvedDelta;
         }
         else
         {
             transform.position += velocity * Time.deltaTime;
         }
 
+        ResolveMotorOverlapsIfNeeded();
         RefreshGroundedState(in context);
+        ApplyAirborneEdgeSlipIfStuck(in solvedDelta);
     }
 
     private bool ShouldApplyGroundedSlideDownwardLock(in MotorSolveContext context)
@@ -667,6 +708,17 @@ public class Player : Entity<Player>, IDamageable {
     public void TeleportTo(Vector3 worldPosition)
     {
         var destination = worldPosition;
+        if (motorSettings != null)
+        {
+            var desiredDisplacement = destination - transform.position;
+            var clamped = KinematicMotorSolver.ClampDisplacementByObstacleSweep(
+                transform.position,
+                pivotToFootOffset,
+                motorSettings,
+                desiredDisplacement,
+                motorSettings.ObstacleLayers);
+            destination = transform.position + clamped;
+        }
 
         if (motorSettings != null && motorSettings.TeleportRayMaxDistance > 0.001f)
         {
@@ -686,6 +738,7 @@ public class Player : Entity<Player>, IDamageable {
         }
 
         transform.position = destination;
+        ResolveMotorOverlapsIfNeeded();
         m_planarVelocity = Vector3.zero;
         m_verticalSpeed = 0f;
         RefreshGroundedState(MotorSolveContext.Locomotion);
@@ -697,15 +750,33 @@ public class Player : Entity<Player>, IDamageable {
     private void RefreshGroundedState(in MotorSolveContext context)
     {
         var footPos = transform.position - Vector3.up * pivotToFootOffset;
-        var probeRadius = Mathf.Max(groundProbeRadius, motorSettings != null ? motorSettings.Radius : 0f);
-
-        var startOffset = probeRadius + 0.1f;
-        var origin = footPos + Vector3.up * startOffset;
+        float probeRadius;
+        Vector3 origin;
+        if (motorSettings != null)
+        {
+            KinematicMotorSolver.GetCapsuleWorld(
+                transform.position,
+                pivotToFootOffset,
+                motorSettings,
+                out var bottomSphere,
+                out _,
+                out var capsuleRadius);
+            var skin = Mathf.Max(0.0005f, motorSettings.SkinWidth);
+            probeRadius = Mathf.Max(0.01f, capsuleRadius - skin);
+            // 从底半球球心发射，探针几何与胶囊底盘保持同构，避免中心漏空。
+            origin = bottomSphere;
+        }
+        else
+        {
+            probeRadius = Mathf.Max(groundProbeRadius, 0.01f);
+            var startOffset = probeRadius + 0.1f;
+            origin = footPos + Vector3.up * startOffset;
+        }
 
         var castReach = motorSettings != null && context.AllowsHardGroundSnap
             ? Mathf.Max(groundCheckDistance, motorSettings.GroundSnapDistance)
             : groundCheckDistance;
-        var castDistance = 0.1f + castReach;
+        var castDistance = Mathf.Max(0.1f, castReach);
 
         RaycastHit hit = default;
         var hitGround = Physics.SphereCast(
@@ -805,6 +876,17 @@ public class Player : Entity<Player>, IDamageable {
                 this);
         }
 
+        if (hitGround && IsGroundNormalTooSteep(hit.normal))
+        {
+            m_hasSteepGroundHitForEdgeSlip = true;
+            m_lastSteepGroundHitPoint = hit.point;
+            m_lastSteepGroundHitNormal = hit.normal;
+        }
+        else
+        {
+            m_hasSteepGroundHitForEdgeSlip = false;
+        }
+
         var airborneSlopBand = motorSettings != null ? motorSettings.AirborneGroundContactSlop : float.MaxValue;
         var groundedByProximity = motorSettings != null && !context.AllowsHardGroundSnap
             ? hitGround && hit.distance <= airborneSlopBand
@@ -812,7 +894,17 @@ public class Player : Entity<Player>, IDamageable {
 
         var useHardSnapLegacy = motorSettings == null || context.AllowsHardGroundSnap;
 
-        if (!groundedByProximity || m_verticalSpeed > 0f)
+        // ── 上行速度死区（v_y deadzone）─────────────────────────────────────────
+        //   病因：CollideAndSlide 在墙角投影时浮点漂移可能产生 0.0001 量级的微小上行速度，
+        //         零容差判据 (m_verticalSpeed > 0f) 会把这种"假阳性上行"误判为跳跃，
+        //         强制 IsGrounded=false → 下一帧重力累加 → 角色无故脱地 → 跳跃接重力组合
+        //         在边缘命中场景把玩家压进网格。
+        //   解药：用 GroundSnapMaxUpwardVelocity（默认 0.08 m/s，与 Layer 2 延伸探针共用阈值）
+        //         作为死区，只有真实跳跃 / 受击爆发力（v_y >> 0）才走"假性滞空"分支。
+        var upwardDeadzone = motorSettings != null
+            ? motorSettings.GroundSnapMaxUpwardVelocity
+            : 0.05f;
+        if (!groundedByProximity || m_verticalSpeed > upwardDeadzone)
         {
             IsGrounded = false;
             if (!hitGround)
@@ -824,16 +916,45 @@ public class Player : Entity<Player>, IDamageable {
             return;
         }
 
+        // ── Edge Tolerance 仅在「上一帧已接地」时放行 ─────────────────────────────
+        //   病因：放行条件「探针命中过陡 + 命中点在脚底中心容差内」对两类几何同时成立：
+        //         (a) 平地行走时凸角误返陡法线（应放行 → 防假滞空）
+        //         (b) 空中下落到方块顶角（不应放行 → 否则 IsGrounded=true 后 Hard Snap
+        //             把角色 Y 抬到 hit.point.y + pivotToFootOffset，相当于把人举到方块顶上）
+        //   解药：仅当 m_wasGroundedLastFrame==true 才允许放行。下落到凸角的情况让 EdgeSlip 接管。
+        var canEdgeTolerate = enableEdgeGroundTolerance && m_wasGroundedLastFrame;
         if (motorSettings != null && hitGround && motorSettings.IsSlopeTooSteep(hit.normal))
         {
-            IsGrounded = false;
-            m_lastGroundNormal = Vector3.up;
-            m_wasGroundedLastFrame = IsGrounded;
-            return;
+            var allowEdgeGrounding = canEdgeTolerate && IsSteepHitWithinFootTolerance(hit, probeRadius);
+            if (!allowEdgeGrounding)
+            {
+                IsGrounded = false;
+                m_lastGroundNormal = Vector3.up;
+                m_wasGroundedLastFrame = IsGrounded;
+                return;
+            }
         }
 
         if (motorSettings == null && hitGround &&
             Vector3.Angle(Vector3.up, hit.normal) > MaxSlopeDegreesLegacy)
+        {
+            var allowEdgeGrounding = canEdgeTolerate && IsSteepHitWithinFootTolerance(hit, probeRadius);
+            if (!allowEdgeGrounding)
+            {
+                IsGrounded = false;
+                m_lastGroundNormal = Vector3.up;
+                m_wasGroundedLastFrame = IsGrounded;
+                return;
+            }
+        }
+
+        // ── 二次校验：命中点高于脚底过多则视为"脚下悬空，仅探针擦到上方棱角" ─────
+        //   病因：大半径 SphereCast 会擦到角色侧面的方块顶边 → 命中点高于脚底十几公分。
+        //         若此时无条件 IsGrounded=true，重力被清零、Edge Slip 不触发 → 角色悬浮。
+        //   解药：命中点高于脚底超过 GroundedHitElevationGuard 视为假阳性接地，让重力接管。
+        const float groundedHitElevationGuard = 0.04f;
+        var footPosForCheck = transform.position - Vector3.up * pivotToFootOffset;
+        if (hitGround && hit.point.y > footPosForCheck.y + groundedHitElevationGuard)
         {
             IsGrounded = false;
             m_lastGroundNormal = Vector3.up;
@@ -854,7 +975,19 @@ public class Player : Entity<Player>, IDamageable {
         var targetY = hit.point.y + pivotToFootOffset;
         var snapPosition = new Vector3(transform.position.x, targetY, transform.position.z);
         var allowSnapY = true;
-        if (motorSettings != null && motorSettings.GroundSnapOverlapGuard)
+
+        // ── Hard Snap 单向约束：只允许向下吸附，永远禁止把角色 Y 向上拉 ───────────
+        //   病因：当角色从侧面贴过方块顶边时，大半径 SphereCast 会擦到方块顶（命中点高于
+        //         角色脚底），此时 targetY > transform.y。无条件吸附会把角色举到方块上方，
+        //         脚下悬空 → 下一帧仍命中同一顶边 → 永久悬浮。
+        //   解药：硬吸附本意是"下台阶 / 下坡时不让角色脱地"，本身就只该做向下牵引。
+        const float snapUpwardSafetyEpsilon = 0.005f;
+        if (targetY > transform.position.y + snapUpwardSafetyEpsilon)
+        {
+            allowSnapY = false;
+        }
+
+        if (allowSnapY && motorSettings != null && motorSettings.GroundSnapOverlapGuard)
         {
             var overlapMask = motorSettings.GroundSnapOverlapLayers.value != 0
                 ? motorSettings.GroundSnapOverlapLayers
@@ -877,6 +1010,98 @@ public class Player : Entity<Player>, IDamageable {
         }
 
         m_wasGroundedLastFrame = IsGrounded;
+    }
+
+    private bool IsSteepHitWithinFootTolerance(in RaycastHit hit, float probeRadius)
+    {
+        var footPos = transform.position - Vector3.up * pivotToFootOffset;
+        var toHit = hit.point - footPos;
+        var horizontalSq = toHit.x * toHit.x + toHit.z * toHit.z;
+        var horizontalLimit = Mathf.Max(0.01f, probeRadius * edgeGroundToleranceRadiusScale);
+        if (horizontalSq > horizontalLimit * horizontalLimit)
+        {
+            return false;
+        }
+
+        if (hit.point.y > footPos.y + edgeGroundToleranceVerticalSlop)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private void ResolveMotorOverlapsIfNeeded()
+    {
+        if (motorSettings == null || motorSettings.ObstacleLayers.value == 0)
+        {
+            return;
+        }
+
+        if (KinematicMotorSolver.ResolveOverlapsAtPivot(
+                transform.position,
+                pivotToFootOffset,
+                motorSettings,
+                motorSettings.ObstacleLayers,
+                transform,
+                out var resolvedPivot))
+        {
+            transform.position = resolvedPivot;
+        }
+    }
+
+    private void ApplyAirborneEdgeSlipIfStuck(in Vector3 solvedDelta)
+    {
+        if (!enableAirborneEdgeSlip || motorSettings == null || IsGrounded)
+        {
+            m_edgeSlipStuckFrameCount = 0;
+            return;
+        }
+
+        if (!m_hasSteepGroundHitForEdgeSlip || m_verticalSpeed > -edgeSlipMinFallingSpeed)
+        {
+            m_edgeSlipStuckFrameCount = 0;
+            return;
+        }
+
+        var dt = Mathf.Max(Time.deltaTime, 1e-5f);
+        var solvedVerticalSpeed = solvedDelta.y / dt;
+        if (solvedVerticalSpeed <= edgeSlipSolvedVerticalSpeedThreshold)
+        {
+            m_edgeSlipStuckFrameCount = 0;
+            return;
+        }
+
+        // 优先用 steep contact 的法线水平分量作为脱困方向（外推）；失败回退几何向量。
+        var away = new Vector3(m_lastSteepGroundHitNormal.x, 0f, m_lastSteepGroundHitNormal.z);
+        if (away.sqrMagnitude < 1e-6f)
+        {
+            away = transform.position - m_lastSteepGroundHitPoint;
+            away.y = 0f;
+        }
+
+        if (away.sqrMagnitude < 1e-6f)
+        {
+            return;
+        }
+
+        away.Normalize();
+        m_planarVelocity += away * edgeSlipPushSpeed;
+
+        // 累计帧 → 启用强制脱困：直接写入 Transform 的微小位移，打破竖直死锁。
+        m_edgeSlipStuckFrameCount++;
+        if (m_edgeSlipStuckFrameCount < edgeSlipForceUnstickFrameThreshold)
+        {
+            return;
+        }
+
+        var horizontal = away * edgeSlipForceUnstickHorizontalStep;
+        var down = Vector3.down * edgeSlipForceUnstickDownStep;
+        transform.position += horizontal + down;
+        m_verticalSpeed = 0f;
+
+        // 立刻自愈一次，避免人为下沉造成穿透。
+        ResolveMotorOverlapsIfNeeded();
     }
 
     /// <summary>

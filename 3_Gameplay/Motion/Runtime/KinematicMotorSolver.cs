@@ -6,6 +6,7 @@ using UnityEngine;
 /// </summary>
 public static class KinematicMotorSolver {
     private const float EpsilonSq = 1e-8f;
+    private const int DepenetrationBufferSize = 32;
     private static float s_nextLowerHemisphereLogTime;
     private static float s_nextEdgeSanitizationLogTime;
     private static float s_nextObtuseSeamLogTime;
@@ -17,6 +18,9 @@ public static class KinematicMotorSolver {
     private static Collider s_cachedNormalCollider;
     private static Vector3 s_cachedNormal;
     private static float s_cachedNormalTime;
+    private static readonly Collider[] s_depenetrationBuffer = new Collider[DepenetrationBufferSize];
+    private static GameObject s_penetrationProbeGo;
+    private static CapsuleCollider s_penetrationProbeCollider;
 
     /// <summary>供地面吸附等使用的非分配重叠缓冲（调用方负责层与排除自身碰撞体）。</summary>
     public const int DefaultOverlapBufferSize = 16;
@@ -103,7 +107,14 @@ public static class KinematicMotorSolver {
                 break;
             }
 
-            var slideNormal = ResolveContactNormalForSlide(motor, p1, p2, in hit, out var normalFiltered);
+            // ── Falling Exemption（下落豁免）──────────────────────────────────────
+            //   原因：下半球的三个 Y 剥离 Pass（EdgeContactSanitization / HalfWallEdge /
+            //         LowerHemisphereNormalFilter）会把"刮到凸角顶点"返回的斜上法线 (0.7,0.7,0)
+            //         强行压成纯水平 (1,0,0)，再投影重力 → 下行分量被完全吃掉 → 角色悬浮。
+            //   解药：本帧位移方向向下（dir.y<0）时跳过 Y 剥离，让 PhysX 原始斜法线把重力
+            //         折射成沿边缘的滑落速度，自然脱离顶点。
+            var isFalling = dir.y < -0.05f;
+            var slideNormal = ResolveContactNormalForSlide(motor, p1, p2, in hit, isFalling, out var normalFiltered);
 
             var approachNormalDot = Vector3.Dot(dir, slideNormal);
             if (approachNormalDot > motor.VelocityAgainstNormalRejectDot) {
@@ -375,6 +386,7 @@ public static class KinematicMotorSolver {
         Vector3 bottomSphereCenter,
         Vector3 topSphereCenter,
         in RaycastHit hit,
+        bool isFalling,
         out bool appliedLowerHemisphereFilter) {
         appliedLowerHemisphereFilter = false;
         var n = hit.normal.normalized;
@@ -384,7 +396,9 @@ public static class KinematicMotorSolver {
         //    既逃过墙面消毒（|n.y|>0.1）也逃过陡坡判据（不算陡坡）→ 顺序投影使 V 在帧间
         //    在"沿墙滑"和"上台阶"两种模式间乒乓 → 相机抖动。
         //    解药：底半球命中 + |n.y| 落入边缘区间 → 强制按垂直墙处理（清零 Y）。
-        if (motor != null
+        //    【下落豁免】：本帧位移在下落（isFalling）时不剥离 Y，让斜法线把重力折射成沿边缘滑落。
+        if (!isFalling
+            && motor != null
             && motor.EnableEdgeContactSanitization
             && hit.point.y < bottomSphereCenter.y + (motor.LowerHemisphereBottomCenterYSlop)
             && Mathf.Abs(n.y) >= motor.WallSanitizeNormalYThreshold
@@ -445,7 +459,9 @@ public static class KinematicMotorSolver {
         //    LowerHemisphereFilter 又因 hit > bottomCenter 早返直接放过。
         //    本 Pass 把 PhysX 帧间随机选择的 (1,0,0)/(0,1,0)/(0.7,0.7,0) 三种法线
         //    全部归一为 (1,0,0)，根除 Triangle Selection Non-determinism 抖动。
-        if (motor != null
+        // 【下落豁免】：本 Pass 同样会剥离 Y，下落时跳过避免重力被吃掉。
+        if (!isFalling
+            && motor != null
             && motor.SanitizeHalfWallEdgeContact
             && n.y > motor.EdgeContactMinNormalY
             && n.y < motor.EdgeContactMaxNormalY
@@ -477,6 +493,13 @@ public static class KinematicMotorSolver {
         }
 
         if (motor == null || !motor.EnableLowerHemisphereNormalFilter) {
+            return WriteNormalCache(motor, hit.collider, n);
+        }
+
+        // 【下落豁免】：Pass 1 是滞空死锁的最大元凶 — 把 (0.7,0.7,0) 压成 (1,0,0) 后
+        // 重力 (0,-9.8,0) 投影到 (1,0,0) 上 = (0,-9.8,0) 完全不变，下一轮迭代再撞同一顶点
+        // 距离为 0 → 角色无限挂在空中。下落时直接返回原始法线，让重力被斜面折射。
+        if (isFalling) {
             return WriteNormalCache(motor, hit.collider, n);
         }
 
@@ -714,6 +737,136 @@ public static class KinematicMotorSolver {
     }
 
     /// <summary>
+    /// 将离散位移按直线路径的胶囊 Sweep 截断，避免 Teleport/Blink 终点落入障碍物。
+    /// </summary>
+    public static Vector3 ClampDisplacementByObstacleSweep(
+        Vector3 pivotWorld,
+        float pivotToFootOffset,
+        MotorSettingsSO motor,
+        Vector3 desiredDisplacement,
+        LayerMask obstacleLayers) {
+        if (motor == null || desiredDisplacement.sqrMagnitude < EpsilonSq) {
+            return desiredDisplacement;
+        }
+
+        GetCapsuleWorld(pivotWorld, pivotToFootOffset, motor, out var p1, out var p2, out _);
+        var skin = Mathf.Max(0.0005f, motor.SkinWidth);
+        var castRadius = Mathf.Max(0.01f, motor.Radius - skin * 0.5f);
+        var distance = desiredDisplacement.magnitude;
+        var dir = desiredDisplacement / Mathf.Max(distance, 1e-6f);
+
+        if (!Physics.CapsuleCast(
+                p1,
+                p2,
+                castRadius,
+                dir,
+                out var hit,
+                distance,
+                obstacleLayers,
+                QueryTriggerInteraction.Ignore)) {
+            return desiredDisplacement;
+        }
+
+        var allowed = Mathf.Max(0f, hit.distance - skin);
+        return dir * allowed;
+    }
+
+    /// <summary>
+    /// 位移后自愈：若胶囊已与障碍重叠，使用 ComputePenetration 迭代挤出到安全位置。
+    /// </summary>
+    public static bool ResolveOverlapsAtPivot(
+        Vector3 pivotWorld,
+        float pivotToFootOffset,
+        MotorSettingsSO motor,
+        LayerMask obstacleLayers,
+        Transform ignoreRoot,
+        out Vector3 resolvedPivot) {
+        resolvedPivot = pivotWorld;
+        if (motor == null || obstacleLayers.value == 0) {
+            return false;
+        }
+
+        var probe = GetOrCreatePenetrationProbe();
+        if (probe == null) {
+            return false;
+        }
+
+        var skin = Mathf.Max(0.0005f, motor.SkinWidth);
+        var overlapRadius = Mathf.Max(0.01f, (motor.Radius - skin * 0.5f) * 0.995f);
+        var extraPush = Mathf.Max(0.0005f, skin * 0.2f);
+        var movedAny = false;
+
+        for (var loop = 0; loop < 3; loop++) {
+            GetCapsuleWorld(resolvedPivot, pivotToFootOffset, motor, out var p1, out var p2, out _);
+            var count = Physics.OverlapCapsuleNonAlloc(
+                p1,
+                p2,
+                overlapRadius,
+                s_depenetrationBuffer,
+                obstacleLayers,
+                QueryTriggerInteraction.Ignore);
+            if (count <= 0) {
+                break;
+            }
+
+            SetupPenetrationProbeTransform(probe, resolvedPivot, pivotToFootOffset, motor, overlapRadius);
+
+            var resolvedThisLoop = false;
+            for (var i = 0; i < count; i++) {
+                var c = s_depenetrationBuffer[i];
+                if (c == null || c == probe) {
+                    continue;
+                }
+
+                if (ignoreRoot != null && c.transform != null
+                                    && (c.transform == ignoreRoot || c.transform.IsChildOf(ignoreRoot))) {
+                    continue;
+                }
+
+                if (!Physics.ComputePenetration(
+                        probe,
+                        probe.transform.position,
+                        probe.transform.rotation,
+                        c,
+                        c.transform.position,
+                        c.transform.rotation,
+                        out var dir,
+                        out var dist)) {
+                    continue;
+                }
+
+                if (dist <= 1e-6f || dir.sqrMagnitude <= 1e-10f) {
+                    continue;
+                }
+
+                // 凸角上 ComputePenetration 常返回竖直向上方向 → 角色被举起 → 相机插入体内。
+                // 工程经验：Depenetration 只承担水平脱困，竖直方向交给重力 + 边缘下滑保险。
+                var d = dir;
+                if (d.y > 0f) {
+                    d.y = 0f;
+                    var sq = d.sqrMagnitude;
+                    if (sq < 1e-10f) {
+                        // 纯竖直顶起 → 跳过该碰撞体，避免被举上墙顶。
+                        continue;
+                    }
+                    d *= 1f / Mathf.Sqrt(sq);
+                }
+
+                resolvedPivot += d * (dist + extraPush);
+                probe.transform.position = resolvedPivot;
+                resolvedThisLoop = true;
+                movedAny = true;
+            }
+
+            if (!resolvedThisLoop) {
+                break;
+            }
+        }
+
+        return movedAny;
+    }
+
+    /// <summary>
     /// 瞬移到目标 Pivot 前先向下找支撑面；可选按 <see cref="MotorSettingsSO.MaxSlopeAngle"/> 拒绝凸角/墙顶。
     /// </summary>
     /// <param name="motorForWalkableSlopeGate">非空且命中法线过陡时返回 false，避免 Teleport 锁在钝角尖上。</param>
@@ -766,5 +919,34 @@ public static class KinematicMotorSolver {
         }
 
         return Vector3.ProjectOnPlane(displacement, n);
+    }
+
+    private static CapsuleCollider GetOrCreatePenetrationProbe() {
+        if (s_penetrationProbeCollider != null) {
+            return s_penetrationProbeCollider;
+        }
+
+        s_penetrationProbeGo = new GameObject("_KinematicMotor_DepenetrationProbe") {
+            hideFlags = HideFlags.HideAndDontSave
+        };
+        s_penetrationProbeGo.layer = 2; // Ignore Raycast
+        s_penetrationProbeCollider = s_penetrationProbeGo.AddComponent<CapsuleCollider>();
+        s_penetrationProbeCollider.isTrigger = true;
+        s_penetrationProbeCollider.enabled = true;
+        return s_penetrationProbeCollider;
+    }
+
+    private static void SetupPenetrationProbeTransform(
+        CapsuleCollider probe,
+        Vector3 pivotWorld,
+        float pivotToFootOffset,
+        MotorSettingsSO motor,
+        float radius) {
+        var h = motor.EffectiveHeight;
+        probe.direction = 1; // Y
+        probe.radius = radius;
+        probe.height = Mathf.Max(h, radius * 2f + 0.02f);
+        probe.center = new Vector3(0f, -pivotToFootOffset + probe.height * 0.5f, 0f);
+        probe.transform.SetPositionAndRotation(pivotWorld, Quaternion.identity);
     }
 }
