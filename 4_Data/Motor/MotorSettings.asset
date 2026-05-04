@@ -17,7 +17,7 @@ MonoBehaviour:
   SkinWidth: 0.015
   ObstacleLayers:
     serializedVersion: 2
-    m_Bits: 183
+    m_Bits: 439
   MaxSlopeAngle: 45
   AirborneGroundContactSlop: 0.14
   EnableKinematicStepUp: 1

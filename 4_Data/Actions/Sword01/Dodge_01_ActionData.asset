@@ -21,7 +21,7 @@ MonoBehaviour:
   Windows:
   - NormalizedStart: 0
     NormalizedEnd: 1
-    WindowSlotMask: 147456
+    WindowSlotMask: 2244864
     _legacyDirectStateTagMask: 0
   Charge:
     CanCharge: 0
