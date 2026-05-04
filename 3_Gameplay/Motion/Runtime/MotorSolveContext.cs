@@ -1,6 +1,6 @@
 /// <summary>
 /// 地面对 Transform 写权限的语义闸门：隔离「可硬吸附」与「仅碰撞 / 探针」两类策略。
-/// Why: 根治空中动作 + SphereCast + HardSnap 的Ground Loop；并与钝角非法坡面解耦。
+/// Why: 根治空中动作 + SphereCast + HardSnap 的Ground Loop；并与过陡非法坡面解耦。
 /// </summary>
 public enum MotorGroundingPolicy : byte
 {

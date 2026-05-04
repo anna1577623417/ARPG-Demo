@@ -85,12 +85,6 @@ MonoBehaviour:
   LowerHemisphereOriginalNormalColor: {r: 1, g: 0.92, b: 0.2, a: 1}
   LowerHemisphereFilteredNormalColor: {r: 1, g: 0.35, b: 0.85, a: 1}
   LogLowerHemisphereNormalFilters: 0
-  EnableObtuseSeamStabilizer: 1
-  ObtuseSeamNormalDotThreshold: 0.75
-  NormalMergingDotThreshold: 0.8
-  DrawObtuseSeamVector: 1
-  LogObtuseSeamActivations: 0
-  ObtuseSeamVectorColor: {r: 1, g: 0.15, b: 0.85, a: 1}
   EnableInterframeNormalLock: 1
   NormalCacheTTLSeconds: 0.08
   NormalCacheMinDot: 0.9

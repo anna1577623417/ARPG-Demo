@@ -10,7 +10,6 @@ public static class KinematicMotorSolver {
     private const int DepenetrationBufferSize = 32;
     private static float s_nextLowerHemisphereLogTime;
     private static float s_nextEdgeSanitizationLogTime;
-    private static float s_nextObtuseSeamLogTime;
     private static float s_nextStabilityAbortLogTime;
     private static float s_nextNormalCacheLogTime;
     private static float s_nextCornerContactLogTime;
@@ -390,8 +389,7 @@ public static class KinematicMotorSolver {
                 $"[CornerContact] f={Time.frameCount} sub={sweepSubStepIndex + 1}/{Mathf.Max(1, sweepSubStepCount)} " +
                 $"pivot0={worldPivot} disp={displacement}\n" +
                 $" slide2pkLast={DebugSlideSolveBranchTag} NPlane={(motor.EnableNPlaneMvpSolver ? "on" : "off")}\n" +
-                $" crevice≤{motor.CreviceNormalDotThreshold:F2} merge≤{motor.NormalMergingDotThreshold:F2} " +
-                $"ObtuseSeamStab={motor.EnableObtuseSeamStabilizer}\n" +
+                $" crevice≤{motor.CreviceNormalDotThreshold:F2}\n" +
                 cornerSb);
         }
 
@@ -639,8 +637,7 @@ public static class KinematicMotorSolver {
         var nCur = currentNormal.normalized;
 
         if (motor == null || !motor.EnableNPlaneMvpSolver) {
-            return SlideOrCreviceLegacy(remaining, nCur, hadPrev, lastNormal, creviceDotThresh, motor, hitPoint,
-                iterationIndex);
+            return SlideOrCreviceLegacy(remaining, nCur, hadPrev, lastNormal, creviceDotThresh, iterationIndex);
         }
 
         if (planeCount <= 1) {
@@ -656,7 +653,7 @@ public static class KinematicMotorSolver {
             return Vector3.zero;
         }
 
-        var solved = SolveTwoPlaneConstraint(remaining, p0, p1, creviceDotThresh, motor, hitPoint);
+        var solved = SolveTwoPlaneConstraint(remaining, p0, p1, creviceDotThresh);
         if (motor.NPlaneOverbounceFactor > 1f && solved.sqrMagnitude > EpsilonSq) {
             solved *= motor.NPlaneOverbounceFactor;
         }
@@ -674,8 +671,6 @@ public static class KinematicMotorSolver {
         bool hadPrev,
         Vector3 lastNormal,
         float creviceDotThresh,
-        MotorSettingsSO motor,
-        Vector3 hitPoint,
         int iterationIndex) {
         if (!hadPrev || iterationIndex <= 0) {
             TagSlideSolveBranch($"LegacyTwin_iter{iterationIndex}_singleProj_only");
@@ -683,37 +678,13 @@ public static class KinematicMotorSolver {
         }
 
         var nLast = lastNormal.normalized;
-        return SolveTwoPlaneConstraint(remaining, nLast, nCur, creviceDotThresh, motor, hitPoint);
+        return SolveTwoPlaneConstraint(remaining, nLast, nCur, creviceDotThresh);
     }
 
-    private static Vector3 SolveTwoPlaneConstraint(
-        Vector3 remaining,
-        Vector3 nLast,
-        Vector3 nCur,
-        float creviceDotThresh,
-        MotorSettingsSO motor,
-        Vector3 hitPoint) {
+    /// <summary>双平面约束：铰链轴向（锐缝）或顺序两次 ProjectOnPlane。外凸接缝、多 Collider 建议在场景侧合并网格碰撞。</summary>
+    private static Vector3 SolveTwoPlaneConstraint(Vector3 remaining, Vector3 nLast, Vector3 nCur,
+        float creviceDotThresh) {
         var dot = Vector3.Dot(nCur, nLast);
-        var obtuseStabilizerOn = motor != null && motor.EnableObtuseSeamStabilizer;
-        var mergeDotThresh = motor != null ? motor.NormalMergingDotThreshold : 0.92f;
-
-        // 近平行 / 共面（含 dot→1）：用平均法线一次投影。旧版误加 dot<0.9999，把「两法线完全相同」
-        // 排斥在外 → 落入 SequentialTwinPlane；与单平面等价却多一圈浮点，且第三迭代刮同一立面时振荡（Field 日志里 dot=1.000）。
-        if (obtuseStabilizerOn && dot > mergeDotThresh) {
-            var merged = nCur + nLast;
-            if (merged.sqrMagnitude > 1e-10f) {
-                merged.Normalize();
-                var projected = Vector3.ProjectOnPlane(remaining, merged);
-                if (projected.sqrMagnitude > EpsilonSq) {
-                    DebugDrawObtuseStrategy(motor, hitPoint, nLast, nCur, merged, true);
-                    LogObtuseActivation(motor, "NormalMerge", dot, nLast, nCur, merged, remaining, projected);
-                    var tag = dot >= 0.9999f ? "ParallelMerge_coPlanar" : "ParallelMerge";
-                    TagSlideSolveBranch($"{tag}(dot={dot:F4})");
-                    return projected;
-                }
-            }
-        }
-
         var isSharpCrevice = dot < creviceDotThresh;
         if (isSharpCrevice) {
             var seam = Vector3.Cross(nLast, nCur);
@@ -725,29 +696,6 @@ public static class KinematicMotorSolver {
                     return projected;
                 }
             }
-        }
-
-        // 宽钝角接缝 / 两台子 Box 拐角：dot 常为 0.3~0.6（本法线对上帧另一面），旧的「仅在 (0.75, merge]」才走 Seam
-        // 导致直接落回顺序双 ProjectOnPlane —— 对 nLast/nCur **顺序敏感**，两面 Collider 交替命中时振荡。
-        // 此处用对称的角平分外向法线 (nLast+nCur) → 单次 ProjectOnPlane，与迭代顺序无关。
-        if (obtuseStabilizerOn && dot > creviceDotThresh && dot <= mergeDotThresh) {
-            var bisectorOut = nLast + nCur;
-            if (bisectorOut.sqrMagnitude > 1e-5f) {
-                bisectorOut.Normalize();
-                var projectedWide = Vector3.ProjectOnPlane(remaining, bisectorOut);
-                if (projectedWide.sqrMagnitude > EpsilonSq) {
-                    DebugDrawObtuseStrategy(motor, hitPoint, nLast, nCur, bisectorOut, true);
-                    LogObtuseActivation(motor, "WideBisector", dot, nLast, nCur, bisectorOut, remaining,
-                        projectedWide);
-                    TagSlideSolveBranch($"WideBisector(dot={dot:F3})");
-                    return projectedWide;
-                }
-            }
-        }
-
-        if (!obtuseStabilizerOn && dot >= 0.99995f) {
-            TagSlideSolveBranch($"CoPlanarSingle_noObtuseStab(dot={dot:F4})");
-            return Vector3.ProjectOnPlane(remaining, nCur);
         }
 
         TagSlideSolveBranch($"SequentialTwinPlane(dot={dot:F3})");
@@ -1035,7 +983,7 @@ public static class KinematicMotorSolver {
 
     /// <summary>
     /// 在命中点绘制投影前（白）与投影后（蓝）的速度方向对比射线，辅助肉眼判断乒乓振荡。
-    /// 若仍交替，查 EnableObtuseSeamStabilizer / WideBisector 路径与场景是否双 Box 接缝。
+    /// 若仍交替，查网格合并 Collider / 接缝几何或跨帧法线锁。
     /// </summary>
     private static void DrawSlideVelocityComparison(MotorSettingsSO motor, in RaycastHit hit,
         Vector3 velocityBefore, Vector3 velocityAfter) {
@@ -1072,42 +1020,6 @@ public static class KinematicMotorSolver {
         var flashRgb = motor.SweepHitPointColor;
         flasher?.Flash(new Color(flashRgb.r, flashRgb.g, flashRgb.b, 1f), motor.SweepFlashHoldSeconds,
             motor.SweepFlashFadeSeconds);
-    }
-
-    private static void DebugDrawObtuseStrategy(MotorSettingsSO motor, Vector3 hitPoint,
-        Vector3 nLast, Vector3 nCur, Vector3 strategyAxis, bool isMerging) {
-        if (motor == null || !motor.DrawObtuseSeamVector) {
-            return;
-        }
-
-        var t = SweepDebugSeconds(motor);
-        // 合并模式：洋红色 = 平均法线方向（向外）
-        // 交棱模式：洋红色 = 交棱方向
-        var axisCol = motor.ObtuseSeamVectorColor;
-        Debug.DrawRay(hitPoint, strategyAxis * (isMerging ? 0.4f : 0.55f), axisCol, t);
-        Debug.DrawRay(hitPoint, nLast * 0.25f,
-            new Color(axisCol.r, 0.85f, 0.85f, 1f), t);
-        Debug.DrawRay(hitPoint, nCur * 0.25f,
-            new Color(0.85f, axisCol.g, 0.85f, 1f), t);
-    }
-
-    private static void LogObtuseActivation(MotorSettingsSO motor, string mode, float dot,
-        Vector3 nLast, Vector3 nCur, Vector3 axis, Vector3 vBefore, Vector3 vAfter) {
-        if (motor == null || !motor.LogObtuseSeamActivations) {
-            return;
-        }
-
-        if (Time.unscaledTime < s_nextObtuseSeamLogTime) {
-            return;
-        }
-
-        s_nextObtuseSeamLogTime = Time.unscaledTime + 0.1f;
-        Debug.Log(
-            $"[KinematicMotor][ObtuseSeam:{mode}] dot={dot:F3} " +
-            $"| nLast=({nLast.x:F3},{nLast.y:F3},{nLast.z:F3}) " +
-            $"| nCur=({nCur.x:F3},{nCur.y:F3},{nCur.z:F3}) " +
-            $"| axis=({axis.x:F3},{axis.y:F3},{axis.z:F3}) " +
-            $"| |v|: {vBefore.magnitude:F4} → {vAfter.magnitude:F4}");
     }
 
     internal static void GetCapsuleWorld(
@@ -1312,7 +1224,7 @@ public static class KinematicMotorSolver {
     /// <summary>
     /// 瞬移到目标 Pivot 前先向下找支撑面；可选按 <see cref="MotorSettingsSO.MaxSlopeAngle"/> 拒绝凸角/墙顶。
     /// </summary>
-    /// <param name="motorForWalkableSlopeGate">非空且命中法线过陡时返回 false，避免 Teleport 锁在钝角尖上。</param>
+    /// <param name="motorForWalkableSlopeGate">非空且命中法线过陡时返回 false，避免 Teleport 锁在过陡尖角或墙顶。</param>
     public static bool ResolvePivotHeightFromAbove(
         float pivotDesiredX,
         float pivotDesiredZ,

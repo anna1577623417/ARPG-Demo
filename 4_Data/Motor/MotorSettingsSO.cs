@@ -85,7 +85,7 @@ public sealed class MotorSettingsSO : ScriptableObject
 
     [Header("Sweep — convex / internal edge")]
     [Tooltip(
-        "位移方向·命中法线 点积大于该值视为「非阻挡」（凸角接缝、背向噪声、擦肩而过），\n本段剩余位移一次性放行并结束本子步折射，减轻钝角抖动与过矫正死锁。")] [Range(-0.05f, 0.25f)]
+        "位移方向·命中法线 点积大于该值视为「非阻挡」（凸角接缝、背向噪声、擦肩而过），\n本段剩余位移一次性放行并结束本子步折射，减轻接缝处抖动与过矫正死锁。")] [Range(-0.05f, 0.25f)]
     public float VelocityAgainstNormalRejectDot = 0.01f;
 
     [Header("Low step — lower-hemisphere normal filter")]
@@ -230,48 +230,6 @@ public sealed class MotorSettingsSO : ScriptableObject
     [Tooltip("启用时向 Console 输出下半球法线过滤事件（约 0.12s 节流，避免刷屏）。")]
     public bool LogLowerHemisphereNormalFilters;
 
-    [Header("Obtuse seam stabilizer / 钝角接缝稳定器")]
-    [Tooltip(
-        "【开关 / Enable】启用后，对钝角墙角接缝（内角 > 90°）执行多策略稳定（法线合并 / 交棱锁定），消除乒乓抖动。\n" +
-        "关闭 = 仅对锐角接缝做交线投影（旧行为），钝角时回退为顺序 ProjectOnPlane，仍可能振荡。\n" +
-        "EN: When enabled, OBTUSE wall junctions (interior angle > 90°) use a stabilization strategy (normal merging or crevice lock) " +
-        "to eliminate ping-pong jitter. Disable = legacy sequential ProjectOnPlane.")]
-    public bool EnableObtuseSeamStabilizer = true;
-
-    [Tooltip(
-        "【遗留调参位 / Legacy】曾用于「中带钝角」接缝点积下界；当前宽钝角统一在 " +
-        "(CreviceNormalDotThreshold, NormalMergingDotThreshold] 内走角平分 WideBisector，本字段暂不参与求解。\n" +
-        "EN: Legacy field; wide obtuse corners now use bisector projection in the crevice–merge dot range.")]
-    [Range(0.3f, 0.98f)]
-    public float ObtuseSeamNormalDotThreshold = 0.75f;
-
-    [Tooltip(
-        "【法线合并阈值 / Normal Merging Dot Threshold】\n" +
-        "当两法线点积高于此值（极度近似），交棱叉积长度趋近于零会数值不稳；改为「平均法线 → 单平面投影」。\n" +
-        "应介于 ObtuseSeamNormalDotThreshold 与 1.0 之间。\n" +
-        "增大（→ 0.99）：仅在两面墙近乎平行时合并，更激进保留交棱方向；过大失去合并效果。\n" +
-        "减小（→ 0.80）：更早转入平均法线策略，更柔和但牺牲沿交棱滑动的能力。推荐 0.90 ~ 0.95。\n" +
-        "EN: Above this dot, the cross-product seam degenerates numerically; switch to averaged-normal single-plane projection. " +
-        "Recommended 0.90–0.95.")]
-    [Range(0.5f, 0.999f)]
-    public float NormalMergingDotThreshold = 0.92f;
-
-    [Tooltip(
-        "【调试：绘制钝角接缝交线 / Draw Obtuse Seam Vector】\n" +
-        "交线锁定激活时在命中点绘制洋红色射线，方向为两法线叉积（即两面墙的交棱方向）。\n" +
-        "增大 = n/a（开关）；关闭 = 不绘制。EN: Draw magenta ray at hit point showing crevice-lock direction when obtuse seam fires.")]
-    public bool DrawObtuseSeamVector;
-
-    [Tooltip(
-        "【调试：记录钝角接缝激活日志 / Log Obtuse Seam Activations】\n" +
-        "钝角稳定器触发时向 Console 输出法线点积、交线方向与速度变化（约 0.1s 节流）。\n" +
-        "EN: Log to Console when the obtuse seam stabilizer fires (throttled ~0.1s). " +
-        "Shows normal dot, seam direction, remaining velocity before/after.")]
-    public bool LogObtuseSeamActivations;
-
-    [Tooltip("钝角接缝交线的 Scene 视图绘制颜色 / Scene-view color for the obtuse seam vector ray.")]
-    public Color ObtuseSeamVectorColor = new Color(1f, 0.15f, 0.85f, 1f);
-
     [Header("Inter-frame normal lock / 跨帧法线缓存（半身墙抖动根治）")]
     [Tooltip(
         "【启用跨帧法线锁定 / Enable Inter-frame Normal Lock】\n" +
@@ -349,8 +307,8 @@ public sealed class MotorSettingsSO : ScriptableObject
     [Tooltip(
         "【启用 N-Plane（MVP） / Enable N-Plane Solver】\n" +
         "同一子步内缓存碰撞平面并联合求解，而不是单平面串行 ProjectOnPlane。\n" +
-        "2 面：按钝角规则做法线合并或交棱锁定；3 面：直接归零（死角阻挡）。\n" +
-        "EN: Cache planes within one sub-step and solve constraints jointly. 2-plane => merge/seam; 3-plane => hard stop.")]
+        "2 面：锐缝则用交棱轴向投影；否则顺序双 ProjectOnPlane；3 面：直接归零（死角阻挡）。\n" +
+        "EN: 2-plane uses crevice seam axis or sequential twin-plane projection; 3-plane clamps to zero.")]
     public bool EnableNPlaneMvpSolver = true;
 
     [Tooltip(
@@ -412,13 +370,13 @@ public sealed class MotorSettingsSO : ScriptableObject
         "Helps spot ping-pong by seeing alternating slide directions across frames.")]
     public bool DrawSlideVelocityComparison;
 
-    [Header("Debug · Corner / obtuse seam jitter")]
+    [Header("Debug · Corner / seam jitter")]
     [Tooltip(
         "仅在「单次子步 Sweep」内出现异常时输出 [CornerContact]：\n" +
-        "· 相邻 slide 迭代消解后法线点积过低（钝角接缝 / 振荡）\n" +
+        "· 相邻 slide 迭代消解后法线点积过低（接缝 / 振荡）\n" +
         "· PhysX raw 法线与 ResolveContactNormalForSlide 后法线不一致幅度大\n" +
         "· 连续迭代命中不同 Collider（两 Box 接缝 / 双面）\n" +
-        "用于定位钝角墙、内棱处的微震颤与射线扇形乱跳。勿长期开启。")]
+        "用于定位墙接缝、内棱处的微震颤与射线扇形乱跳。勿长期开启。")]
     public bool DebugCornerContactObservability;
 
     [Tooltip(
@@ -436,7 +394,7 @@ public sealed class MotorSettingsSO : ScriptableObject
     public float CornerContactLogThrottleSeconds = 0.08f;
 
     [Tooltip(
-        "上一迭代 slideNormal 与本迭代 slideNormal 点积低于此值则记异常（越小越少见证）。钝角接缝常见 0.7~0.95 间抖动。")]
+        "上一迭代 slideNormal 与本迭代 slideNormal 点积低于此值则记异常（越小越少见证）。接缝 / 双面 Collider 常见 0.7~0.95 间抖动。")]
     [Range(0.5f, 0.995f)]
     public float CornerContactLogNormalDisagreementDot = 0.92f;
 
