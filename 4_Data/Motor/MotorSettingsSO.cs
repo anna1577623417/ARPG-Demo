@@ -29,6 +29,19 @@ public sealed class MotorSettingsSO : ScriptableObject
     [Tooltip("启用 KinematicMotorSolver 内 Lift→Forward→Drop 阶梯跨越（跑楼梯 / 矮槛）。")]
     public bool EnableKinematicStepUp = true;
 
+    [Tooltip("启用 StepDown：上一帧接地、本帧主位移结束后若 Y 离地面在 StepOffset 内，纯 Y 修正下沉至地面。\n职责严格隔离：只改 transform.y，不改 velocity，不写 IsGrounded。\n根治下楼梯瞬间假滞空——KCC 主求解只解决水平位移，下台阶的微小垂直回收由本步专责。")]
+    public bool EnableKinematicStepDown = true;
+
+    [Tooltip("接地状态下，Grounding 阶梯带（Stair Band）判定的纵向半宽（米）。\n命中点高度在 [footY, footY + StepOffset + 此值] 内且法线可踩时，强制接地放行，绕过'动作脱地'与'上行速度死区'闸门。\n防上下楼梯单帧悬空闪烁。")]
+    [Range(0f, 0.1f)]
+    public float StairBandSlop = 0.02f;
+
+    [Tooltip(
+        "Stair Band 放行时要求法线朝上分量 ≥ 该值，用于排除近竖直踢面/侧墙；\n" +
+        "不再把「可行走坡度」(MaxSlopeAngle) 作为 Stair Band 前置条件——楼梯三角面/边缘常返回略陡于 MaxSlopeAngle 的法线，原逻辑会导致 stairBand 永不触发、随后被 steepSlope 整段拒绝。")]
+    [Range(0.05f, 0.5f)]
+    public float StairBandMinNormalY = 0.12f;
+
     [Tooltip(
         "单级可跨越的最大垂直高度（米）。与 CharacterController.stepOffset 同类语义；过大易「飞台阶」，过小仍蹭立面。")]
     [Range(0.05f, 1f)]

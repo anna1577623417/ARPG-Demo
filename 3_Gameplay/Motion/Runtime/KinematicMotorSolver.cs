@@ -211,6 +211,83 @@ public static class KinematicMotorSolver {
         return stepDelta.sqrMagnitude > 1e-10f;
     }
 
+    /// <summary>
+    /// StepDown：纯 Y 修正——上一帧接地、本帧水平位移结束后，若胶囊脚底离下方地面落差在
+    /// <see cref="MotorSettingsSO.StepOffset"/> 内，下沉到地面对齐处。
+    ///
+    /// ═══ 职责严格隔离（遵循"局部修正"原则）═══
+    ///   ✅ 只返回向下位移 delta（仅 Y 分量）
+    ///   ❌ 不写 transform、不写 IsGrounded、不写 m_verticalSpeed
+    ///   ❌ 不在跳跃中触发（vy &gt; 0 由调用方门控）
+    ///
+    /// 根治"下楼梯瞬间假滞空"：KCC 主求解只走水平 + 重力下落；下台阶时落差通常 0.15~0.30m，
+    /// 单帧重力位移远小于此 → 解算后 Y 仍悬空 → 探针看不到地面 → 假滞空 → 跳变；
+    /// 本步在主求解后做一次精准下沉。
+    /// </summary>
+    /// <param name="wasGroundedLastFrame">上一帧接地标志（本帧是真"下楼梯"还是真"跳跃/起跳"的关键判据）。</param>
+    /// <param name="snapDelta">输出：本帧需要追加的位移（仅 Y 分量为负）。</param>
+    public static bool TryStepDown(
+        Vector3 worldPivot,
+        float pivotToFootOffset,
+        MotorSettingsSO motor,
+        bool wasGroundedLastFrame,
+        LayerMask obstacleLayers,
+        out Vector3 snapDelta)
+    {
+        snapDelta = Vector3.zero;
+        if (motor == null || !motor.EnableKinematicStepDown || !wasGroundedLastFrame)
+        {
+            return false;
+        }
+
+        if (motor.StepOffset <= 0.01f)
+        {
+            return false;
+        }
+
+        var skin = Mathf.Max(0.0005f, motor.SkinWidth);
+        var castRadius = Mathf.Max(0.01f, motor.Radius - skin * 0.5f);
+        GetCapsuleWorld(worldPivot, pivotToFootOffset, motor, out var p1, out var p2, out _);
+
+        // 探测距离 = StepOffset + 额外探测延伸（与 StepUp 复用同一字段，语义对称）
+        var probeDistance = motor.StepOffset + Mathf.Max(0.05f, motor.StepDownProbeExtra);
+
+        if (!Physics.CapsuleCast(
+                p1,
+                p2,
+                castRadius,
+                Vector3.down,
+                out var hit,
+                probeDistance,
+                obstacleLayers,
+                QueryTriggerInteraction.Ignore))
+        {
+            return false;
+        }
+
+        // 法线必须可踩——侧蹭墙的水平命中不参与下沉吸附
+        if (motor.IsSlopeTooSteep(hit.normal))
+        {
+            return false;
+        }
+
+        // 已经几乎贴地（小于 SkinWidth）：本帧 KCC 已处理，无需再下沉
+        var travel = hit.distance - skin;
+        if (travel <= skin * 0.5f)
+        {
+            return false;
+        }
+
+        // 落差超过 StepOffset：这是真下落（跳下高台），不属于 StepDown 范畴，让重力自然处理
+        if (travel > motor.StepOffset)
+        {
+            return false;
+        }
+
+        snapDelta = new Vector3(0f, -travel, 0f);
+        return true;
+    }
+
     private static Vector3 SolveSubStepSweep(
         Vector3 worldPivot,
         float pivotToFootOffset,

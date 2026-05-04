@@ -21,6 +21,9 @@ MonoBehaviour:
   MaxSlopeAngle: 45
   AirborneGroundContactSlop: 0.14
   EnableKinematicStepUp: 1
+  EnableKinematicStepDown: 1
+  StairBandSlop: 0.02
+  StairBandMinNormalY: 0.12
   StepOffset: 0.3
   StepDownProbeExtra: 0.22
   EnableStairHeightNormalExemption: 1

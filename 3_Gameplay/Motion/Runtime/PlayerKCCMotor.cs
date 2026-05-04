@@ -90,6 +90,10 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
     [SerializeField, InspectorName("VertAuthority · Action State Only")]
     bool debugVerticalAuthorityActionOnly = true;
 
+    [Header("Debug · Stair / Step observability")]
+    [Tooltip("仅在异常帧打印 [STAIR DEBUG]，以及 verticalEatenRatio>0.8 时打印 [Y EATEN]；用于定位阶梯偶发失效，勿长期开启。")]
+    [SerializeField] bool debugStairStepObservability;
+
     // ─── 行为常量（与原 Player.cs 同名同值）────────────────────────────────
     const float MaxSlopeDegreesLegacy = 50f;
     const float ActionFallBreakGroundedVy = -0.01f;
@@ -128,6 +132,11 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
     Vector3 _lastSteepGroundHitNormal = Vector3.up;
     int _edgeSlipStuckFrameCount;
     float _nextGroundProbeLogTime;
+
+    bool _lastStepDownTriggered;
+    bool _lastStairBandUsed;
+    RaycastHit _stairObsLastGroundHit;
+    bool _stairObsLastGroundHitValid;
 
     // ─── IPlayerMotor 查询 ────────────────────────────────────────────────
     public bool IsGrounded => _isGrounded;
@@ -259,6 +268,9 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
     // ─── IPlayerMotor 触发 ────────────────────────────────────────────────
     public void ApplyMotor(in MotorSolveContext context)
     {
+        var wasGroundedAtMotorStart = _wasGroundedLastFrame;
+        _lastStepDownTriggered = false;
+
         var vyEnter = _verticalSpeed;
         ApplySimpleGravity();
         var vyAfterGravity = _verticalSpeed;
@@ -287,6 +299,10 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
             {
                 transform.position += solvedDelta;
             }
+
+            // ★ StepDown：上一帧接地、本帧未起跳时，纯 Y 修正下沉到下方地面（≤ StepOffset）。
+            //   遵循"局部修正"原则：只追加 Y 位移，不改 velocity / IsGrounded。
+            ApplyStepDownIfApplicable(ref solvedDelta);
         }
         else
         {
@@ -303,10 +319,15 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
         var vyAfterGrounded = _verticalSpeed;
         ApplyAirborneEdgeSlipIfStuck(in solvedDelta);
         LogVerticalAuthorityIfEnabled("ApplyMotor", vyEnter, vyAfterGravity, vyAfterClamp, solvedDelta.y, vyAfterOverlap, vyAfterGrounded, in solveCtx);
+        LogStairStepObservabilityIfEnabled(
+            "ApplyMotor", wasGroundedAtMotorStart, in solvedDelta, vyAfterClamp, stepDownAttemptPath: motorSettings != null);
     }
 
     public void ApplyMotorFromGameplayVelocity(Vector3 gameplayWorldVelocity, in MotorSolveContext context)
     {
+        var wasGroundedAtMotorStart = _wasGroundedLastFrame;
+        _lastStepDownTriggered = false;
+
         var vyEnter = _verticalSpeed;
         ApplySimpleGravity();
         var vyAfterGravity = _verticalSpeed;
@@ -360,6 +381,13 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
             {
                 transform.position += solvedDelta;
             }
+
+            // ★ StepDown：与 ApplyMotor 同步策略；MotionProfile 路径同样需要下台阶吸附，
+            //   但若 gameplay 显式驱动了 Y（gameplayDrivenVy），则尊重 gameplay 意图、不追加。
+            if (!gameplayDrivenVy)
+            {
+                ApplyStepDownIfApplicable(ref solvedDelta);
+            }
         }
         else
         {
@@ -380,6 +408,142 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
             vyEnter, vyAfterGravity, vyAfterClamp, solvedDelta.y, vyAfterOverlap, vyAfterGrounded, in solveCtx,
             gameplayDrivenVy ? gameplayWorldVelocity.y : (float?)null,
             vyAfterGameplay);
+        LogStairStepObservabilityIfEnabled(
+            gameplayDrivenVy ? "ApplyMotorFromGameplay[Y-driven]" : "ApplyMotorFromGameplay",
+            wasGroundedAtMotorStart,
+            in solvedDelta,
+            vyAfterClamp,
+            stepDownAttemptPath: motorSettings != null && !gameplayDrivenVy);
+    }
+
+    /// <summary>
+    /// 只在"上一帧接地 + 本帧未起跳"时尝试 StepDown 下沉。
+    /// 严格遵循"局部修正"：只追加 Y 位移到 transform 与 solvedDelta，不改 velocity / IsGrounded。
+    /// </summary>
+    void ApplyStepDownIfApplicable(ref Vector3 solvedDelta)
+    {
+        if (motorSettings == null || !motorSettings.EnableKinematicStepDown)
+        {
+            return;
+        }
+
+        // 起跳/受击向上：禁止下沉吸附
+        if (_verticalSpeed > 0.05f || _gravitySuspended)
+        {
+            return;
+        }
+
+        // 上一帧已离地：这是真下落或起跳，不属于 StepDown 范畴
+        if (!_wasGroundedLastFrame)
+        {
+            return;
+        }
+
+        if (debugFreezeMotorDisplacement)
+        {
+            return;
+        }
+
+        if (KinematicMotorSolver.TryStepDown(
+                transform.position,
+                pivotToFootOffset,
+                motorSettings,
+                _wasGroundedLastFrame,
+                motorSettings.ObstacleLayers,
+                out var stepDelta))
+        {
+            transform.position += stepDelta;
+            solvedDelta += stepDelta;
+            _lastStepDownTriggered = true;
+        }
+    }
+
+    void LogStairStepObservabilityIfEnabled(
+        string entry,
+        bool wasGroundedAtMotorStart,
+        in Vector3 solvedDelta,
+        float vyAfterClamp,
+        bool stepDownAttemptPath)
+    {
+        if (!debugStairStepObservability) return;
+
+        var expectedY = vyAfterClamp * Mathf.Max(Time.deltaTime, 1e-5f);
+        var solvedY = solvedDelta.y;
+        var verticalEatenRatio = Mathf.Abs(expectedY) > 1e-5f
+            ? 1f - Mathf.Clamp01(solvedY / expectedY)
+            : 0f;
+
+        if (verticalEatenRatio > 0.8f && Mathf.Abs(expectedY) > 1e-5f)
+        {
+            Debug.Log(
+                $"[Y EATEN] collision killed vertical motion | f={Time.frameCount} {entry} " +
+                $"eatenRatio={verticalEatenRatio:F2} expY={expectedY:F5} solvedY={solvedY:F5} " +
+                $"grounded={_isGrounded} stepDown={_lastStepDownTriggered}",
+                this);
+        }
+
+        if (!IsStairStepFrameAnomaly(expectedY, solvedY, wasGroundedAtMotorStart, stepDownAttemptPath))
+            return;
+
+        LogStairAnomalyFrame(entry, wasGroundedAtMotorStart, expectedY, solvedY, verticalEatenRatio);
+    }
+
+    bool IsStairStepFrameAnomaly(
+        float expectedY,
+        float solvedY,
+        bool wasGroundedAtMotorStart,
+        bool stepDownAttemptPath)
+    {
+        if (expectedY < -0.01f && Mathf.Abs(solvedY) < 0.001f)
+            return true;
+
+        if (wasGroundedAtMotorStart && !_isGrounded)
+            return true;
+
+        var stepDownFeatureOn = motorSettings != null && motorSettings.EnableKinematicStepDown;
+        var stepDownWouldHaveRunGates = !_gravitySuspended && _verticalSpeed <= 0.05f && !debugFreezeMotorDisplacement;
+        if (stepDownAttemptPath
+            && stepDownFeatureOn
+            && stepDownWouldHaveRunGates
+            && wasGroundedAtMotorStart
+            && expectedY < 0f
+            && !_lastStepDownTriggered)
+            return true;
+
+        return false;
+    }
+
+    void LogStairAnomalyFrame(
+        string entry,
+        bool wasGroundedAtMotorStart,
+        float expectedY,
+        float solvedY,
+        float verticalEatenRatio)
+    {
+        var pos = transform.position;
+        var footY = pos.y - pivotToFootOffset;
+        var stepBand = motorSettings != null ? motorSettings.StepOffset + motorSettings.StairBandSlop : -1f;
+
+        var hitYStr = _stairObsLastGroundHitValid ? _stairObsLastGroundHit.point.y.ToString("F4") : "n/a";
+        var hitRelStr = _stairObsLastGroundHitValid
+            ? (_stairObsLastGroundHit.point.y - footY).ToString("F4")
+            : "n/a";
+        var normalStr = _stairObsLastGroundHitValid ? _stairObsLastGroundHit.normal.ToString() : "n/a";
+        var colliderStr = _stairObsLastGroundHitValid && _stairObsLastGroundHit.collider != null
+            ? _stairObsLastGroundHit.collider.name
+            : "n/a";
+
+        Debug.Log(
+            $"[STAIR DEBUG] f={Time.frameCount} {entry}\n" +
+            $"pos={pos}\n" +
+            $"vy={_verticalSpeed:F4} suspended={_gravitySuspended}\n" +
+            $"wasGrounded={wasGroundedAtMotorStart} → isGrounded={_isGrounded}\n" +
+            $"stepDown={_lastStepDownTriggered} stairBandUsed={_lastStairBandUsed}\n" +
+            $"expY={expectedY:F5} solvedY={solvedY:F5} eatenRatio={verticalEatenRatio:F2}\n" +
+            $"hitY={hitYStr} footY={footY:F4} hitRel={hitRelStr} stepBand=±{stepBand:F3}\n" +
+            $"normal={normalStr}\n" +
+            $"collider={colliderStr}",
+            this);
     }
 
     void LogVerticalAuthorityIfEnabled(
@@ -599,6 +763,8 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
 
     void RefreshGroundedState(in MotorSolveContext context)
     {
+        _lastStairBandUsed = false;
+
         // 默认与调用方一致；空中锁在本函数内自动落地后会刷新 _frozenActionMotorContext，再同步到 effective。
         var effectiveContext = context;
 
@@ -682,6 +848,16 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
             in hit,
             usedExtraStabilizationProbe,
             usedCenterRayFallback);
+
+        if (hitGround)
+        {
+            _stairObsLastGroundHit = hit;
+            _stairObsLastGroundHitValid = true;
+        }
+        else
+        {
+            _stairObsLastGroundHitValid = false;
+        }
 
         if (motorSettings != null && motorSettings.DrawGroundProbeInSceneView)
         {
@@ -795,8 +971,33 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
 
         var useHardSnapLegacy = motorSettings == null || effectiveContext.AllowsHardGroundSnap;
 
+        // ★ Stair Band 旁路：上下楼梯单帧"探针距离 > slop"或"hit 高于脚底 > guard"会触发假滞空，
+        //   本规则在确认"上一帧接地 + 命中点位于 [footY ± StepOffset + Slop] 带宽内 + 法线明显朝上"时
+        //   绕过 groundedByProximity 与下方的 elevationGuard、steepSlope 拦截，把楼梯命中视作接地。
+        //   不要要求 !IsGroundNormalTooSteep：真实阶梯网格常返回 n.y≈0.4~0.55（仍朝上），会略陡于 MaxSlopeAngle，
+        //   若以此门控则 stairBand 永不成立，玩家会在陡扇区被 steepSlopeNoEdgeTol 整段判为不接地（与 Field 日志一致）。
+        //   严格只放行 IsGrounded 决策，不修改 vy / position（StepDown 已先于本步做完 Y 修正）。
+        var stairBandPasses = false;
+        if (motorSettings != null
+            && motorSettings.EnableKinematicStepDown   // 复用 StepDown 总开关
+            && _wasGroundedLastFrame
+            && !inActionState                          // 动作内不参与（让动作脱地优先）
+            && hitGround
+            && hit.normal.y >= motorSettings.StairBandMinNormalY
+            && _verticalSpeed <= 0.05f)                // 起跳/受击向上时不参与
+        {
+            var footY = transform.position.y - pivotToFootOffset;
+            var stepBand = motorSettings.StepOffset + motorSettings.StairBandSlop;
+            var hitYRel = hit.point.y - footY;
+            if (hitYRel >= -stepBand && hitYRel <= stepBand)
+            {
+                stairBandPasses = true;
+                _lastStairBandUsed = true;
+            }
+        }
+
         var upwardDeadzone = motorSettings != null ? motorSettings.GroundSnapMaxUpwardVelocity : 0.05f;
-        if (!groundedByProximity || _verticalSpeed > upwardDeadzone)
+        if ((!groundedByProximity || _verticalSpeed > upwardDeadzone) && !stairBandPasses)
         {
             _isGrounded = false;
             if (!hitGround) _lastGroundNormal = Vector3.up;
@@ -807,7 +1008,7 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
 
         // 动作中禁用 Edge Tolerance（防踏出台沿被陡边角放行 → Hard Snap 拽回）
         var canEdgeTolerate = enableEdgeGroundTolerance && _wasGroundedLastFrame && !inActionState;
-        if (motorSettings != null && hitGround && motorSettings.IsSlopeTooSteep(hit.normal))
+        if (!stairBandPasses && motorSettings != null && hitGround && motorSettings.IsSlopeTooSteep(hit.normal))
         {
             var allowEdgeGrounding = canEdgeTolerate && IsSteepHitWithinFootTolerance(hit, probeRadius);
             if (!allowEdgeGrounding)
@@ -820,7 +1021,7 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
             }
         }
 
-        if (motorSettings == null && hitGround &&
+        if (!stairBandPasses && motorSettings == null && hitGround &&
             Vector3.Angle(Vector3.up, hit.normal) > MaxSlopeDegreesLegacy)
         {
             var allowEdgeGrounding = canEdgeTolerate && IsSteepHitWithinFootTolerance(hit, probeRadius);
@@ -845,7 +1046,9 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
         }
 
         var footPosForCheck = transform.position - Vector3.up * pivotToFootOffset;
-        if (hitGround && hit.point.y > footPosForCheck.y + groundedHitElevationGuard)
+        // Stair Band 也覆盖 elevation guard——上楼梯命中点必然高于当前脚底（步面在脚底上方），
+        // 旧 guard 阈值 ~0.04m 远小于 StepOffset(0.3m) 会把"上楼梯"误判为"棱角蹭顶"。
+        if (hitGround && hit.point.y > footPosForCheck.y + groundedHitElevationGuard && !stairBandPasses)
         {
             if (debugMotorCalibration && Time.frameCount < debugMotorCalibrationLogFrames)
             {
