@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -12,6 +13,11 @@ public static class KinematicMotorSolver {
     private static float s_nextObtuseSeamLogTime;
     private static float s_nextStabilityAbortLogTime;
     private static float s_nextNormalCacheLogTime;
+    private static float s_nextCornerContactLogTime;
+
+    static readonly List<string> s_motorSolveLineRingBuffer = new List<string>(96);
+    static int s_motorSolveRingMaxLines = 96;
+    static string s_slideSolveBranchTag = "?";
 
     // ── 跨帧法线缓存 — 半身墙顶边 / 棱角处 PhysX 三角形选择非确定性的根因消毒 ──────────
     // 仅持有一个 collider 槽足以覆盖 99% 场景（接缝抖动多发于"贴住一面墙"时）。
@@ -31,6 +37,16 @@ public static class KinematicMotorSolver {
     /// 以角色 Pivot 为世界原点，求解本帧允许的位移矢量（三维一体，含下落）。
     /// </summary>
     /// <param name="applyGroundedSlideDownwardLock">上一帧接地且策略允许时，禁止滑动迭代产生向下剩余位移（防地陷）。</param>
+    /// <summary>最近一次 Slide 约束（含两平面求解）选用的策略标签；供 Debug 读出。</summary>
+    public static string DebugSlideSolveBranchTag => s_slideSolveBranchTag;
+
+    /// <summary>导出本帧 <see cref="SolveDisplacementFromPivot"/> 已累计的环形求解行（不自动清空）。</summary>
+    public static string ExportMotorSolveRingBufferText()
+    {
+        if (s_motorSolveLineRingBuffer.Count == 0) return "(ring empty)";
+        return string.Join("\n", s_motorSolveLineRingBuffer);
+    }
+
     public static Vector3 SolveDisplacementFromPivot(
         Vector3 worldPivot,
         float pivotToFootOffset,
@@ -40,6 +56,15 @@ public static class KinematicMotorSolver {
         bool applyGroundedSlideDownwardLock = false) {
         if (motor == null || worldDisplacement.sqrMagnitude < EpsilonSq) {
             return Vector3.zero;
+        }
+
+        if (motor.DebugMotorSolveLineRingBuffer)
+        {
+            s_motorSolveRingMaxLines = Mathf.Clamp(motor.DebugMotorSolveLineRingCapacity, 8, 256);
+            s_motorSolveLineRingBuffer.Clear();
+            s_slideSolveBranchTag = "?";
+            TryAppendSolveRingTabLine(motor,
+                "RING_HEADER\tframe\tsub\tsubTot\titer\tbranch\tcollider\thitDist\tstx\tstz\tr_before\tr_after\tplanes");
         }
 
         var frac = Mathf.Clamp(motor.KinematicSubStepRadiusFraction, 0.12f, 0.95f);
@@ -55,12 +80,36 @@ public static class KinematicMotorSolver {
         for (var s = 0; s < subSteps; s++) {
             var step = worldDisplacement * (1f / subSteps);
             var partial = SolveSubStepSweep(cursorPivot, pivotToFootOffset, motor, step, obstacleLayers,
-                applyGroundedSlideDownwardLock);
+                applyGroundedSlideDownwardLock, s, subSteps);
             deltaTotal += partial;
             cursorPivot += partial;
         }
 
+        if (motor.DebugMotorSolveLineRingBuffer)
+        {
+            TryAppendSolveRingTabLine(motor, "---");
+            TryAppendSolveRingTabLine(motor,
+                $"SolveSummary\tf={Time.frameCount}\tpivot=({worldPivot.x:F3},{worldPivot.y:F3},{worldPivot.z:F3})\t" +
+                $"dispInMag={worldDisplacement.magnitude:F5}\tsolvedMag={deltaTotal.magnitude:F5}\t" +
+                $"planarSolvedXZ=({deltaTotal.x:F5},{deltaTotal.z:F5})\tbranchLast={DebugSlideSolveBranchTag}");
+        }
+
         return deltaTotal;
+    }
+
+    static void TagSlideSolveBranch(string tag)
+    {
+        s_slideSolveBranchTag = tag ?? "?";
+    }
+
+    static void TryAppendSolveRingTabLine(MotorSettingsSO motor, string row)
+    {
+        if (motor == null || !motor.DebugMotorSolveLineRingBuffer) return;
+        s_motorSolveLineRingBuffer.Add(row);
+        while (s_motorSolveLineRingBuffer.Count > s_motorSolveRingMaxLines)
+        {
+            s_motorSolveLineRingBuffer.RemoveAt(0);
+        }
     }
 
     /// <summary>
@@ -294,7 +343,9 @@ public static class KinematicMotorSolver {
         MotorSettingsSO motor,
         Vector3 displacement,
         LayerMask obstacleLayers,
-        bool applyGroundedSlideDownwardLock) {
+        bool applyGroundedSlideDownwardLock,
+        int sweepSubStepIndex = 0,
+        int sweepSubStepCount = 1) {
         if (displacement.sqrMagnitude < EpsilonSq) {
             return Vector3.zero;
         }
@@ -317,7 +368,32 @@ public static class KinematicMotorSolver {
         var planeCount = 0;
         Vector3 plane0 = default, plane1 = default, plane2 = default;
 
+        Collider prevHitColliderForCornerLog = null;
+        System.Text.StringBuilder cornerSb = null;
+        var cornerContactLogAccumulated = false;
+
         var castRadius = Mathf.Max(0.01f, motor.Radius - skin * 0.5f);
+
+        void FlushCornerContactSweepLog() {
+            if (!cornerContactLogAccumulated || motor == null || !motor.DebugCornerContactObservability
+                || cornerSb == null) {
+                return;
+            }
+
+            if (Time.unscaledTime < s_nextCornerContactLogTime) {
+                return;
+            }
+
+            s_nextCornerContactLogTime =
+                Time.unscaledTime + Mathf.Max(0.02f, motor.CornerContactLogThrottleSeconds);
+            Debug.Log(
+                $"[CornerContact] f={Time.frameCount} sub={sweepSubStepIndex + 1}/{Mathf.Max(1, sweepSubStepCount)} " +
+                $"pivot0={worldPivot} disp={displacement}\n" +
+                $" slide2pkLast={DebugSlideSolveBranchTag} NPlane={(motor.EnableNPlaneMvpSolver ? "on" : "off")}\n" +
+                $" crevice≤{motor.CreviceNormalDotThreshold:F2} merge≤{motor.NormalMergingDotThreshold:F2} " +
+                $"ObtuseSeamStab={motor.EnableObtuseSeamStabilizer}\n" +
+                cornerSb);
+        }
 
         for (var iter = 0; iter < iterations; iter++) {
             if (remaining.sqrMagnitude < EpsilonSq) {
@@ -403,6 +479,74 @@ public static class KinematicMotorSolver {
                 remaining.y = 0f;
             }
 
+            if (motor != null && motor.DebugCornerContactObservability) {
+                var slideNn = slideNormal.normalized;
+                var rawNn = hit.normal.normalized;
+                var dotRawRes = Vector3.Dot(rawNn, slideNn);
+                var dotPrevNn = hadPreviousNormal ? Vector3.Dot(lastNormal.normalized, slideNn) : 1f;
+                var flippedCollider = prevHitColliderForCornerLog != null && hit.collider != null
+                                       && hit.collider != prevHitColliderForCornerLog;
+                var disagreeNormals =
+                    hadPreviousNormal && dotPrevNn < motor.CornerContactLogNormalDisagreementDot;
+                var disagreeRaw = dotRawRes < motor.CornerContactLogRawVsResolvedDot;
+                if (disagreeNormals || disagreeRaw || flippedCollider) {
+                    cornerContactLogAccumulated = true;
+                    cornerSb ??= new System.Text.StringBuilder(640);
+                    var ph = worldPivot + accumulated;
+                    cornerSb.Append(" --- iter=").Append(iter)
+                        .Append(" pivot≈(").Append(ph.x.ToString("F3")).Append(',')
+                        .Append(ph.y.ToString("F3")).Append(',')
+                        .Append(ph.z.ToString("F3")).Append(')').Append('\n');
+                    cornerSb.Append("     collider=").Append(hit.collider != null ? hit.collider.name : "?")
+                        .Append(" id=").Append(hit.collider != null ? hit.collider.GetInstanceID().ToString() : "-");
+                    if (flippedCollider && prevHitColliderForCornerLog != null) {
+                        cornerSb.Append(" ★prev=").Append(prevHitColliderForCornerLog.name);
+                    }
+
+                    cornerSb.Append("\n     hitDist=").Append(hit.distance.ToString("F4")).Append(" point=(")
+                        .Append(hit.point.x.ToString("F3")).Append(',')
+                        .Append(hit.point.y.ToString("F3")).Append(',')
+                        .Append(hit.point.z.ToString("F3")).Append(')').Append('\n');
+                    cornerSb.Append("     rawN=(").Append(rawNn.x.ToString("F3")).Append(',')
+                        .Append(rawNn.y.ToString("F3")).Append(',')
+                        .Append(rawNn.z.ToString("F3")).Append(") slideN=(")
+                        .Append(slideNn.x.ToString("F3")).Append(',')
+                        .Append(slideNn.y.ToString("F3")).Append(',')
+                        .Append(slideNn.z.ToString("F3")).Append(')').Append('\n');
+                    cornerSb.Append("     dot(raw,slide)=").Append(dotRawRes.ToString("F3"))
+                        .Append(disagreeRaw ? " ★raw≠resolved" : "");
+                    cornerSb.Append(" dot(prev,slide)=").Append(dotPrevNn.ToString("F3"))
+                        .Append(disagreeNormals ? " ★flip" : "");
+                    cornerSb.Append(" lowerHemisphere=").Append(normalFiltered).Append('\n');
+                    cornerSb.Append("     dir=(").Append(dir.x.ToString("F3")).Append(',')
+                        .Append(dir.y.ToString("F3")).Append(',')
+                        .Append(dir.z.ToString("F3")).Append(") approach·n=")
+                        .Append(approachNormalDot.ToString("F3")).Append(" rej>")
+                        .Append(motor.VelocityAgainstNormalRejectDot.ToString("F2")).Append('\n');
+                    cornerSb.Append("     |remain|: ")
+                        .Append(remainingBeforeSlide.magnitude.ToString("F5")).Append("→")
+                        .Append(remaining.magnitude.ToString("F5"))
+                        .Append(" plane=").Append(planeCount).Append('\n');
+                    cornerSb.Append("     slide2pk=").Append(DebugSlideSolveBranchTag).Append('\n');
+                }
+            }
+
+            if (motor.DebugMotorSolveLineRingBuffer)
+            {
+                var slidennTab = slideNormal.normalized;
+                var cname = hit.collider != null ? hit.collider.name : "-";
+                TryAppendSolveRingTabLine(motor,
+                    $"{Time.frameCount}\t{sweepSubStepIndex + 1}\t{sweepSubStepCount}\t{iter}" +
+                    $"\t{DebugSlideSolveBranchTag}" +
+                    $"\t{cname}" +
+                    $"\t{hit.distance:F5}" +
+                    $"\t{slidennTab.x:F3}\t{slidennTab.z:F3}" +
+                    $"\t{remainingBeforeSlide.magnitude:F5}\t{remaining.magnitude:F5}" +
+                    $"\t{planeCount}");
+            }
+
+            prevHitColliderForCornerLog = hit.collider;
+
             DrawSweepHitDiagnostics(motor, in hit, remaining, rejectedAsNonBlocking: false, in slideNormal,
                 normalFiltered);
             DrawSlideVelocityComparison(motor, in hit, remainingBeforeSlide, remaining);
@@ -458,6 +602,8 @@ public static class KinematicMotorSolver {
             lastNormal = slideNormal;
         }
 
+        FlushCornerContactSweepLog();
+
         return accumulated;
     }
 
@@ -498,10 +644,12 @@ public static class KinematicMotorSolver {
         }
 
         if (planeCount <= 1) {
+            TagSlideSolveBranch($"NProj_single_planeCount_{planeCount}");
             return Vector3.ProjectOnPlane(remaining, nCur);
         }
 
         if (planeCount >= 3) {
+            TagSlideSolveBranch("NProj_triCorner_zeroRemain");
             if (motor.DrawNPlaneSolveRay && motor.DrawSweepHitsInSceneView) {
                 Debug.DrawRay(hitPoint, Vector3.zero, motor.NPlaneSolveRayColor, SweepDebugSeconds(motor));
             }
@@ -530,6 +678,7 @@ public static class KinematicMotorSolver {
         Vector3 hitPoint,
         int iterationIndex) {
         if (!hadPrev || iterationIndex <= 0) {
+            TagSlideSolveBranch($"LegacyTwin_iter{iterationIndex}_singleProj_only");
             return Vector3.ProjectOnPlane(remaining, nCur);
         }
 
@@ -546,39 +695,62 @@ public static class KinematicMotorSolver {
         Vector3 hitPoint) {
         var dot = Vector3.Dot(nCur, nLast);
         var obtuseStabilizerOn = motor != null && motor.EnableObtuseSeamStabilizer;
-        var obtuseDotThresh = motor != null ? motor.ObtuseSeamNormalDotThreshold : 0.75f;
         var mergeDotThresh = motor != null ? motor.NormalMergingDotThreshold : 0.92f;
 
-        if (obtuseStabilizerOn && dot > mergeDotThresh && dot < 0.9999f) {
-            var merged = (nCur + nLast);
+        // 近平行 / 共面（含 dot→1）：用平均法线一次投影。旧版误加 dot<0.9999，把「两法线完全相同」
+        // 排斥在外 → 落入 SequentialTwinPlane；与单平面等价却多一圈浮点，且第三迭代刮同一立面时振荡（Field 日志里 dot=1.000）。
+        if (obtuseStabilizerOn && dot > mergeDotThresh) {
+            var merged = nCur + nLast;
             if (merged.sqrMagnitude > 1e-10f) {
                 merged.Normalize();
                 var projected = Vector3.ProjectOnPlane(remaining, merged);
                 if (projected.sqrMagnitude > EpsilonSq) {
                     DebugDrawObtuseStrategy(motor, hitPoint, nLast, nCur, merged, true);
                     LogObtuseActivation(motor, "NormalMerge", dot, nLast, nCur, merged, remaining, projected);
+                    var tag = dot >= 0.9999f ? "ParallelMerge_coPlanar" : "ParallelMerge";
+                    TagSlideSolveBranch($"{tag}(dot={dot:F4})");
                     return projected;
                 }
             }
         }
 
         var isSharpCrevice = dot < creviceDotThresh;
-        var isMidObtuseSeam = obtuseStabilizerOn && dot > obtuseDotThresh && dot <= mergeDotThresh;
-        if (isSharpCrevice || isMidObtuseSeam) {
+        if (isSharpCrevice) {
             var seam = Vector3.Cross(nLast, nCur);
             if (seam.sqrMagnitude > 1e-10f) {
                 seam.Normalize();
                 var projected = Vector3.Project(remaining, seam);
                 if (projected.sqrMagnitude > EpsilonSq) {
-                    if (isMidObtuseSeam) {
-                        DebugDrawObtuseStrategy(motor, hitPoint, nLast, nCur, seam, false);
-                        LogObtuseActivation(motor, "Seam", dot, nLast, nCur, seam, remaining, projected);
-                    }
+                    TagSlideSolveBranch($"SharpCreviceSeam(dot={dot:F3})");
                     return projected;
                 }
             }
         }
 
+        // 宽钝角接缝 / 两台子 Box 拐角：dot 常为 0.3~0.6（本法线对上帧另一面），旧的「仅在 (0.75, merge]」才走 Seam
+        // 导致直接落回顺序双 ProjectOnPlane —— 对 nLast/nCur **顺序敏感**，两面 Collider 交替命中时振荡。
+        // 此处用对称的角平分外向法线 (nLast+nCur) → 单次 ProjectOnPlane，与迭代顺序无关。
+        if (obtuseStabilizerOn && dot > creviceDotThresh && dot <= mergeDotThresh) {
+            var bisectorOut = nLast + nCur;
+            if (bisectorOut.sqrMagnitude > 1e-5f) {
+                bisectorOut.Normalize();
+                var projectedWide = Vector3.ProjectOnPlane(remaining, bisectorOut);
+                if (projectedWide.sqrMagnitude > EpsilonSq) {
+                    DebugDrawObtuseStrategy(motor, hitPoint, nLast, nCur, bisectorOut, true);
+                    LogObtuseActivation(motor, "WideBisector", dot, nLast, nCur, bisectorOut, remaining,
+                        projectedWide);
+                    TagSlideSolveBranch($"WideBisector(dot={dot:F3})");
+                    return projectedWide;
+                }
+            }
+        }
+
+        if (!obtuseStabilizerOn && dot >= 0.99995f) {
+            TagSlideSolveBranch($"CoPlanarSingle_noObtuseStab(dot={dot:F4})");
+            return Vector3.ProjectOnPlane(remaining, nCur);
+        }
+
+        TagSlideSolveBranch($"SequentialTwinPlane(dot={dot:F3})");
         return Vector3.ProjectOnPlane(Vector3.ProjectOnPlane(remaining, nLast), nCur);
     }
 
@@ -863,7 +1035,7 @@ public static class KinematicMotorSolver {
 
     /// <summary>
     /// 在命中点绘制投影前（白）与投影后（蓝）的速度方向对比射线，辅助肉眼判断乒乓振荡。
-    /// 若两帧蓝色射线交替指向不同方向，说明投影仍在振荡，需调整 ObtuseSeamNormalDotThreshold。
+    /// 若仍交替，查 EnableObtuseSeamStabilizer / WideBisector 路径与场景是否双 Box 接缝。
     /// </summary>
     private static void DrawSlideVelocityComparison(MotorSettingsSO motor, in RaycastHit hit,
         Vector3 velocityBefore, Vector3 velocityAfter) {

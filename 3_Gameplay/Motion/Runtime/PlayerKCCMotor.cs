@@ -94,6 +94,19 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
     [Tooltip("仅在异常帧打印 [STAIR DEBUG]，以及 verticalEatenRatio>0.8 时打印 [Y EATEN]；用于定位阶梯偶发失效，勿长期开启。")]
     [SerializeField] bool debugStairStepObservability;
 
+    [Header("Debug · Planar solver stutter burst")]
+    [Tooltip(
+        "当本帧 Solver 输出的 **XZ 位移方向**与上一帧点积过低（像在墙角「甩头」）时，打一个 [MotorPlanarBurst] 块。\n" +
+        "务必在 MotorSettings 勾选 DebugMotorSolveLineRingBuffer，否则只有摘要无迭代表。")]
+    [SerializeField] bool debugMotorPlanarStutterBurst;
+
+    [Tooltip("Burst 阈值：normalizedPlanar(dot) ≤ 该值触发（负数=方向大致相反更易触发）。")] [SerializeField, Range(-0.95f, 0.35f)]
+    float debugMotorPlanarStutterBurstDot = -0.08f;
+
+    [Tooltip("[MotorPlanarBurst] 节流秒数。\nEN: Min seconds between burst logs.")]
+    [SerializeField, Range(0.02f, 0.5f)]
+    float debugMotorPlanarStutterBurstThrottle = 0.12f;
+
     // ─── 行为常量（与原 Player.cs 同名同值）────────────────────────────────
     const float MaxSlopeDegreesLegacy = 50f;
     const float ActionFallBreakGroundedVy = -0.01f;
@@ -137,6 +150,9 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
     bool _lastStairBandUsed;
     RaycastHit _stairObsLastGroundHit;
     bool _stairObsLastGroundHitValid;
+
+    Vector3 _debugPrevMotorPlanarSolvedDeltaXZ;
+    float _debugNextMotorBurstLogTimeUnscaled;
 
     // ─── IPlayerMotor 查询 ────────────────────────────────────────────────
     public bool IsGrounded => _isGrounded;
@@ -295,6 +311,7 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
                 displacement,
                 motorSettings.ObstacleLayers,
                 applySlideYLock);
+            MaybeLogMotorPlanarStutterBurst("ApplyMotor", displacement, in solvedDelta);
             if (!debugFreezeMotorDisplacement)
             {
                 transform.position += solvedDelta;
@@ -377,6 +394,9 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
                 displacement,
                 motorSettings.ObstacleLayers,
                 applySlideYLock);
+            MaybeLogMotorPlanarStutterBurst(
+                gameplayDrivenVy ? "ApplyMotorFromGameplay[Y-driven]" : "ApplyMotorFromGameplay",
+                displacement, in solvedDelta);
             if (!debugFreezeMotorDisplacement)
             {
                 transform.position += solvedDelta;
@@ -456,6 +476,42 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
             solvedDelta += stepDelta;
             _lastStepDownTriggered = true;
         }
+    }
+
+    void MaybeLogMotorPlanarStutterBurst(string entry, Vector3 displacementIn, in Vector3 solvedDelta)
+    {
+        if (!debugMotorPlanarStutterBurst || motorSettings == null) return;
+
+        var pNow = new Vector3(solvedDelta.x, 0f, solvedDelta.z);
+        var pWas = _debugPrevMotorPlanarSolvedDeltaXZ;
+
+        const float minSq = 1e-12f;
+        if (pNow.sqrMagnitude >= minSq && pWas.sqrMagnitude >= minSq)
+        {
+            var planarDot = Vector3.Dot(pNow.normalized, pWas.normalized);
+            if (planarDot < debugMotorPlanarStutterBurstDot
+                && Time.unscaledTime >= _debugNextMotorBurstLogTimeUnscaled)
+            {
+                _debugNextMotorBurstLogTimeUnscaled =
+                    Time.unscaledTime + Mathf.Max(0.02f, debugMotorPlanarStutterBurstThrottle);
+
+                var ring = motorSettings.DebugMotorSolveLineRingBuffer
+                    ? KinematicMotorSolver.ExportMotorSolveRingBufferText()
+                    : "(勾选 MotorSettings.DebugMotorSolveLineRingBuffer 才记录每迭代行)";
+
+                Debug.Log(
+                    $"[MotorPlanarBurst] f={Time.frameCount} {entry} planarDot(prev,now)={planarDot:F3} (thr≤{debugMotorPlanarStutterBurstDot:F2})\n" +
+                    $" pivot={transform.position} grounded={_isGrounded} vy={_verticalSpeed:F3}\n" +
+                    $" dispIn={displacementIn} solved={solvedDelta}\n" +
+                    $" planarPrevXZ=({pWas.x:F5},{pWas.z:F5}) planarNowXZ=({pNow.x:F5},{pNow.z:F5})\n" +
+                    $" slideBranchTail={KinematicMotorSolver.DebugSlideSolveBranchTag}\n" +
+                    "--- ring (TAB 分隔，可复制到表格) ---\n" +
+                    ring,
+                    this);
+            }
+        }
+
+        _debugPrevMotorPlanarSolvedDeltaXZ = pNow;
     }
 
     void LogStairStepObservabilityIfEnabled(

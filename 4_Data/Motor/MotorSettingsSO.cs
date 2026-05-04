@@ -239,12 +239,9 @@ public sealed class MotorSettingsSO : ScriptableObject
     public bool EnableObtuseSeamStabilizer = true;
 
     [Tooltip(
-        "【钝角接缝判定阈值 / Obtuse Seam Normal Dot Threshold】\n" +
-        "同一帧内连续两次碰撞的法线点积高于此值时，视为钝角接缝并激活稳定器。\n" +
-        "增大（→ 0.95）：覆盖更大钝角范围（更激进），但过大可能误锁正常圆弧滑动。\n" +
-        "减小（→ 0.50）：仅锁定接近平行的法线对，对较宽钝角保护弱。推荐 0.70 ~ 0.85。\n" +
-        "EN: Two consecutive normals with dot product ABOVE this activate the stabilizer. " +
-        "Increase = wider obtuse coverage. Decrease = narrower (recommended 0.70–0.85).")]
+        "【遗留调参位 / Legacy】曾用于「中带钝角」接缝点积下界；当前宽钝角统一在 " +
+        "(CreviceNormalDotThreshold, NormalMergingDotThreshold] 内走角平分 WideBisector，本字段暂不参与求解。\n" +
+        "EN: Legacy field; wide obtuse corners now use bisector projection in the crevice–merge dot range.")]
     [Range(0.3f, 0.98f)]
     public float ObtuseSeamNormalDotThreshold = 0.75f;
 
@@ -414,6 +411,37 @@ public sealed class MotorSettingsSO : ScriptableObject
         "EN: Draw before/after velocity comparison rays at hit point for each slide projection (blue=after, white=before). " +
         "Helps spot ping-pong by seeing alternating slide directions across frames.")]
     public bool DrawSlideVelocityComparison;
+
+    [Header("Debug · Corner / obtuse seam jitter")]
+    [Tooltip(
+        "仅在「单次子步 Sweep」内出现异常时输出 [CornerContact]：\n" +
+        "· 相邻 slide 迭代消解后法线点积过低（钝角接缝 / 振荡）\n" +
+        "· PhysX raw 法线与 ResolveContactNormalForSlide 后法线不一致幅度大\n" +
+        "· 连续迭代命中不同 Collider（两 Box 接缝 / 双面）\n" +
+        "用于定位钝角墙、内棱处的微震颤与射线扇形乱跳。勿长期开启。")]
+    public bool DebugCornerContactObservability;
+
+    [Tooltip(
+        "求解器在每次 SolveDisplacementFromPivot 时把「每一子步、每一 Slide 迭代」压成单行写入环形缓冲。\n" +
+        "勾选后请在 PlayerKCCMotor 上同时打开「平面突变 Burst」，否则缓冲只堆积不打字。\n" +
+        "EN: Ring-buffer per-substep/per-iter solver lines during each displacement solve.")]
+    public bool DebugMotorSolveLineRingBuffer;
+
+    [Tooltip("环形缓冲的最大行数（超过则丢弃最旧）。\nEN: Max solver lines retained per frame solve.")]
+    [Range(8, 256)]
+    public int DebugMotorSolveLineRingCapacity = 96;
+
+    [Tooltip("同类日志最小间隔（秒），防刷屏。\nEN: Minimum seconds between corner-contact anomaly logs.")]
+    [Range(0.02f, 0.5f)]
+    public float CornerContactLogThrottleSeconds = 0.08f;
+
+    [Tooltip(
+        "上一迭代 slideNormal 与本迭代 slideNormal 点积低于此值则记异常（越小越少见证）。钝角接缝常见 0.7~0.95 间抖动。")]
+    [Range(0.5f, 0.995f)]
+    public float CornerContactLogNormalDisagreementDot = 0.92f;
+
+    [Tooltip("PhysX hit.normal 与消解后 slideNormal 点积低于此值则记异常（消毒/LowerHemisphere 改过法线）。")] [Range(0.3f, 0.995f)]
+    public float CornerContactLogRawVsResolvedDot = 0.88f;
 
     [Header("Soft rigidity (future)")]
     public float MotorMassWeight = 1f;
