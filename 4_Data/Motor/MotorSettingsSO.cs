@@ -145,29 +145,6 @@ public sealed class MotorSettingsSO : ScriptableObject
     [Range(0.01f, 0.3f)]
     public float WallSanitizeNormalYThreshold = 0.1f;
 
-    [Header("Half-wall edge sanitization (anti-jitter)")]
-    [Tooltip("根治'半身墙顶边'抖动：胶囊侧面（位于两球心之间）命中带显著 Y 分量的法线时，强制展平为水平墙。\n背景：底球与墙顶边接触时，PhysX 因 Triangle Selection Non-determinism 在墙侧/墙顶/45°边缘三种法线间帧间跳变 → 投影方向高频抖 → 相机震动。本规则把三种法线全部归一到 (1,0,0)，根除帧间不一致。\n仅命中'上行边缘'时触发（n.y > 0），不影响走下凸边场景。")]
-    public bool SanitizeHalfWallEdgeContact = true;
-
-    [Tooltip("命中点 Y ≥ 底球球心 Y − 此容差时，视为'位于胶囊侧面'。默认 0.05。\n增大：覆盖更多接近底球底部的边缘命中（更激进），可能误吞低坡蹭斜上手感；减小：仅严格胶囊侧面才触发。")]
-    [Range(0f, 0.2f)]
-    public float EdgeContactBottomYSlop = 0.05f;
-
-    [Tooltip("命中点 Y ≤ 顶球球心 Y + 此容差时，视为'位于胶囊侧面'。默认 0.05。\n增大：覆盖刚刚高于胶囊顶部的边缘；减小：严格仅圆柱体范围内。")]
-    [Range(0f, 0.2f)]
-    public float EdgeContactTopYSlop = 0.05f;
-
-    [Tooltip("法线 Y 分量 > 此值才可能进入边缘消毒（排除纯水平墙——已由 Pass 0 处理）。默认 0.1。")]
-    [Range(0f, 0.5f)]
-    public float EdgeContactMinNormalY = 0.1f;
-
-    [Tooltip("法线 Y 分量 < 此值才进入边缘消毒（排除纯垂直地面/顶面——由 LowerHemisphere 与 Phase 0 处理）。默认 0.95。")]
-    [Range(0.5f, 0.99f)]
-    public float EdgeContactMaxNormalY = 0.95f;
-
-    [Tooltip("启用后向 Console 输出边缘消毒事件（约 0.12s 节流）。")]
-    public bool LogEdgeContactSanitizations;
-
     [Header("Ground probe — center raycast fallback")]
     [Tooltip("主 SphereCast 命中墙侧（W+A 沿墙摩擦时常见）时，再用一条胶囊轴心的细射线垂直下探作为兜底；细射线不会被胶囊侧面接触的墙面抢走，能精确穿过墙根缝隙找到地面。")]
     public bool EnableCenterRayGroundFallback = true;
@@ -230,112 +207,6 @@ public sealed class MotorSettingsSO : ScriptableObject
     [Tooltip("启用时向 Console 输出下半球法线过滤事件（约 0.12s 节流，避免刷屏）。")]
     public bool LogLowerHemisphereNormalFilters;
 
-    [Header("Inter-frame normal lock / 跨帧法线缓存（半身墙抖动根治）")]
-    [Tooltip(
-        "【启用跨帧法线锁定 / Enable Inter-frame Normal Lock】\n" +
-        "针对「半身墙顶边」「斜坡棱角」等位置 — PhysX 会在每一帧根据胶囊浮点漂移返回不同三角形的法线\n" +
-        "（top-face / side-face / 中间斜面交替），导致 ProjectOnPlane 输出每帧抖动 → 相机震荡。\n" +
-        "本机制：缓存上一帧同一 collider 的法线，本帧返回值与缓存「相似但不完全相同」时复用缓存，\n" +
-        "扼杀 PhysX 三角形选择的非确定性。这是「半身墙抖、超高墙不抖」的根因修复。\n" +
-        "EN: PhysX returns slightly different triangle normals each frame on edge contacts (half-wall tops, ramp corners). " +
-        "Cache last frame's normal per collider; if this frame's normal is 'similar-but-not-identical', reuse the cache. " +
-        "This kills triangle-selection non-determinism — the root cause of half-wall jitter.")]
-    public bool EnableInterframeNormalLock = true;
-
-    [Tooltip(
-        "【缓存有效期（秒） / Normal Cache TTL】缓存超过此时间自动失效。\n" +
-        "增大（→ 0.2）：长时间贴边时锁定更牢，但角色离开后再回来仍会用旧法线。\n" +
-        "减小（→ 0.02）：缓存只在连续帧内生效，安全但短暂离开就重置。推荐 0.05 ~ 0.1。\n" +
-        "EN: Cache entries expire after this. Recommended 0.05–0.10s.")]
-    [Range(0.02f, 0.5f)]
-    public float NormalCacheTTLSeconds = 0.08f;
-
-    [Tooltip(
-        "【缓存命中下界 / Cache Hit Min Dot】本帧法线与缓存的点积下限。\n" +
-        "增大（→ 0.95）：仅极相似时复用，更保守；过大失去抗抖动能力。\n" +
-        "减小（→ 0.7）：覆盖更多变化，但可能在真正的几何转角处错误冻结。推荐 0.85 ~ 0.95。\n" +
-        "EN: Min dot for cache hit. Recommended 0.85–0.95.")]
-    [Range(0.5f, 0.99f)]
-    public float NormalCacheMinDot = 0.9f;
-
-    [Tooltip(
-        "【边缘命中识别 / Edge Contact Sanitization】\n" +
-        "底半球撞到「半身墙顶边」时，法线呈 (0.7, 0.7, 0) 这类斜对角形态 —\n" +
-        "既不被 WallSanitization 捕获（|n.y|>0.1）也不被 LowerHemisphere 陡坡判据拦截（不算陡坡）。\n" +
-        "本机制：当 hit.point 低于胶囊中心 AND |n.y| 介于此区间，强制按「垂直墙」处理（清零 Y）。\n" +
-        "EN: When the lower hemisphere hits a HALF-WALL's top edge, PhysX returns a diagonal normal that " +
-        "escapes both wall-sanitize and steep-slope filters. Snap such edge normals to vertical-wall behavior.")]
-    public bool EnableEdgeContactSanitization = true;
-
-    [Tooltip(
-        "【边缘命中 |n.y| 上界 / Edge Contact Normal Y Upper Bound】\n" +
-        "底半球命中且 |n.y| ∈ (WallSanitizeNormalYThreshold, 此值) 时触发边缘消毒。\n" +
-        "增大（→ 0.95）：把更多「斜面命中」误归类为「半身墙顶边」，会让斜坡变难走。\n" +
-        "减小（→ 0.6）：仅最接近 45° 的边触发，对真正的半身墙顶（n.y≈0.7）覆盖弱。推荐 0.80 ~ 0.92。\n" +
-        "EN: Edge sanitization triggers when |n.y| is between WallSanitizeNormalYThreshold and this. Recommended 0.80–0.92.")]
-    [Range(0.3f, 0.99f)]
-    public float EdgeContactNormalYUpperBound = 0.85f;
-
-    [Tooltip("【调试：日志跨帧法线锁 / Log Normal Cache Hits】节流约 0.1s。\nEN: Throttled cache-hit log.")]
-    public bool LogNormalCacheHits;
-
-    [Tooltip(
-        "【调试：绘制跨帧法线锁 / Draw Normal Cache Rays】\n" +
-        "命中缓存复用时，在命中点绘制原始法线（橙）与复用法线（青），用于确认是否真的在“压平法线噪声”。\n" +
-        "EN: Draw raw (orange) and cached (cyan) normals when cache lock is applied.")]
-    public bool DrawNormalCacheRays;
-
-    [Tooltip("跨帧法线锁：原始法线颜色 / Normal cache: raw normal color.")]
-    public Color NormalCacheRawColor = new Color(1f, 0.55f, 0.15f, 1f);
-
-    [Tooltip("跨帧法线锁：复用法线颜色 / Normal cache: cached normal color.")]
-    public Color NormalCacheLockedColor = new Color(0.1f, 0.95f, 1f, 1f);
-
-    [Tooltip(
-        "【调试：绘制半身墙边缘消毒 / Draw Half-wall Edge Sanitization Rays】\n" +
-        "Pass 0.5 触发时绘制消毒前法线（红）与消毒后法线（绿），用于确认“中段斜法线是否被压成纯墙”。\n" +
-        "EN: Draw before/after normal rays when half-wall edge sanitization (Pass 0.5) triggers.")]
-    public bool DrawHalfWallEdgeSanitizeRays;
-
-    [Tooltip("半身墙边缘消毒：消毒前法线颜色 / Half-wall sanitize: raw normal color.")]
-    public Color HalfWallEdgeRawNormalColor = new Color(1f, 0.2f, 0.2f, 1f);
-
-    [Tooltip("半身墙边缘消毒：消毒后法线颜色 / Half-wall sanitize: sanitized normal color.")]
-    public Color HalfWallEdgeSanitizedNormalColor = new Color(0.2f, 1f, 0.35f, 1f);
-
-    [Header("N-Plane solver (MVP) / 多平面约束求解（最小可用版）")]
-    [Tooltip(
-        "【启用 N-Plane（MVP） / Enable N-Plane Solver】\n" +
-        "同一子步内缓存碰撞平面并联合求解，而不是单平面串行 ProjectOnPlane。\n" +
-        "2 面：锐缝则用交棱轴向投影；否则顺序双 ProjectOnPlane；3 面：直接归零（死角阻挡）。\n" +
-        "EN: 2-plane uses crevice seam axis or sequential twin-plane projection; 3-plane clamps to zero.")]
-    public bool EnableNPlaneMvpSolver = true;
-
-    [Tooltip(
-        "【平面去重阈值 / Plane Dedup Dot Threshold】\n" +
-        "同一子步内新命中法线与已缓存平面点积高于此值时视为同一平面，不重复加入。\n" +
-        "增大（→0.999）：更严格去重，易保留微小噪声面；减小（→0.9）：更宽松去重，可能把真实不同面误合并。\n" +
-        "EN: If dot(new, existing) > threshold, treat as same plane and skip adding.")]
-    [Range(0.85f, 0.9999f)]
-    public float PlaneDedupDotThreshold = 0.98f;
-
-    [Tooltip(
-        "【过弹修正系数 / Overbounce Factor】\n" +
-        "联合投影时用于轻微“推出平面”以避免粘墙反复回撞。1.0=关闭，推荐 1.001~1.005。\n" +
-        "增大：更不容易粘墙，但过大会显得发飘；减小：更物理真实但易产生边缘回撞。\n" +
-        "EN: Slightly over-correct projection to avoid sticky re-penetration. 1.0 disables.")]
-    [Range(1f, 1.02f)]
-    public float NPlaneOverbounceFactor = 1.002f;
-
-    [Tooltip(
-        "【调试：绘制 N-Plane 求解方向 / Draw N-Plane Solve Ray】\n" +
-        "联合约束求解后，在命中点绘制紫色结果速度射线，便于观察是否仍在 ping-pong。\n" +
-        "EN: Draw the N-Plane solved velocity direction ray at hit point.")]
-    public bool DrawNPlaneSolveRay;
-
-    [Tooltip("N-Plane 求解结果射线颜色 / N-Plane solve result ray color.")]
-    public Color NPlaneSolveRayColor = new Color(0.8f, 0.35f, 1f, 1f);
-
     [Header("Stability snapping / 速度稳定阈值")]
     [Tooltip(
         "【最小有效滑动速度（米/秒） / Min Effective Slide Speed】\n" +
@@ -369,37 +240,6 @@ public sealed class MotorSettingsSO : ScriptableObject
         "EN: Draw before/after velocity comparison rays at hit point for each slide projection (blue=after, white=before). " +
         "Helps spot ping-pong by seeing alternating slide directions across frames.")]
     public bool DrawSlideVelocityComparison;
-
-    [Header("Debug · Corner / seam jitter")]
-    [Tooltip(
-        "仅在「单次子步 Sweep」内出现异常时输出 [CornerContact]：\n" +
-        "· 相邻 slide 迭代消解后法线点积过低（接缝 / 振荡）\n" +
-        "· PhysX raw 法线与 ResolveContactNormalForSlide 后法线不一致幅度大\n" +
-        "· 连续迭代命中不同 Collider（两 Box 接缝 / 双面）\n" +
-        "用于定位墙接缝、内棱处的微震颤与射线扇形乱跳。勿长期开启。")]
-    public bool DebugCornerContactObservability;
-
-    [Tooltip(
-        "求解器在每次 SolveDisplacementFromPivot 时把「每一子步、每一 Slide 迭代」压成单行写入环形缓冲。\n" +
-        "勾选后请在 PlayerKCCMotor 上同时打开「平面突变 Burst」，否则缓冲只堆积不打字。\n" +
-        "EN: Ring-buffer per-substep/per-iter solver lines during each displacement solve.")]
-    public bool DebugMotorSolveLineRingBuffer;
-
-    [Tooltip("环形缓冲的最大行数（超过则丢弃最旧）。\nEN: Max solver lines retained per frame solve.")]
-    [Range(8, 256)]
-    public int DebugMotorSolveLineRingCapacity = 96;
-
-    [Tooltip("同类日志最小间隔（秒），防刷屏。\nEN: Minimum seconds between corner-contact anomaly logs.")]
-    [Range(0.02f, 0.5f)]
-    public float CornerContactLogThrottleSeconds = 0.08f;
-
-    [Tooltip(
-        "上一迭代 slideNormal 与本迭代 slideNormal 点积低于此值则记异常（越小越少见证）。接缝 / 双面 Collider 常见 0.7~0.95 间抖动。")]
-    [Range(0.5f, 0.995f)]
-    public float CornerContactLogNormalDisagreementDot = 0.92f;
-
-    [Tooltip("PhysX hit.normal 与消解后 slideNormal 点积低于此值则记异常（消毒/LowerHemisphere 改过法线）。")] [Range(0.3f, 0.995f)]
-    public float CornerContactLogRawVsResolvedDot = 0.88f;
 
     [Header("Soft rigidity (future)")]
     public float MotorMassWeight = 1f;

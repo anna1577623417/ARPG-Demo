@@ -97,7 +97,7 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
     [Header("Debug · Planar solver stutter burst")]
     [Tooltip(
         "当本帧 Solver 输出的 **XZ 位移方向**与上一帧点积过低（像在墙角「甩头」）时，打一个 [MotorPlanarBurst] 块。\n" +
-        "务必在 MotorSettings 勾选 DebugMotorSolveLineRingBuffer，否则只有摘要无迭代表。")]
+        "含滑动分支末尾标签；求解器已不再维护逐迭代环形缓冲。")]
     [SerializeField] bool debugMotorPlanarStutterBurst;
 
     [Tooltip("Burst 阈值：normalizedPlanar(dot) ≤ 该值触发（负数=方向大致相反更易触发）。")] [SerializeField, Range(-0.95f, 0.35f)]
@@ -495,18 +495,12 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
                 _debugNextMotorBurstLogTimeUnscaled =
                     Time.unscaledTime + Mathf.Max(0.02f, debugMotorPlanarStutterBurstThrottle);
 
-                var ring = motorSettings.DebugMotorSolveLineRingBuffer
-                    ? KinematicMotorSolver.ExportMotorSolveRingBufferText()
-                    : "(勾选 MotorSettings.DebugMotorSolveLineRingBuffer 才记录每迭代行)";
-
                 Debug.Log(
                     $"[MotorPlanarBurst] f={Time.frameCount} {entry} planarDot(prev,now)={planarDot:F3} (thr≤{debugMotorPlanarStutterBurstDot:F2})\n" +
                     $" pivot={transform.position} grounded={_isGrounded} vy={_verticalSpeed:F3}\n" +
                     $" dispIn={displacementIn} solved={solvedDelta}\n" +
                     $" planarPrevXZ=({pWas.x:F5},{pWas.z:F5}) planarNowXZ=({pNow.x:F5},{pNow.z:F5})\n" +
-                    $" slideBranchTail={KinematicMotorSolver.DebugSlideSolveBranchTag}\n" +
-                    "--- ring (TAB 分隔，可复制到表格) ---\n" +
-                    ring,
+                    $" slideBranchTail={KinematicMotorSolver.DebugSlideSolveBranchTag}",
                     this);
             }
         }
@@ -757,9 +751,17 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
             return;
         }
 
-        // 动作空中锁 / 动作态（非重力挂起）：始终累计重力，防"边缘探针把 vy 反复清零 → 永远等不到下落"的死锁。
+        // 动作空中锁 / 动作态（非重力挂起）：默认累计重力，防"边缘探针把 vy 反复清零 → 永远等不到下落"的死锁。
+        // Grounded attacks（地走起手、无空中锁）：与 Locomotion 一致保持 vy=0。否则首帧就出现 vy≈−gΔt，
+        // ComputeActionMotorSolveContext → Airborne，solver 带向下位移扫到楼面 → 假障碍命中 / Sweep 闪烁。
         if (_actionAirborneLock || (_states != null && _states.Current is PlayerActionState))
         {
+            if (!_actionAirborneLock && _isGrounded && _verticalSpeed <= 0f)
+            {
+                _verticalSpeed = 0f;
+                return;
+            }
+
             _verticalSpeed -= gravity * Time.deltaTime;
             return;
         }

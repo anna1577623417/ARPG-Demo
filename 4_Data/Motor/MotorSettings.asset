@@ -48,18 +48,12 @@ MonoBehaviour:
   GroundSnapOverlapGuard: 1
   GroundSnapOverlapLayers:
     serializedVersion: 2
-    m_Bits: 4294967295
+    m_Bits: 128
   GroundSnapOverlapRadiusScale: 0.99
   MaxGroundSnapUpwardPull: 0.12
   ClampGroundedSlideRemainingY: 1
   SanitizeNearVerticalWallNormals: 1
   WallSanitizeNormalYThreshold: 0.1
-  SanitizeHalfWallEdgeContact: 1
-  EdgeContactBottomYSlop: 0.05
-  EdgeContactTopYSlop: 0.05
-  EdgeContactMinNormalY: 0.1
-  EdgeContactMaxNormalY: 0.95
-  LogEdgeContactSanitizations: 0
   EnableCenterRayGroundFallback: 1
   DrawSweepHitsInSceneView: 1
   SweepCrossHalfExtent: 0.08
@@ -85,23 +79,6 @@ MonoBehaviour:
   LowerHemisphereOriginalNormalColor: {r: 1, g: 0.92, b: 0.2, a: 1}
   LowerHemisphereFilteredNormalColor: {r: 1, g: 0.35, b: 0.85, a: 1}
   LogLowerHemisphereNormalFilters: 0
-  EnableInterframeNormalLock: 1
-  NormalCacheTTLSeconds: 0.08
-  NormalCacheMinDot: 0.9
-  EnableEdgeContactSanitization: 1
-  EdgeContactNormalYUpperBound: 0.85
-  LogNormalCacheHits: 0
-  DrawNormalCacheRays: 0
-  NormalCacheRawColor: {r: 1, g: 0.55, b: 0.15, a: 1}
-  NormalCacheLockedColor: {r: 0.1, g: 0.95, b: 1, a: 1}
-  DrawHalfWallEdgeSanitizeRays: 0
-  HalfWallEdgeRawNormalColor: {r: 1, g: 0.2, b: 0.2, a: 1}
-  HalfWallEdgeSanitizedNormalColor: {r: 0.2, g: 1, b: 0.35, a: 1}
-  EnableNPlaneMvpSolver: 0
-  PlaneDedupDotThreshold: 0.98
-  NPlaneOverbounceFactor: 1.02
-  DrawNPlaneSolveRay: 1
-  NPlaneSolveRayColor: {r: 0.8, g: 0.35, b: 1, a: 1}
   StabilitySnapMinSlideSpeed: 0.033
   DeadlockMaxMagnitudeLossPerProjection: 0.9
   LogStabilityAborts: 0

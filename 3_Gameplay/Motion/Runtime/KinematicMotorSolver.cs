@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -9,20 +8,9 @@ public static class KinematicMotorSolver {
     private const float EpsilonSq = 1e-8f;
     private const int DepenetrationBufferSize = 32;
     private static float s_nextLowerHemisphereLogTime;
-    private static float s_nextEdgeSanitizationLogTime;
     private static float s_nextStabilityAbortLogTime;
-    private static float s_nextNormalCacheLogTime;
-    private static float s_nextCornerContactLogTime;
 
-    static readonly List<string> s_motorSolveLineRingBuffer = new List<string>(96);
-    static int s_motorSolveRingMaxLines = 96;
     static string s_slideSolveBranchTag = "?";
-
-    // ── 跨帧法线缓存 — 半身墙顶边 / 棱角处 PhysX 三角形选择非确定性的根因消毒 ──────────
-    // 仅持有一个 collider 槽足以覆盖 99% 场景（接缝抖动多发于"贴住一面墙"时）。
-    private static Collider s_cachedNormalCollider;
-    private static Vector3 s_cachedNormal;
-    private static float s_cachedNormalTime;
     private static readonly Collider[] s_depenetrationBuffer = new Collider[DepenetrationBufferSize];
     private static GameObject s_penetrationProbeGo;
     private static CapsuleCollider s_penetrationProbeCollider;
@@ -39,13 +27,6 @@ public static class KinematicMotorSolver {
     /// <summary>最近一次 Slide 约束（含两平面求解）选用的策略标签；供 Debug 读出。</summary>
     public static string DebugSlideSolveBranchTag => s_slideSolveBranchTag;
 
-    /// <summary>导出本帧 <see cref="SolveDisplacementFromPivot"/> 已累计的环形求解行（不自动清空）。</summary>
-    public static string ExportMotorSolveRingBufferText()
-    {
-        if (s_motorSolveLineRingBuffer.Count == 0) return "(ring empty)";
-        return string.Join("\n", s_motorSolveLineRingBuffer);
-    }
-
     public static Vector3 SolveDisplacementFromPivot(
         Vector3 worldPivot,
         float pivotToFootOffset,
@@ -57,14 +38,7 @@ public static class KinematicMotorSolver {
             return Vector3.zero;
         }
 
-        if (motor.DebugMotorSolveLineRingBuffer)
-        {
-            s_motorSolveRingMaxLines = Mathf.Clamp(motor.DebugMotorSolveLineRingCapacity, 8, 256);
-            s_motorSolveLineRingBuffer.Clear();
-            s_slideSolveBranchTag = "?";
-            TryAppendSolveRingTabLine(motor,
-                "RING_HEADER\tframe\tsub\tsubTot\titer\tbranch\tcollider\thitDist\tstx\tstz\tr_before\tr_after\tplanes");
-        }
+        s_slideSolveBranchTag = "?";
 
         var frac = Mathf.Clamp(motor.KinematicSubStepRadiusFraction, 0.12f, 0.95f);
         var maxStep = Mathf.Max(0.01f, motor.Radius * frac);
@@ -84,31 +58,12 @@ public static class KinematicMotorSolver {
             cursorPivot += partial;
         }
 
-        if (motor.DebugMotorSolveLineRingBuffer)
-        {
-            TryAppendSolveRingTabLine(motor, "---");
-            TryAppendSolveRingTabLine(motor,
-                $"SolveSummary\tf={Time.frameCount}\tpivot=({worldPivot.x:F3},{worldPivot.y:F3},{worldPivot.z:F3})\t" +
-                $"dispInMag={worldDisplacement.magnitude:F5}\tsolvedMag={deltaTotal.magnitude:F5}\t" +
-                $"planarSolvedXZ=({deltaTotal.x:F5},{deltaTotal.z:F5})\tbranchLast={DebugSlideSolveBranchTag}");
-        }
-
         return deltaTotal;
     }
 
     static void TagSlideSolveBranch(string tag)
     {
         s_slideSolveBranchTag = tag ?? "?";
-    }
-
-    static void TryAppendSolveRingTabLine(MotorSettingsSO motor, string row)
-    {
-        if (motor == null || !motor.DebugMotorSolveLineRingBuffer) return;
-        s_motorSolveLineRingBuffer.Add(row);
-        while (s_motorSolveLineRingBuffer.Count > s_motorSolveRingMaxLines)
-        {
-            s_motorSolveLineRingBuffer.RemoveAt(0);
-        }
     }
 
     /// <summary>
@@ -364,34 +319,8 @@ public static class KinematicMotorSolver {
 
         Vector3 lastNormal = default;
         var hadPreviousNormal = false;
-        var planeCount = 0;
-        Vector3 plane0 = default, plane1 = default, plane2 = default;
-
-        Collider prevHitColliderForCornerLog = null;
-        System.Text.StringBuilder cornerSb = null;
-        var cornerContactLogAccumulated = false;
 
         var castRadius = Mathf.Max(0.01f, motor.Radius - skin * 0.5f);
-
-        void FlushCornerContactSweepLog() {
-            if (!cornerContactLogAccumulated || motor == null || !motor.DebugCornerContactObservability
-                || cornerSb == null) {
-                return;
-            }
-
-            if (Time.unscaledTime < s_nextCornerContactLogTime) {
-                return;
-            }
-
-            s_nextCornerContactLogTime =
-                Time.unscaledTime + Mathf.Max(0.02f, motor.CornerContactLogThrottleSeconds);
-            Debug.Log(
-                $"[CornerContact] f={Time.frameCount} sub={sweepSubStepIndex + 1}/{Mathf.Max(1, sweepSubStepCount)} " +
-                $"pivot0={worldPivot} disp={displacement}\n" +
-                $" slide2pkLast={DebugSlideSolveBranchTag} NPlane={(motor.EnableNPlaneMvpSolver ? "on" : "off")}\n" +
-                $" crevice≤{motor.CreviceNormalDotThreshold:F2}\n" +
-                cornerSb);
-        }
 
         for (var iter = 0; iter < iterations; iter++) {
             if (remaining.sqrMagnitude < EpsilonSq) {
@@ -418,13 +347,11 @@ public static class KinematicMotorSolver {
             }
 
             // ── Falling Exemption（下落豁免）──────────────────────────────────────
-            //   原因：下半球的三个 Y 剥离 Pass（EdgeContactSanitization / HalfWallEdge /
-            //         LowerHemisphereNormalFilter）会把"刮到凸角顶点"返回的斜上法线 (0.7,0.7,0)
-            //         强行压成纯水平 (1,0,0)，再投影重力 → 下行分量被完全吃掉 → 角色悬浮。
+            //   原因：WallSanitize + LowerHemisphere 可能把凸角顶点斜上法线压平，下落时再吃光重力分量 → 悬浮。
             //   解药：本帧位移方向向下（dir.y<0）时跳过 Y 剥离，让 PhysX 原始斜法线把重力
             //         折射成沿边缘的滑落速度，自然脱离顶点。
             var isFalling = dir.y < -0.05f;
-            var slideNormal = ResolveContactNormalForSlide(motor, p1, p2, in hit, isFalling, out var normalFiltered);
+            var slideNormal = ResolveContactNormalForSlide(motor, p1, in hit, isFalling, out var normalFiltered);
 
             var approachNormalDot = Vector3.Dot(dir, slideNormal);
             if (approachNormalDot > motor.VelocityAgainstNormalRejectDot) {
@@ -447,103 +374,20 @@ public static class KinematicMotorSolver {
                 break;
             }
 
-            TryAddConstraintPlane(
-                slideNormal,
-                motor != null ? motor.PlaneDedupDotThreshold : 0.98f,
-                ref planeCount,
-                ref plane0,
-                ref plane1,
-                ref plane2);
-
             var remainingBeforeSlide = remaining;
-            var slid = SolveByConstraintPlanes(
+            remaining = SlideWithCreviceOrTwinPlane(
                 remaining,
                 slideNormal,
                 hadPreviousNormal,
                 lastNormal,
                 motor.CreviceNormalDotThreshold,
-                motor,
-                hit.point,
-                iter,
-                planeCount,
-                plane0,
-                plane1,
-                plane2);
-            remaining = slid;
+                iter);
 
             if (applyGroundedSlideDownwardLock
                 && motor.ClampGroundedSlideRemainingY
                 && remaining.y < 0f) {
                 remaining.y = 0f;
             }
-
-            if (motor != null && motor.DebugCornerContactObservability) {
-                var slideNn = slideNormal.normalized;
-                var rawNn = hit.normal.normalized;
-                var dotRawRes = Vector3.Dot(rawNn, slideNn);
-                var dotPrevNn = hadPreviousNormal ? Vector3.Dot(lastNormal.normalized, slideNn) : 1f;
-                var flippedCollider = prevHitColliderForCornerLog != null && hit.collider != null
-                                       && hit.collider != prevHitColliderForCornerLog;
-                var disagreeNormals =
-                    hadPreviousNormal && dotPrevNn < motor.CornerContactLogNormalDisagreementDot;
-                var disagreeRaw = dotRawRes < motor.CornerContactLogRawVsResolvedDot;
-                if (disagreeNormals || disagreeRaw || flippedCollider) {
-                    cornerContactLogAccumulated = true;
-                    cornerSb ??= new System.Text.StringBuilder(640);
-                    var ph = worldPivot + accumulated;
-                    cornerSb.Append(" --- iter=").Append(iter)
-                        .Append(" pivot≈(").Append(ph.x.ToString("F3")).Append(',')
-                        .Append(ph.y.ToString("F3")).Append(',')
-                        .Append(ph.z.ToString("F3")).Append(')').Append('\n');
-                    cornerSb.Append("     collider=").Append(hit.collider != null ? hit.collider.name : "?")
-                        .Append(" id=").Append(hit.collider != null ? hit.collider.GetInstanceID().ToString() : "-");
-                    if (flippedCollider && prevHitColliderForCornerLog != null) {
-                        cornerSb.Append(" ★prev=").Append(prevHitColliderForCornerLog.name);
-                    }
-
-                    cornerSb.Append("\n     hitDist=").Append(hit.distance.ToString("F4")).Append(" point=(")
-                        .Append(hit.point.x.ToString("F3")).Append(',')
-                        .Append(hit.point.y.ToString("F3")).Append(',')
-                        .Append(hit.point.z.ToString("F3")).Append(')').Append('\n');
-                    cornerSb.Append("     rawN=(").Append(rawNn.x.ToString("F3")).Append(',')
-                        .Append(rawNn.y.ToString("F3")).Append(',')
-                        .Append(rawNn.z.ToString("F3")).Append(") slideN=(")
-                        .Append(slideNn.x.ToString("F3")).Append(',')
-                        .Append(slideNn.y.ToString("F3")).Append(',')
-                        .Append(slideNn.z.ToString("F3")).Append(')').Append('\n');
-                    cornerSb.Append("     dot(raw,slide)=").Append(dotRawRes.ToString("F3"))
-                        .Append(disagreeRaw ? " ★raw≠resolved" : "");
-                    cornerSb.Append(" dot(prev,slide)=").Append(dotPrevNn.ToString("F3"))
-                        .Append(disagreeNormals ? " ★flip" : "");
-                    cornerSb.Append(" lowerHemisphere=").Append(normalFiltered).Append('\n');
-                    cornerSb.Append("     dir=(").Append(dir.x.ToString("F3")).Append(',')
-                        .Append(dir.y.ToString("F3")).Append(',')
-                        .Append(dir.z.ToString("F3")).Append(") approach·n=")
-                        .Append(approachNormalDot.ToString("F3")).Append(" rej>")
-                        .Append(motor.VelocityAgainstNormalRejectDot.ToString("F2")).Append('\n');
-                    cornerSb.Append("     |remain|: ")
-                        .Append(remainingBeforeSlide.magnitude.ToString("F5")).Append("→")
-                        .Append(remaining.magnitude.ToString("F5"))
-                        .Append(" plane=").Append(planeCount).Append('\n');
-                    cornerSb.Append("     slide2pk=").Append(DebugSlideSolveBranchTag).Append('\n');
-                }
-            }
-
-            if (motor.DebugMotorSolveLineRingBuffer)
-            {
-                var slidennTab = slideNormal.normalized;
-                var cname = hit.collider != null ? hit.collider.name : "-";
-                TryAppendSolveRingTabLine(motor,
-                    $"{Time.frameCount}\t{sweepSubStepIndex + 1}\t{sweepSubStepCount}\t{iter}" +
-                    $"\t{DebugSlideSolveBranchTag}" +
-                    $"\t{cname}" +
-                    $"\t{hit.distance:F5}" +
-                    $"\t{slidennTab.x:F3}\t{slidennTab.z:F3}" +
-                    $"\t{remainingBeforeSlide.magnitude:F5}\t{remaining.magnitude:F5}" +
-                    $"\t{planeCount}");
-            }
-
-            prevHitColliderForCornerLog = hit.collider;
 
             DrawSweepHitDiagnostics(motor, in hit, remaining, rejectedAsNonBlocking: false, in slideNormal,
                 normalFiltered);
@@ -600,72 +444,10 @@ public static class KinematicMotorSolver {
             lastNormal = slideNormal;
         }
 
-        FlushCornerContactSweepLog();
-
         return accumulated;
     }
 
-    private static void TryAddConstraintPlane(Vector3 normal, float dedupDotThreshold,
-        ref int planeCount, ref Vector3 p0, ref Vector3 p1, ref Vector3 p2) {
-        var n = normal.normalized;
-        if (planeCount > 0 && Vector3.Dot(n, p0) > dedupDotThreshold) return;
-        if (planeCount > 1 && Vector3.Dot(n, p1) > dedupDotThreshold) return;
-        if (planeCount > 2 && Vector3.Dot(n, p2) > dedupDotThreshold) return;
-
-        if (planeCount == 0) p0 = n;
-        else if (planeCount == 1) p1 = n;
-        else if (planeCount == 2) p2 = n;
-        planeCount = Mathf.Min(3, planeCount + 1);
-    }
-
-    /// <summary>
-    /// 最小可用 N-Plane 求解器（MVP）：同帧最多缓存三平面；三面夹角直接归零。
-    /// </summary>
-    private static Vector3 SolveByConstraintPlanes(
-        Vector3 remaining,
-        Vector3 currentNormal,
-        bool hadPrev,
-        Vector3 lastNormal,
-        float creviceDotThresh,
-        MotorSettingsSO motor,
-        Vector3 hitPoint,
-        int iterationIndex,
-        int planeCount,
-        Vector3 p0,
-        Vector3 p1,
-        Vector3 p2) {
-        var nCur = currentNormal.normalized;
-
-        if (motor == null || !motor.EnableNPlaneMvpSolver) {
-            return SlideOrCreviceLegacy(remaining, nCur, hadPrev, lastNormal, creviceDotThresh, iterationIndex);
-        }
-
-        if (planeCount <= 1) {
-            TagSlideSolveBranch($"NProj_single_planeCount_{planeCount}");
-            return Vector3.ProjectOnPlane(remaining, nCur);
-        }
-
-        if (planeCount >= 3) {
-            TagSlideSolveBranch("NProj_triCorner_zeroRemain");
-            if (motor.DrawNPlaneSolveRay && motor.DrawSweepHitsInSceneView) {
-                Debug.DrawRay(hitPoint, Vector3.zero, motor.NPlaneSolveRayColor, SweepDebugSeconds(motor));
-            }
-            return Vector3.zero;
-        }
-
-        var solved = SolveTwoPlaneConstraint(remaining, p0, p1, creviceDotThresh);
-        if (motor.NPlaneOverbounceFactor > 1f && solved.sqrMagnitude > EpsilonSq) {
-            solved *= motor.NPlaneOverbounceFactor;
-        }
-
-        if (motor.DrawNPlaneSolveRay && motor.DrawSweepHitsInSceneView && solved.sqrMagnitude > EpsilonSq) {
-            Debug.DrawRay(hitPoint, solved.normalized * 0.45f, motor.NPlaneSolveRayColor, SweepDebugSeconds(motor));
-        }
-
-        return solved;
-    }
-
-    private static Vector3 SlideOrCreviceLegacy(
+    static Vector3 SlideWithCreviceOrTwinPlane(
         Vector3 remaining,
         Vector3 nCur,
         bool hadPrev,
@@ -673,20 +455,18 @@ public static class KinematicMotorSolver {
         float creviceDotThresh,
         int iterationIndex) {
         if (!hadPrev || iterationIndex <= 0) {
-            TagSlideSolveBranch($"LegacyTwin_iter{iterationIndex}_singleProj_only");
+            TagSlideSolveBranch($"SinglePlane_iter{iterationIndex}");
             return Vector3.ProjectOnPlane(remaining, nCur);
         }
 
         var nLast = lastNormal.normalized;
-        return SolveTwoPlaneConstraint(remaining, nLast, nCur, creviceDotThresh);
+        return SolveTwinPlaneCreviceSequential(remaining, nLast, nCur, creviceDotThresh);
     }
 
-    /// <summary>双平面约束：铰链轴向（锐缝）或顺序两次 ProjectOnPlane。外凸接缝、多 Collider 建议在场景侧合并网格碰撞。</summary>
-    private static Vector3 SolveTwoPlaneConstraint(Vector3 remaining, Vector3 nLast, Vector3 nCur,
+    static Vector3 SolveTwinPlaneCreviceSequential(Vector3 remaining, Vector3 nLast, Vector3 nCur,
         float creviceDotThresh) {
         var dot = Vector3.Dot(nCur, nLast);
-        var isSharpCrevice = dot < creviceDotThresh;
-        if (isSharpCrevice) {
+        if (dot < creviceDotThresh) {
             var seam = Vector3.Cross(nLast, nCur);
             if (seam.sqrMagnitude > 1e-10f) {
                 seam.Normalize();
@@ -735,31 +515,24 @@ public static class KinematicMotorSolver {
     }
 
     /// <summary>
-    /// 低台阶：陡坡法线在底球区域剥掉 Y；不再依赖 XZ「南极」半径（WA/WD 易误触盲区），改以命中点相对底球球心高度 + 法线陡度。
+    /// 滑梯接触法线：可行走坡面豁免 → 墙面 Y 归零 → 下半球陡坡展平。
     /// </summary>
     private static Vector3 ResolveContactNormalForSlide(
         MotorSettingsSO motor,
         Vector3 bottomSphereCenter,
-        Vector3 topSphereCenter,
         in RaycastHit hit,
         bool isFalling,
         out bool appliedLowerHemisphereFilter) {
         appliedLowerHemisphereFilter = false;
         var n = hit.normal.normalized;
 
-        // ── Pass ∞：可行走坡面绝对豁免（最高优先级）──────────────────────────────
-        //    根因：楼梯/斜坡 collider 的法线本就带 Y 分量（如 (0.5,0.866,0)）。一旦 Pass −2 /
-        //          Pass 0.5 / Pass 1 把它压平成 (1,0,0)，Slide 投影自然失去上行分量，蓝色射线水平
-        //          → 角色"撞"在斜坡根部 → 反复滑/悬空。
-        //    解药：只要法线角 ≤ MaxSlopeAngle 即视为可行走坡面，直接返回原始法线，跳过一切 Y 剥离。
-        //    例外：自由落体（dir.y<-0.05）时仍允许下半球过滤把"凸角斜上法线"压平防悬浮。
+        // 可行走坡面：勿压平 Y，否则会失去沿阶/上坡分量。
         if (motor != null && !isFalling) {
             if (n.y > 0.0001f && !motor.IsSlopeTooSteep(n)) {
-                return WriteNormalCache(motor, hit.collider, n);
+                return n;
             }
         }
 
-        // 脚底参考：底球球心 Y − R = 脚底 Y（与 GetCapsuleWorld 一致）
         var footY = bottomSphereCenter.y - motor.Radius;
         var hitRelToFoot = hit.point.y - footY;
         var stairBand = motor != null
@@ -769,58 +542,6 @@ public static class KinematicMotorSolver {
             && hitRelToFoot <= motor.StepOffset + 0.08f;
         var exemptYStrip = isFalling || stairBand;
 
-        // ── Pass −2：边缘命中消毒（半身墙顶边 / 棱角斜对角法线）─────────────────────
-        //    根因：底半球撞到半身墙的【顶边】时，PhysX 返回斜对角法线如 (0.7, 0.7, 0)，
-        //    既逃过墙面消毒（|n.y|>0.1）也逃过陡坡判据（不算陡坡）→ 顺序投影使 V 在帧间
-        //    在"沿墙滑"和"上台阶"两种模式间乒乓 → 相机抖动。
-        //    解药：底半球命中 + |n.y| 落入边缘区间 → 强制按垂直墙处理（清零 Y）。
-        //    【下落 / 楼梯带宽豁免】：不剥离 Y，保留斜法线供重力折射或沿阶滑升。
-        if (!exemptYStrip
-            && motor != null
-            && motor.EnableEdgeContactSanitization
-            && hit.point.y < bottomSphereCenter.y + (motor.LowerHemisphereBottomCenterYSlop)
-            && Mathf.Abs(n.y) >= motor.WallSanitizeNormalYThreshold
-            && Mathf.Abs(n.y) <= motor.EdgeContactNormalYUpperBound) {
-            var nxzE = new Vector3(n.x, 0f, n.z);
-            var nxzESq = nxzE.sqrMagnitude;
-            if (nxzESq > 1e-10f) {
-                n = nxzE * (1f / Mathf.Sqrt(nxzESq));
-            }
-        }
-
-        // ── Pass −1：跨帧法线锁定（杀死 PhysX 三角形选择的非确定性）─────────────────
-        //    本帧法线与上一帧同 collider 缓存"相似但不完全相同"时，复用缓存。
-        //    这正是"半身墙抖、超高墙不抖"的差异根源 — 高墙撞侧面始终返回同一三角形，
-        //    半身墙撞顶边却在 top-face / side-face / 中间斜面之间随机切换。
-        if (motor != null
-            && motor.EnableInterframeNormalLock
-            && hit.collider != null
-            && hit.collider == s_cachedNormalCollider
-            && (Time.unscaledTime - s_cachedNormalTime) < motor.NormalCacheTTLSeconds) {
-            var dotCache = Vector3.Dot(n, s_cachedNormal);
-            // 命中条件：相似（dot > minDot）但不完全相同（dot < 0.9999，否则没必要复用）
-            if (dotCache > motor.NormalCacheMinDot && dotCache < 0.9999f) {
-                if (motor.LogNormalCacheHits && Time.unscaledTime >= s_nextNormalCacheLogTime) {
-                    s_nextNormalCacheLogTime = Time.unscaledTime + 0.1f;
-                    Debug.Log(
-                        $"[KinematicMotor][NormalCacheHit] dot={dotCache:F3} | " +
-                        $"raw=({n.x:F3},{n.y:F3},{n.z:F3}) → " +
-                        $"cached=({s_cachedNormal.x:F3},{s_cachedNormal.y:F3},{s_cachedNormal.z:F3}) | " +
-                        $"collider={hit.collider.name}");
-                }
-                if (motor.DrawNormalCacheRays && motor.DrawSweepHitsInSceneView) {
-                    var t = SweepDebugSeconds(motor);
-                    Debug.DrawRay(hit.point, n * 0.42f, motor.NormalCacheRawColor, t);
-                    Debug.DrawRay(hit.point, s_cachedNormal * 0.46f, motor.NormalCacheLockedColor, t);
-                }
-                n = s_cachedNormal;
-            }
-        }
-
-        // ── Pass 0：墙面消毒（无条件优先于 LowerHemisphere 过滤）─────────────────
-        // 网格顶点的浮点漂移会让"理论垂直墙面"返回类似 (1, -0.005, 0.001) 的法线。
-        // 在跳跃（V.y>0）时撞这种墙，Vector3.ProjectOnPlane(V, n) 会把上行动能折射成下行动能，
-        // 表现为"沿墙跳跃 → 瞬间被压进地里"。强制把这类近垂直法线的 Y 分量归零并归一化即可根治。
         if (motor != null && motor.SanitizeNearVerticalWallNormals
             && Mathf.Abs(n.y) < motor.WallSanitizeNormalYThreshold) {
             var nxz0 = new Vector3(n.x, 0f, n.z);
@@ -830,58 +551,17 @@ public static class KinematicMotorSolver {
             }
         }
 
-        // ── Pass 0.5：半身墙边缘消毒（与 Pass −2 互补，覆盖"胶囊侧面撞顶边"场景）─────
-        //    几何鉴定：hit.point.y 落在【两球心之间】（胶囊圆柱体侧面区域），且法线
-        //    带显著上行 Y 分量（n.y ∈ (Min, Max)）→ 这是半身墙的顶边在与胶囊侧面接触。
-        //    Pass −2 仅覆盖 hit < bottomCenter（低台阶），覆盖不到本场景；
-        //    LowerHemisphereFilter 又因 hit > bottomCenter 早返直接放过。
-        //    本 Pass 把 PhysX 帧间随机选择的 (1,0,0)/(0,1,0)/(0.7,0.7,0) 三种法线
-        //    全部归一为 (1,0,0)，根除 Triangle Selection Non-determinism 抖动。
-        // 【下落 / 楼梯带宽豁免】
-        if (!exemptYStrip
-            && motor != null
-            && motor.SanitizeHalfWallEdgeContact
-            && n.y > motor.EdgeContactMinNormalY
-            && n.y < motor.EdgeContactMaxNormalY
-            && hit.point.y >= bottomSphereCenter.y - motor.EdgeContactBottomYSlop
-            && hit.point.y <= topSphereCenter.y + motor.EdgeContactTopYSlop) {
-            var rawN = n;
-            var beforeY = n.y;
-            var nxzEdge = new Vector3(n.x, 0f, n.z);
-            var nxzEdgeSq = nxzEdge.sqrMagnitude;
-            if (nxzEdgeSq > 1e-10f) {
-                n = nxzEdge * (1f / Mathf.Sqrt(nxzEdgeSq));
-                if (motor.DrawHalfWallEdgeSanitizeRays && motor.DrawSweepHitsInSceneView) {
-                    var t = SweepDebugSeconds(motor);
-                    Debug.DrawRay(hit.point, rawN * 0.40f, motor.HalfWallEdgeRawNormalColor, t);
-                    Debug.DrawRay(hit.point, n * 0.48f, motor.HalfWallEdgeSanitizedNormalColor, t);
-                }
-
-                if (motor.LogEdgeContactSanitizations
-                    && Time.unscaledTime >= s_nextEdgeSanitizationLogTime) {
-                    s_nextEdgeSanitizationLogTime = Time.unscaledTime + 0.12f;
-                    Debug.Log(
-                        $"[KinematicMotor][EdgeSanitize] half-wall edge contact | " +
-                        $"hit=({hit.point.x:F3},{hit.point.y:F3},{hit.point.z:F3}) " +
-                        $"capsule[bottomY={bottomSphereCenter.y:F3} topY={topSphereCenter.y:F3}] " +
-                        $"n.y: {beforeY:F3} → 0  collider={hit.collider?.name}",
-                        hit.collider);
-                }
-            }
-        }
-
         if (motor == null || !motor.EnableLowerHemisphereNormalFilter) {
-            return WriteNormalCache(motor, hit.collider, n);
+            return n;
         }
 
-        // 【下落 / 楼梯带宽豁免】：Pass 1 勿展平，否则纯 Slide 在凸角/阶前重力死锁或无法上阶。
         if (exemptYStrip) {
-            return WriteNormalCache(motor, hit.collider, n);
+            return n;
         }
 
         if (motor.LowerHemisphereOnlyWhenContactBelowBottomCenter
             && hit.point.y > bottomSphereCenter.y + motor.LowerHemisphereBottomCenterYSlop) {
-            return WriteNormalCache(motor, hit.collider, n);
+            return n;
         }
 
         var toContact = hit.point - bottomSphereCenter;
@@ -890,7 +570,7 @@ public static class KinematicMotorSolver {
             ? Mathf.Max(0.001f, motor.Radius * motor.LowerHemispherePoleRadiusFraction)
             : 0f;
         if (poleAllow > 0.0005f && horizSq <= poleAllow * poleAllow) {
-            return WriteNormalCache(motor, hit.collider, n);
+            return n;
         }
 
         var steep = motor.IsSlopeTooSteep(n);
@@ -898,13 +578,13 @@ public static class KinematicMotorSolver {
                                 && n.y > 0.0001f
                                 && n.y < motor.LowerHemisphereFlattenIfGroundNormalYBelow;
         if (!steep && !shallowSideScrape) {
-            return WriteNormalCache(motor, hit.collider, n);
+            return n;
         }
 
         var nxz = new Vector3(n.x, 0f, n.z);
         var nxzSq = nxz.sqrMagnitude;
         if (nxzSq < 1e-10f) {
-            return WriteNormalCache(motor, hit.collider, n);
+            return n;
         }
 
         nxz *= 1f / Mathf.Sqrt(nxzSq);
@@ -919,16 +599,7 @@ public static class KinematicMotorSolver {
                 hit.collider);
         }
 
-        return WriteNormalCache(motor, hit.collider, nxz);
-    }
-
-    private static Vector3 WriteNormalCache(MotorSettingsSO motor, Collider collider, Vector3 normal) {
-        if (motor != null && motor.EnableInterframeNormalLock && collider != null) {
-            s_cachedNormalCollider = collider;
-            s_cachedNormal = normal;
-            s_cachedNormalTime = Time.unscaledTime;
-        }
-        return normal;
+        return nxz;
     }
 
     /// <summary>
@@ -983,7 +654,7 @@ public static class KinematicMotorSolver {
 
     /// <summary>
     /// 在命中点绘制投影前（白）与投影后（蓝）的速度方向对比射线，辅助肉眼判断乒乓振荡。
-    /// 若仍交替，查网格合并 Collider / 接缝几何或跨帧法线锁。
+    /// 若仍交替，优先查场景 MeshCollider 合并与其它几何。
     /// </summary>
     private static void DrawSlideVelocityComparison(MotorSettingsSO motor, in RaycastHit hit,
         Vector3 velocityBefore, Vector3 velocityAfter) {
