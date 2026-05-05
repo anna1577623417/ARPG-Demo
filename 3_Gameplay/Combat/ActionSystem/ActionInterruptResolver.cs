@@ -5,31 +5,19 @@ using UnityEngine;
 ///
 /// ═══ 设计意图 ═══
 ///
-/// 全局 <see cref="TransitionResolver"/> 只查"实体能否做这件事"（Bit 32–39 Can*）。
-/// 进入 Action 状态后，是否允许被某类意图打断由"当前动作的当前归一化时间窗口"决定，
-/// 这一层语义下沉到本仲裁器，读取 ActionWindow 上的 Bit 40–47 AllowInterruptBy* 标签。
+/// <see cref="TransitionResolver"/> 检查「实体资格」：<see cref="EntityCapabilityTag"/>（Ability 轨）+ State/禁止位。
+/// 进入 Action 后，是否允许某意图<strong>打断当前动作</strong>仅由归一化时间与 <see cref="StateTag.AllowInterruptByJump"/> 等窗口标签决定。
 ///
 /// ═══ 双层闸门 ═══
 ///
-/// 1. 全局闸门（TransitionResolver）：实体属性 — 冷却好了？资源够吗？没死没晕？
-/// 2. 局部闸门（本仲裁器）       ：动作窗口 — 这个动作此刻允许被打断吗？
+/// 1. 全局闸门（TransitionResolver）：Ability + State（例：<see cref="EntityCapabilityTag.CanSwordDash"/>、未死亡）
+/// 2. 局部闸门（本仲裁器）       ：当前 <see cref="ActionWindow"/> 是否包含对应 AllowInterruptBy*
 ///
-/// 两层都通过，意图才会被 PlayerActionState 消费、推进到下一个 Action。
+/// ═══ 工作流（例：翻滚后半段被剑冲打断）═══
 ///
-/// ═══ 工作流（举例：翻滚被剑冲打断）═══
-///
-/// 1. 设计师在 Dodge_ActionData 的 Windows 列表加一项：
-///    NormalizedStart=0.5 / NormalizedEnd=1.0 / Tags = { CanSwordDash, AllowInterruptBySwordDash }
-///       └─ CanSwordDash             → 让全局 TransitionResolver 放行 SwordDash 意图
-///       └─ AllowInterruptBySwordDash → 让本仲裁器认定该窗口允许被 SwordDash 打断
-///
-/// 2. 玩家按下 Shift 触发 SwordDash 意图入队（PlayerController）
-/// 3. 翻滚进度 t=0.6，UpdatePhaseTagsForCurrentNormalized 已把上述两个标签写入 player.GameplayTags
-/// 4. PlayerStateManager.OnPreLogicUpdate：
-///    ├─ TransitionResolver.CanOfferIntent → CanSwordDash 命中 → 放行
-///    └─ PlayerActionState.TryConsumeGameplayIntent
-///       └─ ActionInterruptResolver.CanInterrupt → AllowInterruptBySwordDash 命中 → 放行
-///       └─ ArmPendingAction(SwordDash) + Change&lt;PlayerActionState&gt; → OnEnter 切到剑冲
+/// 1. Dodge_ActionData 窗口 [0.5–1.0] 勾选 AllowInterruptBySwordDash（勿再勾遗留 Can*）
+/// 2. SwordDash 意图入队 → TransitionResolver：Ability 轨含 CanSwordDash → 通过
+/// 3. t=0.6 → ActionInterruptResolver：聚合窗口含 AllowInterruptBySwordDash → 通过 → 切招
 /// </summary>
 public static class ActionInterruptResolver
 {
@@ -56,7 +44,7 @@ public static class ActionInterruptResolver
             var w = action.Windows[i];
             if (t >= w.NormalizedStart && t <= w.NormalizedEnd)
             {
-                aggregate |= w.ToInternalTagMask();
+                aggregate |= w.ToInternalTagMask() & ActionWindowTimelineMask.AllContributableBits;
             }
         }
 

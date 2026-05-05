@@ -1,5 +1,6 @@
 /// <summary>
-/// 标签仲裁器：只根据 <see cref="FrameContext.CurrentTags"/> 与意图上的标签约束判断是否“可被状态考虑”。
+/// 标签仲裁器：根据 <see cref="FrameContext.CurrentTags"/>（State 轨）、
+/// <see cref="FrameContext.CurrentAbilityTags"/>（实体能力轨）与意图约束判断是否“可被状态考虑”。
 /// 真正的状态迁移仍由当前 <see cref="EntityState{T}"/> 决定（避免把规则写死在仲裁器里导致难以扩展）。
 /// </summary>
 public static class TransitionResolver
@@ -27,6 +28,7 @@ public static class TransitionResolver
         }
 
         var tags = ctx.CurrentTags.Value;
+        var ability = ctx.CurrentAbilityTags.Value;
 
         if ((tags & intent.ForbiddenTags) != 0UL)
         {
@@ -34,9 +36,21 @@ public static class TransitionResolver
             return false;
         }
 
+        if ((ability & intent.ForbiddenAbilityTags) != 0UL)
+        {
+            rejectReason = "hit forbidden ability tags";
+            return false;
+        }
+
         if ((tags & intent.RequiredAllTags) != intent.RequiredAllTags)
         {
             rejectReason = "missing required-all tags";
+            return false;
+        }
+
+        if ((ability & intent.RequiredAllAbilityTags) != intent.RequiredAllAbilityTags)
+        {
+            rejectReason = "missing required-all ability tags";
             return false;
         }
 

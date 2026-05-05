@@ -4,7 +4,7 @@ using UnityEngine;
 /// 地面运动支柱（Locomotion Pillar）— Idle/Walk/Run 的合一状态。
 ///
 /// 职责：
-/// 1. 维护地面标签（Grounded + 能力窗口 CanJump/CanAttack/CanDodge）
+/// 1. 维护地面标签（Grounded）与实体能力轨（<see cref="EntityCapabilityTag"/>）
 /// 2. 消费意图：Jump → Airborne, Attack/Dodge → Action
 /// 3. 驱动移动结算（MoveByLocomotionIntent + ApplyMotor）
 /// </summary>
@@ -119,18 +119,6 @@ public sealed class PlayerLocomotionState : PlayerState
     {
         player.GameplayTags.Clear();
         player.GameplayTags.Add((ulong)StateTag.Grounded);
-        player.GameplayTags.Add((ulong)StateTag.CanJump);
-        player.GameplayTags.Add((ulong)StateTag.CanLightAttack);
-        player.GameplayTags.Add((ulong)StateTag.CanHeavyAttack);
-
-        if (player.CanDodge)
-        {
-            player.GameplayTags.Add((ulong)StateTag.CanDodge);
-        }
-
-        if (player.CanSwordDash)
-        {
-            player.GameplayTags.Add((ulong)StateTag.CanSwordDash);
-        }
+        EntityAbilitySystem.Update(player);
     }
 }

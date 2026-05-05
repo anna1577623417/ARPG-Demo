@@ -25,6 +25,9 @@ public struct FrameContext
     /// <summary>当前帧用于仲裁的标签快照（只读语义，调用方勿改掩码对象引用）。</summary>
     public GameplayTagMask CurrentTags;
 
+    /// <summary>实体能力轨快照（<see cref="EntityCapabilityTag"/>），与 State 轨分离。</summary>
+    public GameplayTagMask CurrentAbilityTags;
+
     public float StaminaCurrent;
 
     public float StaminaMax;

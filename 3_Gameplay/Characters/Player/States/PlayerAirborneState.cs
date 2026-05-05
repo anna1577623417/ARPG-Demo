@@ -116,17 +116,6 @@ public sealed class PlayerAirborneState : PlayerState
     {
         player.GameplayTags.Clear();
         player.GameplayTags.Add((ulong)StateTag.Airborne);
-        player.GameplayTags.Add((ulong)StateTag.CanLightAttack);
-        player.GameplayTags.Add((ulong)StateTag.CanHeavyAttack);
-
-        if (player.CanDodge)
-        {
-            player.GameplayTags.Add((ulong)StateTag.CanDodge);
-        }
-
-        if (player.CanSwordDash)
-        {
-            player.GameplayTags.Add((ulong)StateTag.CanSwordDash);
-        }
+        EntityAbilitySystem.Update(player);
     }
 }

@@ -4,8 +4,8 @@
 /// ═══ 设计动机：仲裁与路由的职责切分 ═══
 ///
 /// ① 仲裁层（Permission）回答"能不能做"：
-///    · TransitionResolver        → 标签前提（Required/Forbidden 位运算）
-///    · ActionInterruptResolver   → 当前动作窗口是否允许被某类意图打断
+///    · TransitionResolver        → State + Ability（实体资格）与禁止位
+///    · ActionInterruptResolver   → 当前动作窗口是否允许被某类意图打断（AllowInterrupt*）
 ///
 /// ② 路由层（Routing）回答"去哪里做"：
 ///    · 本路由器是 GameplayIntentKind → 目标状态 的唯一映射表

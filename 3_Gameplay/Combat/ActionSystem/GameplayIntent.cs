@@ -43,6 +43,12 @@ public struct GameplayIntent
     /// <summary>若上下文中命中任意禁止位，则意图非法。</summary>
     public ulong ForbiddenTags;
 
+    /// <summary>Ability 轨（<see cref="EntityCapabilityTag"/>）须全部具备；0 表示不检查。</summary>
+    public ulong RequiredAllAbilityTags;
+
+    /// <summary>Ability 轨禁止位（如未来沉默技能）。</summary>
+    public ulong ForbiddenAbilityTags;
+
     /// <summary>可选：注入到 Action 支柱的动作资产（可为 null，走代码内默认动作）。</summary>
     public ActionDataSO Action;
 
@@ -53,7 +59,9 @@ public struct GameplayIntent
         ulong requiredAll,
         ulong requiredAny,
         ulong forbidden,
-        ActionDataSO action = null)
+        ActionDataSO action = null,
+        ulong requiredAllAbility = 0UL,
+        ulong forbiddenAbility = 0UL)
     {
         return new GameplayIntent
         {
@@ -63,6 +71,8 @@ public struct GameplayIntent
             RequiredAllTags = requiredAll,
             RequiredAnyTags = requiredAny,
             ForbiddenTags = forbidden,
+            RequiredAllAbilityTags = requiredAllAbility,
+            ForbiddenAbilityTags = forbiddenAbility,
             Action = action,
         };
     }

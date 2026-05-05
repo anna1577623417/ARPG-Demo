@@ -121,7 +121,7 @@ public class ActionDataSO : ScriptableObject
         return ResolveLogicalDurationSeconds();
     }
 
-    /// <summary>按归一化进度计算本帧应叠加的标签并写入 mask（先清除 Phase 再叠加）。</summary>
+    /// <summary>按归一化进度更新 Phase 位并叠加各 <see cref="ActionWindow"/>；窗口侧贡献 <see cref="ActionWindowTimelineMask"/>（打断 + invulnerable / combo_input_Window）。</summary>
     public void EvaluatePhaseTags(float normalizedTime, ref GameplayTagMask mask)
     {
         var phaseMask = (ulong)(StateTag.PhaseStartup | StateTag.PhaseActive | StateTag.PhaseRecovery);
@@ -138,9 +138,12 @@ public class ActionDataSO : ScriptableObject
             var w = Windows[i];
             if (t >= w.NormalizedStart && t <= w.NormalizedEnd)
             {
-                mask.Add(w.ToInternalTagMask());
+                var slice = w.ToInternalTagMask() & ActionWindowTimelineMask.AllContributableBits;
+                mask.Add(slice);
             }
         }
+
+        mask.Remove(ActionWindowMergePolicy.StripLegacyCapabilityStateBits);
     }
 
 #if UNITY_EDITOR

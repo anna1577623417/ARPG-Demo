@@ -6,7 +6,7 @@ public class PlayerDeadState : PlayerState
 {
     protected override void OnEnter(Player player)
     {
-        player.GameplayTags.Clear();
+        player.Tags.ClearAll();
         player.GameplayTags.Add((ulong)StateTag.Dead);
         player.IntentBuffer.Clear();
 

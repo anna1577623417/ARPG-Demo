@@ -8,9 +8,12 @@ using UnityEngine;
 //   标签掩码 Inspector 绘制器（v3.1.2）
 // ───────────────────────────────────────────────────────────────────────────────
 //   核心 UI：按 StateTag bit 分区；每组一行「分类标题 + 下拉按钮」，点击弹出 GenericMenu
-//   多选（带勾，行为类似 Layer/Mask）。标签文案主信息在前（如 Jump — Interrupt）。
-//     · Physical / Phase / Ability / Interrupt / Reserved
-//   顶部一行仍显示全局已选摘要。
+//   多选（带勾，行为类似 Layer/Mask）。
+//   条目文案：完整英文 + 后缀语义（AllowInterrupt* → name_Interrupt；其它见 FormatTagDisplay）。
+//   · Full：Physical / Phase / Ability / Interrupt / time_WindowSemantics / Reserved
+//   · InterruptOnly：仅 AllowInterrupt* — PlayerStateManager 连续状态打断掩码
+//   · WindowTimeline：打断 + time_WindowBehavior（连续状态掩码，与 ActionDataSO 第二～三组一致）
+//   · ActionWindow：三行 = interruption + phase_Window + time_WindowBehavior；另见 ActionWindow.RuntimeEvents
 //
 //   存储兼容：
 //     · ChargedPayloadTags (ulong, StateTag 直接位)   — DrawStateTagMaskField
@@ -24,7 +27,25 @@ internal enum TagCategory
     Phase = 1,
     Ability = 2,
     Interrupt = 3,
-    Reserved = 4,
+    /// <summary>动作窗时间语义（ComboInput_Window）；不含 Invulnerable（仍在 Ability 分组）。</summary>
+    WindowTimelineSemantic = 4,
+    Reserved = 5,
+}
+
+/// <summary>Inspector 分组与可选标签范围。</summary>
+internal enum TagDrawerMode
+{
+    /// <summary>全部分组（ChargedPayloadTags 等）。</summary>
+    Full,
+
+    /// <summary>仅 AllowInterrupt*（连续状态打断掩码）。</summary>
+    InterruptOnly,
+
+    /// <summary>Locomotion / Airborne 连续状态：两行掩码（与 ActionWindow 时间语义列一致，不含 Phase）。</summary>
+    WindowTimeline,
+
+    /// <summary>ActionDataSO 切片：打断 + 战斗 Phase + 时间行为（Hitbox/RootMotion 等）。</summary>
+    ActionWindow,
 }
 
 internal readonly struct TagEntry
@@ -50,6 +71,12 @@ internal static class TagCatalog
     public static readonly TagEntry[] All;
     public static readonly Dictionary<TagCategory, List<TagEntry>> ByCategory;
 
+    /// <summary>第三行：无敌 / 缓冲 / Hitbox / RootMotion（排除 Phase 与 Interrupt）。</summary>
+    public static readonly List<TagEntry> ActionWindowTimeBehaviorEntries;
+
+    /// <summary>ActionWindow 第二行：startup / active / recovery Phase。</summary>
+    public static readonly List<TagEntry> ActionWindowPhaseEntries;
+
     static TagCatalog()
     {
         var list = new List<TagEntry>();
@@ -72,6 +99,33 @@ internal static class TagCatalog
         ByCategory = new Dictionary<TagCategory, List<TagEntry>>();
         foreach (TagCategory c in Enum.GetValues(typeof(TagCategory))) ByCategory[c] = new List<TagEntry>();
         foreach (var e in All) ByCategory[e.Category].Add(e);
+
+        ActionWindowTimeBehaviorEntries = new List<TagEntry>();
+        foreach (var e in All)
+        {
+            if (e.Tag == StateTag.Invulnerable
+                || e.Tag == StateTag.ComboInput_Window
+                || e.Tag == StateTag.HitboxActive_Window
+                || e.Tag == StateTag.RootMotion_Window)
+            {
+                ActionWindowTimeBehaviorEntries.Add(e);
+            }
+        }
+
+        ActionWindowTimeBehaviorEntries.Sort((a, b) => a.BitIndex.CompareTo(b.BitIndex));
+
+        ActionWindowPhaseEntries = new List<TagEntry>();
+        foreach (var e in All)
+        {
+            if (e.Tag == StateTag.PhaseStartup
+                || e.Tag == StateTag.PhaseActive
+                || e.Tag == StateTag.PhaseRecovery)
+            {
+                ActionWindowPhaseEntries.Add(e);
+            }
+        }
+
+        ActionWindowPhaseEntries.Sort((a, b) => a.BitIndex.CompareTo(b.BitIndex));
     }
 
     static int BitIndexOf(ulong singleBit)
@@ -92,66 +146,85 @@ internal static class TagCatalog
     {
         if (bit < 16) return TagCategory.Physical;
         if (bit < 32) return TagCategory.Phase;
+        if (bit >= 40 && bit <= 45) return TagCategory.Interrupt;
+        if (bit == 46 || bit == 47) return TagCategory.WindowTimelineSemantic;
         if (bit < 40) return TagCategory.Ability;
         if (bit < 48) return TagCategory.Interrupt;
         return TagCategory.Reserved;
     }
 
-    /// <summary>
-    /// Inspector 窄列友好：主语义在前（Jump / Dodge），修饰在后（Interrupt / Can）。
-    /// </summary>
+    /// <summary>完整英文 snake_case；打断许可统一 *_Interrupt。</summary>
     static string FormatTagDisplay(StateTag tag, TagCategory cat)
     {
+#pragma warning disable CS0618 // 遗留 Can* 枚举位仍参与槽位与全量掩码显示
         switch (tag)
         {
-            case StateTag.CanJump:
-                return "Jump — Can";
-            case StateTag.CanDodge:
-                return "Dodge — Can";
-            case StateTag.CanLightAttack:
-                return "Light — Can";
-            case StateTag.CanHeavyAttack:
-                return "Heavy — Can";
-            case StateTag.CanCancelToLocomotion:
-                return "Cancel Loco — Can";
-            case StateTag.Invulnerable:
-                return "Invuln — Can";
-            case StateTag.CanSwordDash:
-                return "Sword Dash — Can";
-            case StateTag.AttackCharged:
-                return "Charged — Tag";
-            case StateTag.AllowInterruptByDodge:
-                return "Dodge — Interrupt";
-            case StateTag.AllowInterruptBySwordDash:
-                return "Sword Dash — Interrupt";
-            case StateTag.AllowInterruptByLight:
-                return "Light — Interrupt";
-            case StateTag.AllowInterruptByHeavy:
-                return "Heavy — Interrupt";
-            case StateTag.AllowInterruptByCharged:
-                return "Charged — Interrupt";
-            case StateTag.AllowInterruptByJump:
-                return "Jump — Interrupt";
+            case StateTag.Grounded:
+                return "grounded_Physical";
+            case StateTag.Airborne:
+                return "airborne_Physical";
+            case StateTag.Climbing:
+                return "climbing_Physical";
+            case StateTag.Swimming:
+                return "swimming_Physical";
             case StateTag.PhaseStartup:
-                return "Startup — Phase";
+                return "startup_Phase";
             case StateTag.PhaseActive:
-                return "Active — Phase";
+                return "active_Phase";
             case StateTag.PhaseRecovery:
-                return "Recovery — Phase";
+                return "recovery_Phase";
             case StateTag.Stunned:
-                return "Stunned — Phase";
+                return "stunned_Phase";
+            case StateTag.HitboxActive_Window:
+                return "hitbox_active_Window";
+            case StateTag.RootMotion_Window:
+                return "root_motion_Window";
+            case StateTag.CanJump:
+                return "can_jump_Ability_legacy";
+            case StateTag.CanDodge:
+                return "can_dodge_Ability_legacy";
+            case StateTag.CanLightAttack:
+                return "can_light_attack_Ability_legacy";
+            case StateTag.CanHeavyAttack:
+                return "can_heavy_attack_Ability_legacy";
+            case StateTag.CanCancelToLocomotion:
+                return "can_cancel_to_locomotion_Ability_legacy";
+            case StateTag.Invulnerable:
+                return "invulnerable";
+            case StateTag.CanSwordDash:
+                return "can_sword_dash_Ability_legacy";
+            case StateTag.AttackCharged:
+                return "attack_charged_Payload";
+            case StateTag.AllowInterruptByDodge:
+                return "dodge_Interrupt";
+            case StateTag.AllowInterruptBySwordDash:
+                return "sword_dash_Interrupt";
+            case StateTag.AllowInterruptByLight:
+                return "light_attack_Interrupt";
+            case StateTag.AllowInterruptByHeavy:
+                return "heavy_attack_Interrupt";
+            case StateTag.AllowInterruptByCharged:
+                return "charged_attack_Interrupt";
+            case StateTag.AllowInterruptByJump:
+                return "jump_Interrupt";
+            case StateTag.ComboInput_Window:
+                return "combo_input_Window";
+            case StateTag.Dead:
+                return "dead_Reserved";
             default:
-                return ObjectNames.NicifyVariableName(tag.ToString());
+                return ObjectNames.NicifyVariableName(tag.ToString()).Replace(' ', '_');
         }
+#pragma warning restore CS0618
     }
 
     public static string CategoryHeader(TagCategory c) => c switch
     {
-        TagCategory.Physical  => "Physical",
-        TagCategory.Phase     => "Phase",
-        TagCategory.Ability   => "Ability",
-        TagCategory.Interrupt => "Interrupt",
-        TagCategory.Reserved  => "Reserved",
+        TagCategory.Physical               => "Physical",
+        TagCategory.Phase                  => "Phase",
+        TagCategory.Ability                => "Ability (legacy)",
+        TagCategory.Interrupt              => "Interrupt",
+        TagCategory.WindowTimelineSemantic => "time_WindowSemantics",
+        TagCategory.Reserved               => "Reserved",
         _ => c.ToString(),
     };
 }
@@ -182,12 +255,22 @@ internal static class StateTagMaskDrawerUtility
     // ── 给 ActionChargeConfig.ChargedPayloadTags 用：ulong 直接是 StateTag 位 ──
     internal static float GetMaskHeight(SerializedProperty prop, GUIContent label)
     {
-        return GroupedTagDrawer.GetHeight();
+        return GetMaskHeight(prop, label, TagDrawerMode.Full);
+    }
+
+    internal static float GetMaskHeight(SerializedProperty prop, GUIContent label, TagDrawerMode mode)
+    {
+        return GroupedTagDrawer.GetHeight(isSlotMode: false, mode);
     }
 
     internal static void DrawMaskField(Rect rect, SerializedProperty prop, GUIContent label)
     {
-        GroupedTagDrawer.Draw(rect, prop, label, isSlotMode: false);
+        DrawMaskField(rect, prop, label, TagDrawerMode.Full);
+    }
+
+    internal static void DrawMaskField(Rect rect, SerializedProperty prop, GUIContent label, TagDrawerMode mode)
+    {
+        GroupedTagDrawer.Draw(rect, prop, label, isSlotMode: false, mode);
     }
 }
 
@@ -196,16 +279,22 @@ internal static class StateTagMaskDrawerUtility
 // ───────────────────────────────────────────────────────────────────────────────
 internal static class GroupedTagDrawer
 {
-    static readonly TagCategory[] s_order =
+    static readonly TagCategory[] s_orderFull =
     {
         TagCategory.Physical, TagCategory.Phase, TagCategory.Ability,
-        TagCategory.Interrupt, TagCategory.Reserved,
+        TagCategory.Interrupt, TagCategory.WindowTimelineSemantic, TagCategory.Reserved,
+    };
+
+    static readonly TagCategory[] s_orderInterruptOnly =
+    {
+        TagCategory.Interrupt,
     };
 
     /// <summary>
-    /// <paramref name="isSlotMode"/>：true 时字段存 Slot 位，读写时与 StateTag 互转。
+    /// <paramref name="isSlotMode"/>：true 时字段存 Slot 位（ActionWindow），读写时与 StateTag 互转。
     /// </summary>
-    public static void Draw(Rect rect, SerializedProperty ulongProp, GUIContent label, bool isSlotMode)
+    public static void Draw(Rect rect, SerializedProperty ulongProp, GUIContent label, bool isSlotMode,
+        TagDrawerMode drawerMode)
     {
         EditorGUI.BeginProperty(rect, label, ulongProp);
 
@@ -220,52 +309,119 @@ internal static class GroupedTagDrawer
         var summaryRect = new Rect(headRect.x + EditorGUIUtility.labelWidth, headRect.y,
             headRect.width - EditorGUIUtility.labelWidth, lineH);
         EditorGUI.LabelField(labelRect, label);
-        DrawSelectionSummary(summaryRect, stateTagMask);
+        DrawSelectionSummary(summaryRect, stateTagMask, drawerMode);
 
         var y = rect.y + lineH + space;
 
-        foreach (var cat in s_order)
+        if (drawerMode == TagDrawerMode.ActionWindow)
         {
-            var entries = TagCatalog.ByCategory[cat];
+            y = DrawTagMaskRow(rect, y, lineH, space, ulongProp, stateTagMask, isSlotMode,
+                "interruption_mechanism",
+                "AllowInterrupt* only. Not Can* / Ability.",
+                TagCatalog.ByCategory[TagCategory.Interrupt]);
+            y = DrawTagMaskRow(rect, y, lineH, space, ulongProp, stateTagMask, isSlotMode,
+                "combat_phase",
+                "startup_Phase / active_Phase / recovery_Phase — animation time stage.",
+                TagCatalog.ActionWindowPhaseEntries);
+            DrawTagMaskRow(rect, y, lineH, space, ulongProp, stateTagMask, isSlotMode,
+                "time_WindowBehavior",
+                "invulnerable, combo_input_Window, hitbox_active_Window, root_motion_Window.",
+                TagCatalog.ActionWindowTimeBehaviorEntries);
+            EditorGUI.EndProperty();
+            return;
+        }
+
+        if (drawerMode == TagDrawerMode.WindowTimeline)
+        {
+            y = DrawTagMaskRow(rect, y, lineH, space, ulongProp, stateTagMask, isSlotMode,
+                "interruption_mechanism",
+                "AllowInterrupt* only (dodge_Interrupt, jump_Interrupt, …). Not ability gates.",
+                TagCatalog.ByCategory[TagCategory.Interrupt]);
+            y = DrawTagMaskRow(rect, y, lineH, space, ulongProp, stateTagMask, isSlotMode,
+                "time_WindowBehavior",
+                "Same time-behavior bits as ActionWindow row 3 (no combat_phase on locomotion).",
+                TagCatalog.ActionWindowTimeBehaviorEntries);
+            EditorGUI.EndProperty();
+            return;
+        }
+
+        var order = drawerMode == TagDrawerMode.InterruptOnly ? s_orderInterruptOnly : s_orderFull;
+
+        foreach (var cat in order)
+        {
+            var entries = ResolveEntries(cat, drawerMode);
             if (entries.Count == 0) continue;
 
-            var rowRect = new Rect(rect.x, y, rect.width, lineH);
-            var prefix = TagCatalog.CategoryHeader(cat);
-            var countSel = CountSelected(entries, stateTagMask);
-            var prefixW = Mathf.Min(128f, rowRect.width * 0.32f);
-            var prefixRect = new Rect(rowRect.x, rowRect.y, prefixW, lineH);
-            var dropRect = new Rect(rowRect.x + prefixW + 4f, rowRect.y,
-                Mathf.Max(100f, rowRect.width - prefixW - 4f), lineH);
-
-            var prefixStyle = EditorStyles.miniLabel;
-            EditorGUI.LabelField(prefixRect,
-                new GUIContent($"{prefix}  ({countSel}/{entries.Count})", prefix), prefixStyle);
-
-            var summaryBtn = BuildCategorySelectionSummary(entries, stateTagMask);
-            var gc = new GUIContent(string.IsNullOrEmpty(summaryBtn) ? "(choose…)" : summaryBtn);
-
-            if (EditorGUI.DropdownButton(dropRect, gc, FocusType.Passive))
-            {
-                ShowCategoryDropdown(dropRect, ulongProp, entries, isSlotMode);
-            }
-
-            y += lineH + space;
+            y = DrawTagMaskRow(rect, y, lineH, space, ulongProp, stateTagMask, isSlotMode,
+                drawerMode == TagDrawerMode.InterruptOnly ? "interruption_mechanism" : TagCatalog.CategoryHeader(cat),
+                drawerMode == TagDrawerMode.InterruptOnly
+                    ? "Only AllowInterrupt* bits (e.g. jump_Interrupt, dodge_Interrupt)."
+                    : null,
+                entries);
         }
 
         EditorGUI.EndProperty();
     }
 
-    public static float GetHeight()
+    static float DrawTagMaskRow(Rect rect, float y, float lineH, float space, SerializedProperty ulongProp,
+        ulong stateTagMask, bool isSlotMode, string prefix, string rowTipOrNull, List<TagEntry> entries)
+    {
+        var rowRect = new Rect(rect.x, y, rect.width, lineH);
+        var countSel = CountSelected(entries, stateTagMask);
+        var prefixW = Mathf.Min(168f, rowRect.width * 0.38f);
+        var prefixRect = new Rect(rowRect.x, rowRect.y, prefixW, lineH);
+        var dropRect = new Rect(rowRect.x + prefixW + 4f, rowRect.y,
+            Mathf.Max(100f, rowRect.width - prefixW - 4f), lineH);
+
+        var prefixStyle = EditorStyles.miniLabel;
+        var tip = string.IsNullOrEmpty(rowTipOrNull) ? prefix : rowTipOrNull;
+        EditorGUI.LabelField(prefixRect,
+            new GUIContent($"{prefix}  ({countSel}/{entries.Count})", tip), prefixStyle);
+
+        var summaryBtn = BuildCategorySelectionSummary(entries, stateTagMask);
+        var gc = new GUIContent(string.IsNullOrEmpty(summaryBtn) ? "(choose…)" : summaryBtn);
+
+        if (EditorGUI.DropdownButton(dropRect, gc, FocusType.Passive))
+        {
+            ShowCategoryDropdown(dropRect, ulongProp, entries, isSlotMode);
+        }
+
+        return y + lineH + space;
+    }
+
+    static List<TagEntry> ResolveEntries(TagCategory cat, TagDrawerMode drawerMode)
+    {
+        if (drawerMode == TagDrawerMode.InterruptOnly)
+        {
+            return cat == TagCategory.Interrupt ? TagCatalog.ByCategory[TagCategory.Interrupt] : new List<TagEntry>();
+        }
+
+        return TagCatalog.ByCategory[cat];
+    }
+
+    public static float GetHeight(bool isSlotMode, TagDrawerMode drawerMode)
     {
         var lineH = EditorGUIUtility.singleLineHeight;
         var space = 2f;
         var h = lineH + space;
-        foreach (var cat in s_order)
+        if (drawerMode == TagDrawerMode.ActionWindow)
         {
-            var entries = TagCatalog.ByCategory[cat];
+            return h + (lineH + space) * 3f;
+        }
+
+        if (drawerMode == TagDrawerMode.WindowTimeline)
+        {
+            return h + (lineH + space) * 2f;
+        }
+
+        var order = drawerMode == TagDrawerMode.InterruptOnly ? s_orderInterruptOnly : s_orderFull;
+        foreach (var cat in order)
+        {
+            var entries = ResolveEntries(cat, drawerMode);
             if (entries.Count == 0) continue;
             h += lineH + space;
         }
+
         return h;
     }
 
@@ -324,12 +480,74 @@ internal static class GroupedTagDrawer
         return $"{selected[0]}, {selected[1]}  +{selected.Count - 2}";
     }
 
-    // ── 摘要：右侧显示 [3 selected] Grounded, CanLightAttack, +1 ──
-    static void DrawSelectionSummary(Rect rect, ulong stateTagMask)
+    // ── 摘要：InterruptOnly 只统计 AllowInterrupt*（与下拉选项一致），避免旧序列化掩码混入其它位误导策划 ──
+    static void DrawSelectionSummary(Rect rect, ulong stateTagMask, TagDrawerMode drawerMode)
     {
         var selected = new List<string>(8);
-        foreach (var e in TagCatalog.All)
-            if ((stateTagMask & (ulong)e.Tag) != 0UL) selected.Add(e.Display);
+        if (drawerMode == TagDrawerMode.InterruptOnly)
+        {
+            foreach (var e in TagCatalog.ByCategory[TagCategory.Interrupt])
+            {
+                if ((stateTagMask & (ulong)e.Tag) != 0UL)
+                {
+                    selected.Add(e.Display);
+                }
+            }
+        }
+        else if (drawerMode == TagDrawerMode.WindowTimeline)
+        {
+            foreach (var e in TagCatalog.ByCategory[TagCategory.Interrupt])
+            {
+                if ((stateTagMask & (ulong)e.Tag) != 0UL)
+                {
+                    selected.Add(e.Display);
+                }
+            }
+
+            foreach (var e in TagCatalog.ActionWindowTimeBehaviorEntries)
+            {
+                if ((stateTagMask & (ulong)e.Tag) != 0UL)
+                {
+                    selected.Add(e.Display);
+                }
+            }
+        }
+        else if (drawerMode == TagDrawerMode.ActionWindow)
+        {
+            foreach (var e in TagCatalog.ByCategory[TagCategory.Interrupt])
+            {
+                if ((stateTagMask & (ulong)e.Tag) != 0UL)
+                {
+                    selected.Add(e.Display);
+                }
+            }
+
+            foreach (var e in TagCatalog.ActionWindowPhaseEntries)
+            {
+                if ((stateTagMask & (ulong)e.Tag) != 0UL)
+                {
+                    selected.Add(e.Display);
+                }
+            }
+
+            foreach (var e in TagCatalog.ActionWindowTimeBehaviorEntries)
+            {
+                if ((stateTagMask & (ulong)e.Tag) != 0UL)
+                {
+                    selected.Add(e.Display);
+                }
+            }
+        }
+        else
+        {
+            foreach (var e in TagCatalog.All)
+            {
+                if ((stateTagMask & (ulong)e.Tag) != 0UL)
+                {
+                    selected.Add(e.Display);
+                }
+            }
+        }
 
         string text;
         if (selected.Count == 0)
@@ -367,12 +585,12 @@ internal static class ActionWindowSlotMaskDrawerUtility
 {
     internal static float GetMaskHeight(SerializedProperty prop)
     {
-        return GroupedTagDrawer.GetHeight();
+        return GroupedTagDrawer.GetHeight(isSlotMode: true, TagDrawerMode.ActionWindow);
     }
 
     internal static void DrawSlotMaskField(Rect rect, SerializedProperty prop, GUIContent label)
     {
-        GroupedTagDrawer.Draw(rect, prop, label, isSlotMode: true);
+        GroupedTagDrawer.Draw(rect, prop, label, isSlotMode: true, TagDrawerMode.ActionWindow);
     }
 
     static ulong SlotMaskToStateTagMask(ulong slotMask)
@@ -413,7 +631,19 @@ internal sealed class ActionWindowDrawer : PropertyDrawer
         ActionWindowSlotMaskDrawerUtility.DrawSlotMaskField(
             new Rect(position.x, y, position.width, tagH),
             pSlots,
-            new GUIContent("Tags"));
+            new GUIContent("timeline_StateTags", "Interrupt + combat_phase + time_WindowBehavior. Not GameplayTag."));
+
+        y += tagH + space;
+        var pEvents = property.FindPropertyRelative(nameof(ActionWindow.RuntimeEvents));
+        if (pEvents != null)
+        {
+            var evH = EditorGUI.GetPropertyHeight(pEvents, new GUIContent("timeline_RuntimeEvents"), true);
+            EditorGUI.PropertyField(
+                new Rect(position.x, y, position.width, evH),
+                pEvents,
+                new GUIContent("timeline_RuntimeEvents", "HitFrame / PlaySfx / SpawnVfx — not Tags; see ActionWindowTimelineEvents."),
+                true);
+        }
 
         EditorGUI.EndProperty();
     }
@@ -423,8 +653,12 @@ internal sealed class ActionWindowDrawer : PropertyDrawer
         var line = EditorGUIUtility.singleLineHeight;
         var space = EditorGUIUtility.standardVerticalSpacing;
         var pSlots = property.FindPropertyRelative(nameof(ActionWindow.WindowSlotMask));
-        return line + space + line + space
-            + ActionWindowSlotMaskDrawerUtility.GetMaskHeight(pSlots);
+        var pEvents = property.FindPropertyRelative(nameof(ActionWindow.RuntimeEvents));
+        var tagH = ActionWindowSlotMaskDrawerUtility.GetMaskHeight(pSlots);
+        var evH = pEvents != null
+            ? EditorGUI.GetPropertyHeight(pEvents, new GUIContent("timeline_RuntimeEvents"), true)
+            : 0f;
+        return line + space + line + space + tagH + (pEvents != null ? space + evH : 0f);
     }
 }
 
@@ -439,12 +673,34 @@ internal sealed class StateTagMaskAttributeDrawer : PropertyDrawer
 {
     public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
     {
-        StateTagMaskDrawerUtility.DrawMaskField(position, property, label);
+        var mode = TagDrawerMode.Full;
+        if (attribute is StateTagMaskAttribute st)
+        {
+            mode = st.Usage switch
+            {
+                StateTagMaskUsage.InterruptOnly => TagDrawerMode.InterruptOnly,
+                StateTagMaskUsage.WindowTimeline => TagDrawerMode.WindowTimeline,
+                _ => TagDrawerMode.Full,
+            };
+        }
+
+        StateTagMaskDrawerUtility.DrawMaskField(position, property, label, mode);
     }
 
     public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
     {
-        return StateTagMaskDrawerUtility.GetMaskHeight(property, label);
+        var mode = TagDrawerMode.Full;
+        if (attribute is StateTagMaskAttribute st)
+        {
+            mode = st.Usage switch
+            {
+                StateTagMaskUsage.InterruptOnly => TagDrawerMode.InterruptOnly,
+                StateTagMaskUsage.WindowTimeline => TagDrawerMode.WindowTimeline,
+                _ => TagDrawerMode.Full,
+            };
+        }
+
+        return StateTagMaskDrawerUtility.GetMaskHeight(property, label, mode);
     }
 }
 

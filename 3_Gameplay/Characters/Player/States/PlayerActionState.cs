@@ -491,6 +491,7 @@ public sealed class PlayerActionState : PlayerState
         // 物理标签：始终反映真实姿态，与所处支柱无关。
         // 否则全局仲裁器在 Action 内永远见不到 Grounded —— Jump 等意图就算窗口允许打断也会卡在前置标签门。
         SyncPhysicalGroundTag(player);
+        EntityAbilitySystem.Update(player);
 
         if (m_action == null)
         {
@@ -508,7 +509,7 @@ public sealed class PlayerActionState : PlayerState
     /// <summary>
     /// 把"是否在地面"这一物理事实写入标签集。设计目的：
     /// · 物理实情属于实体层语义，不应被支柱状态遮蔽；
-    /// · 让窗口仅需声明能力闸门（CanJump 等），无需重复声明 Grounded，简化策划配置。
+    /// · 能力闸门在实体 Ability 轨重算，窗口只负责 Phase / Interrupt / 无敌等时间规则。
     /// </summary>
     private static void SyncPhysicalGroundTag(Player player)
     {

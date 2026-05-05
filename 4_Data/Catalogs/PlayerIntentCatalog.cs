@@ -11,10 +11,11 @@ public static class PlayerIntentCatalog
             GameplayIntentKind.Jump,
             time,
             DefaultBufferSeconds,
-            requiredAll: (ulong)(StateTag.Grounded | StateTag.CanJump),
+            requiredAll: (ulong)StateTag.Grounded,
             requiredAny: 0UL,
             forbidden: (ulong)(StateTag.Dead | StateTag.Stunned),
-            action: null);
+            action: null,
+            requiredAllAbility: (ulong)EntityCapabilityTag.CanJump);
     }
 
     public static GameplayIntent LightAttack(float time, ActionDataSO overrideAction = null)
@@ -23,10 +24,11 @@ public static class PlayerIntentCatalog
             GameplayIntentKind.LightAttack,
             time,
             DefaultBufferSeconds,
-            requiredAll: (ulong)StateTag.CanLightAttack,
+            requiredAll: 0UL,
             requiredAny: 0UL,
             forbidden: (ulong)(StateTag.Dead | StateTag.Stunned),
-            action: overrideAction);
+            action: overrideAction,
+            requiredAllAbility: (ulong)EntityCapabilityTag.CanLightAttack);
     }
 
     public static GameplayIntent HeavyAttack(float time, ActionDataSO overrideAction = null)
@@ -35,10 +37,11 @@ public static class PlayerIntentCatalog
             GameplayIntentKind.HeavyAttack,
             time,
             DefaultBufferSeconds,
-            requiredAll: (ulong)StateTag.CanHeavyAttack,
+            requiredAll: 0UL,
             requiredAny: 0UL,
             forbidden: (ulong)(StateTag.Dead | StateTag.Stunned),
-            action: overrideAction);
+            action: overrideAction,
+            requiredAllAbility: (ulong)EntityCapabilityTag.CanHeavyAttack);
     }
 
     /// <summary>蓄力攻击：与轻击同一主攻击键派生，走 <see cref="WeaponMovesetSO.ChargedAttacks"/> 与独立 Charge 配置。</summary>
@@ -48,10 +51,11 @@ public static class PlayerIntentCatalog
             GameplayIntentKind.ChargedAttack,
             time,
             DefaultBufferSeconds,
-            requiredAll: (ulong)StateTag.CanLightAttack,
+            requiredAll: 0UL,
             requiredAny: 0UL,
             forbidden: (ulong)(StateTag.Dead | StateTag.Stunned),
-            action: overrideAction);
+            action: overrideAction,
+            requiredAllAbility: (ulong)EntityCapabilityTag.CanLightAttack);
     }
 
     public static GameplayIntent Dodge(float time, ActionDataSO overrideAction = null)
@@ -60,10 +64,11 @@ public static class PlayerIntentCatalog
             GameplayIntentKind.Dodge,
             time,
             DefaultBufferSeconds,
-            requiredAll: (ulong)StateTag.CanDodge,
+            requiredAll: 0UL,
             requiredAny: 0UL,
             forbidden: (ulong)(StateTag.Dead | StateTag.Stunned),
-            action: overrideAction);
+            action: overrideAction,
+            requiredAllAbility: (ulong)EntityCapabilityTag.CanDodge);
     }
 
     public static GameplayIntent SwordDash(float time, ActionDataSO overrideAction = null)
@@ -72,9 +77,10 @@ public static class PlayerIntentCatalog
             GameplayIntentKind.SwordDash,
             time,
             DefaultBufferSeconds,
-            requiredAll: (ulong)StateTag.CanSwordDash,
+            requiredAll: 0UL,
             requiredAny: 0UL,
             forbidden: (ulong)(StateTag.Dead | StateTag.Stunned),
-            action: overrideAction);
+            action: overrideAction,
+            requiredAllAbility: (ulong)EntityCapabilityTag.CanSwordDash);
     }
 }

@@ -1,19 +1,14 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Serialization;
 
 /// <summary>
-/// 归一化时间轴上的标签切片 — 动作行为的最小定义单元。
+/// 归一化时间轴片段：战斗过程 <b>Phase</b>（前摇/判定/后摇）、<b>打断许可</b>、<b>时间行为</b>（无敌/缓冲/Hitbox/RootMotion），
+/// 以及 <b>RuntimeEvents</b>（非 Tag，不进 State 掩码）。
+/// 实体「能不能做」仍由 <see cref="EntityCapabilityTag"/>。
 ///
-/// 窗口侧用 <see cref="WindowSlotMask"/>：bit 0–63 对应槽位 Init0 … Init63（与 <see cref="StateTag"/> 位布局无关）。
-/// 运行时通过 <see cref="ToInternalTagMask"/> 按映射表 OR 成系统内部的 <see cref="StateTag"/> 掩码；不修改 <see cref="StateTag"/> 定义。
-///
-/// 示例（轻攻击）：
-///   [0.0–0.3] PhaseStartup                          — 前摇，不可取消
-///   [0.3–0.5] PhaseActive | Invulnerable             — 判定帧，霸体
-///   [0.5–1.0] PhaseRecovery | CanCancelToLocomotion   — 后摇，可取消
-///
-/// Inspector 由 Editor/StateTagMaskPropertyDrawers：分组下拉多选（槽位 0–63 ↔ StateTag）。
+/// <see cref="WindowSlotMask"/> 经 <see cref="ActionWindowTagSlots"/> 映射后，与 <see cref="ActionWindowTimelineMask"/> 按位与写入 State。
 /// </summary>
 [Serializable]
 public struct ActionWindow
@@ -24,6 +19,9 @@ public struct ActionWindow
 
     /// <summary>槽位掩码：第 <c>i</c> 位（0 ≤ i &lt; 64）表示 Init<c>i</c> 启用。</summary>
     public ulong WindowSlotMask;
+
+    /// <summary>本时间段内触发的事件（HitFrame / SFX / VFX）；运行时见 <see cref="ActionWindowTimelineEvents"/>。</summary>
+    public List<ActionWindowEvent> RuntimeEvents;
 
     [SerializeField, HideInInspector]
     [FormerlySerializedAs("Tags")]
@@ -59,6 +57,60 @@ public struct ActionWindow
         return true;
     }
 #endif
+}
+
+/// <summary>
+/// 窗口合并进 State 轨时的策略位（与实体 Ability 轨解耦）。
+/// </summary>
+public static class ActionWindowMergePolicy
+{
+    /// <summary>
+    /// 从窗口合并结果中移除遗留 <see cref="StateTag"/> Can* 位；实体能力改由 <see cref="EntityCapabilityTag"/> 写入容器 Ability 轨。
+    /// </summary>
+    public const ulong StripLegacyCapabilityStateBits =
+        (1UL << 32) | (1UL << 33) | (1UL << 34) | (1UL << 35) | (1UL << 36) | (1UL << 38);
+}
+
+/// <summary>
+/// 动作时间窗对「打断」的唯一位域：6 个 AllowInterrupt*。合并进 State 时与 <see cref="ActionWindow.ToInternalTagMask"/> 做按位与。
+/// </summary>
+public static class ActionWindowInterruptMask
+{
+    public const ulong AllAllowInterruptBits =
+        (ulong)(StateTag.AllowInterruptByDodge
+              | StateTag.AllowInterruptBySwordDash
+              | StateTag.AllowInterruptByLight
+              | StateTag.AllowInterruptByHeavy
+              | StateTag.AllowInterruptByCharged
+              | StateTag.AllowInterruptByJump);
+}
+
+/// <summary>无敌 / 输入缓冲 / Hitbox 开关 / RootMotion 等「时间行为」位（非 Ability）。</summary>
+public static class ActionWindowTimeBehaviorMask
+{
+    public const ulong Bits =
+        (ulong)StateTag.Invulnerable
+      | (ulong)StateTag.ComboInput_Window
+      | (ulong)StateTag.HitboxActive_Window
+      | (ulong)StateTag.RootMotion_Window;
+}
+
+/// <summary>战斗动作 Phase：前摇 / 判定段 / 后摇（时间阶段标签，非能力）。</summary>
+public static class ActionWindowPhaseMask
+{
+    public const ulong Bits =
+        (ulong)(StateTag.PhaseStartup | StateTag.PhaseActive | StateTag.PhaseRecovery);
+}
+
+/// <summary>
+/// ActionWindow 槽位允许写入 State 轨的并集：Interrupt + Phase + 时间行为（仍剔除 Can*）。
+/// </summary>
+public static class ActionWindowTimelineMask
+{
+    public const ulong AllContributableBits =
+        ActionWindowInterruptMask.AllAllowInterruptBits
+      | ActionWindowPhaseMask.Bits
+      | ActionWindowTimeBehaviorMask.Bits;
 }
 
 /// <summary>

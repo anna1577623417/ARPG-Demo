@@ -92,8 +92,13 @@ public class Player : Entity<Player>, IDamageable {
 
     // ─── ARPG 决策链：标签 + 意图缓冲（零 GC 路径，仅 struct 入队）───
 
-    /// <summary>当前帧用于仲裁与窗口判定的标签快照（各状态在 OnLogicUpdate 内维护）。</summary>
-    public GameplayTagMask GameplayTags;
+    GameplayTagContainer m_gameplayTags;
+
+    /// <summary>五轨语义容器（State / Status / Ability / Mechanic / Faction）。须通过本 ref 属性访问以免 struct 拷贝丢改。</summary>
+    public ref GameplayTagContainer Tags => ref m_gameplayTags;
+
+    /// <summary>State 轨别名：与历史代码及 <see cref="FrameContext.CurrentTags"/> 一致，存 <see cref="StateTag"/> 位。</summary>
+    public ref GameplayTagMask GameplayTags => ref m_gameplayTags.State;
 
     /// <summary>离散意图队列（输入经语义化后入队，由状态机与状态消费）。</summary>
     public readonly GameplayIntentBuffer IntentBuffer = new GameplayIntentBuffer(16);
@@ -211,6 +216,7 @@ public class Player : Entity<Player>, IDamageable {
             CurrentPlanarSpeed = planar.magnitude,
             VerticalSpeed = VerticalSpeed,
             CurrentTags = GameplayTags,
+            CurrentAbilityTags = m_gameplayTags.Ability,
             StaminaCurrent = m_stamina,
             StaminaMax = maxStamina,
             IsPrimaryAttackHeld = attackHeld,

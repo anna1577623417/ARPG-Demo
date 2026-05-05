@@ -35,10 +35,10 @@ public class PlayerStateManager : EntityStateManager<Player>
     //   ActionInterruptResolver.MapIntentToInterruptTag 做位与判定。
     // ───────────────────────────────────────────────────────────────────────────
 
-    [Header("Locomotion — interrupt mask")]
-    [Tooltip("地面状态允许哪些意图打断。默认全部允许（保持 v3.1.1 之前行为）。")]
-    [StateTagMask]
-    [SerializeField, InspectorName("Locomotion — mask")]
+    [Header("Locomotion — interruption mechanism")]
+    [Tooltip("Ground: AllowInterrupt* + time_WindowBehavior (invuln, combo buffer, hitbox, root motion slots).")]
+    [StateTagMask(StateTagMaskUsage.WindowTimeline)]
+    [SerializeField, InspectorName("locomotion_interruption_mask")]
     private ulong locomotionAllowedInterrupts =
         (ulong)(StateTag.AllowInterruptByDodge
               | StateTag.AllowInterruptBySwordDash
@@ -47,15 +47,15 @@ public class PlayerStateManager : EntityStateManager<Player>
               | StateTag.AllowInterruptByCharged
               | StateTag.AllowInterruptByJump);
 
-    [Header("Airborne — interrupt (ascending)")]
-    [Tooltip("空中上升阶段（VerticalSpeed > 0）允许哪些意图打断。默认空 = 起跳后保留动量、不允许任何打断。")]
-    [StateTagMask]
-    [SerializeField, InspectorName("Airborne up — mask")]
+    [Header("Airborne — interruption (ascending)")]
+    [Tooltip("Ascending: same rows as ActionWindow mask (no combat_phase bits used).")]
+    [StateTagMask(StateTagMaskUsage.WindowTimeline)]
+    [SerializeField, InspectorName("airborne_ascending_interruption_mask")]
     private ulong airborneAscendingAllowedInterrupts;
 
-    [Tooltip("空中下落阶段（VerticalSpeed ≤ 0）允许哪些意图打断。默认允许各类攻击/闪避；不含 Jump（无二段跳）。")]
-    [StateTagMask]
-    [SerializeField, InspectorName("Airborne down — mask")]
+    [Tooltip("Descending: interrupt + time behavior rows (combo_input_Window, invulnerable, …).")]
+    [StateTagMask(StateTagMaskUsage.WindowTimeline)]
+    [SerializeField, InspectorName("airborne_descending_interruption_mask")]
     private ulong airborneDescendingAllowedInterrupts =
         (ulong)(StateTag.AllowInterruptByDodge
               | StateTag.AllowInterruptBySwordDash
@@ -104,7 +104,7 @@ public class PlayerStateManager : EntityStateManager<Player>
                 if (debugIntentArbitration || Entity.DebugInterruptFlow)
                 {
                     Debug.Log(
-                        $"[IntentArb] BLOCK by TransitionResolver | state={Current.StateId} | intent={intent.Kind} | reason={rejectReason} | tags=0x{ctx.CurrentTags.Value:X}",
+                        $"[IntentArb] BLOCK by TransitionResolver | state={Current.StateId} | intent={intent.Kind} | reason={rejectReason} | stateTags=0x{ctx.CurrentTags.Value:X} | abilityTags=0x{ctx.CurrentAbilityTags.Value:X}",
                         this);
                 }
                 break;
