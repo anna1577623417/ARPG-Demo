@@ -1,58 +1,28 @@
-using UnityEngine;
-
 /// <summary>
-/// 运行时属性快照（可在此后叠加 Buff/Debuff 修饰，勿写回 ScriptableObject）。
+/// 运行时属性快照（兼容层）：保留旧属性访问签名，底层转发到 <see cref="IStatSet"/>。
 /// </summary>
 public sealed class RuntimeEntityStats
 {
-    float _maxHealth;
-    float _walkSpeed;
-    float _runSpeed;
-    float _rotationSpeed;
-    float _attackPower;
-    float _defense;
+    IStatSet _stats;
     bool _initialized;
 
-    public bool IsInitialized => _initialized;
+    public bool IsInitialized => _initialized && _stats != null;
 
-    public float MaxHealth => _maxHealth;
-    public float WalkSpeed => _walkSpeed;
-    public float RunSpeed => _runSpeed;
-    public float RotationSpeed => _rotationSpeed;
-    public float AttackPower => _attackPower;
-    public float Defense => _defense;
+    public float MaxHealth => Read(StatType.MaxHealth);
+    public float WalkSpeed => Read(StatType.WalkSpeed);
+    public float RunSpeed => Read(StatType.RunSpeed);
+    public float RotationSpeed => Read(StatType.RotationSpeed);
+    public float AttackPower => Read(StatType.AttackPower);
+    public float Defense => Read(StatType.Defense);
 
-    public void Initialize(EntityStatsSO blueprint)
+    public void Bind(IStatSet stats)
     {
-        if (blueprint == null)
-        {
-            return;
-        }
-
-        _maxHealth = Mathf.Max(1f, blueprint.MaxHealth);
-        _walkSpeed = Mathf.Max(0f, blueprint.BaseWalkSpeed);
-        _runSpeed = Mathf.Max(0f, blueprint.BaseRunSpeed);
-        _rotationSpeed = Mathf.Max(0f, blueprint.BaseRotationSpeed);
-        _attackPower = blueprint.BaseAttackPower;
-        _defense = blueprint.BaseDefense;
-        _initialized = true;
+        _stats = stats;
+        _initialized = stats != null;
     }
 
-    /// <summary>无 SO 时由 Entity 序列化字段构造；行走取单速的一部分以区分走/跑。</summary>
-    public void InitializeLegacy(
-        float maxHealth,
-        float walkSpeed,
-        float runSpeed,
-        float rotationSpeed,
-        float attackPower,
-        float defense)
+    float Read(StatType type)
     {
-        _maxHealth = Mathf.Max(1f, maxHealth);
-        _walkSpeed = Mathf.Max(0f, walkSpeed);
-        _runSpeed = Mathf.Max(0f, runSpeed);
-        _rotationSpeed = Mathf.Max(0f, rotationSpeed);
-        _attackPower = attackPower;
-        _defense = defense;
-        _initialized = true;
+        return _stats == null ? 0f : _stats.Get(type);
     }
 }

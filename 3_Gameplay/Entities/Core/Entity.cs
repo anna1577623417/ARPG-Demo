@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 /// <summary>
@@ -43,7 +44,9 @@ public abstract class Entity : MonoBehaviour
     // ─── 运行时状态 ───
 
     private readonly RuntimeEntityStats m_runtimeStats = new RuntimeEntityStats();
-    private float m_health;
+    private readonly StatSet m_statSet = new StatSet();
+    private readonly ResourcePool m_resources = new ResourcePool();
+    private BuffStack m_buffStack;
     private Vector3 m_lastPosition;
     private Vector3 m_moveDirection = Vector3.forward;
     private Vector3 m_velocity;
@@ -74,19 +77,23 @@ public abstract class Entity : MonoBehaviour
     public string DisplayName => displayName;
     public int TeamId => teamId;
 
-    public float MaxHealth => maxHealth;
-    public float Health => m_health;
-    public float HealthNormalized => maxHealth <= 0f ? 0f : Mathf.Clamp01(m_health / maxHealth);
-    public bool IsDead => m_health <= 0f;
+    public float MaxHealth => m_runtimeStats.MaxHealth;
+    [Obsolete("Use Resources.GetCurrent(ResourceType.HP). Removed in Phase 4.")]
+    public float Health => m_resources.GetCurrent(ResourceType.HP);
+    public float HealthNormalized => m_resources.GetNormalized(ResourceType.HP);
+    public bool IsDead => m_resources.IsEmpty(ResourceType.HP);
 
     /// <summary>兼容旧逻辑：等价于当前奔跑速度上限。</summary>
-    public float BaseMoveSpeed => m_runtimeStats.IsInitialized ? m_runtimeStats.RunSpeed : baseMoveSpeed;
+    public float BaseMoveSpeed => m_runtimeStats.RunSpeed;
 
-    public float BaseRotationSpeed => m_runtimeStats.IsInitialized ? m_runtimeStats.RotationSpeed : baseRotationSpeed;
+    public float BaseRotationSpeed => m_runtimeStats.RotationSpeed;
 
     public RuntimeEntityStats RuntimeStats => m_runtimeStats;
-    public float BaseAttackPower => baseAttackPower;
-    public float BaseDefense => baseDefense;
+    public IStatSet Stats => m_statSet;
+    public IResourcePool Resources => m_resources;
+    public IBuffStack Buffs => m_buffStack;
+    public float BaseAttackPower => m_runtimeStats.AttackPower;
+    public float BaseDefense => m_runtimeStats.Defense;
 
     public Vector3 Position => transform.position;
     public Vector3 LastPosition => m_lastPosition;
@@ -103,30 +110,65 @@ public abstract class Entity : MonoBehaviour
         baseMoveSpeed = Mathf.Max(0f, baseMoveSpeed);
         baseRotationSpeed = Mathf.Max(0f, baseRotationSpeed);
 
+        m_runtimeStats.Bind(m_statSet);
+
         if (statsBlueprint != null)
         {
-            m_runtimeStats.Initialize(statsBlueprint);
-            maxHealth = m_runtimeStats.MaxHealth;
-            baseRotationSpeed = m_runtimeStats.RotationSpeed;
-            baseMoveSpeed = m_runtimeStats.RunSpeed;
-            baseAttackPower = m_runtimeStats.AttackPower;
-            baseDefense = m_runtimeStats.Defense;
+            for (var i = 0; i < statsBlueprint.BaseStats.Count; i++)
+            {
+                var entry = statsBlueprint.BaseStats[i];
+                var value = entry.BaseValue;
+                if (entry.Type == StatType.MaxHealth)
+                {
+                    value = Mathf.Max(1f, value);
+                }
+                else if (entry.Type == StatType.WalkSpeed
+                         || entry.Type == StatType.RunSpeed
+                         || entry.Type == StatType.RotationSpeed)
+                {
+                    value = Mathf.Max(0f, value);
+                }
+
+                m_statSet.SetBase(entry.Type, value);
+            }
         }
         else
         {
             var walk = baseMoveSpeed * 0.5f;
             var run = baseMoveSpeed;
-            m_runtimeStats.InitializeLegacy(
-                maxHealth,
-                walk,
-                run,
-                baseRotationSpeed,
-                baseAttackPower,
-                baseDefense);
+            m_statSet.SetBase(StatType.MaxHealth, maxHealth);
+            m_statSet.SetBase(StatType.WalkSpeed, walk);
+            m_statSet.SetBase(StatType.RunSpeed, run);
+            m_statSet.SetBase(StatType.RotationSpeed, baseRotationSpeed);
+            m_statSet.SetBase(StatType.AttackPower, baseAttackPower);
+            m_statSet.SetBase(StatType.Defense, baseDefense);
         }
 
-        m_health = maxHealth;
+        m_resources.RegisterSlot(
+            ResourceType.HP,
+            maxProvider: () => m_statSet.Get(StatType.MaxHealth),
+            initialCurrent: MaxHealth);
+        m_buffStack = new BuffStack(m_statSet);
         m_lastPosition = transform.position;
+    }
+
+    protected virtual void OnEnable()
+    {
+        m_resources.OnCurrentChanged += OnResourceCurrentChanged;
+        if (m_buffStack != null)
+        {
+            m_buffStack.OnPeriodElapsed += OnBuffPeriodElapsed;
+        }
+    }
+
+    protected virtual void OnDisable()
+    {
+        if (m_buffStack != null)
+        {
+            m_buffStack.OnPeriodElapsed -= OnBuffPeriodElapsed;
+        }
+
+        m_resources.OnCurrentChanged -= OnResourceCurrentChanged;
     }
 
     protected virtual void LateUpdate()
@@ -134,6 +176,7 @@ public abstract class Entity : MonoBehaviour
         var currentPosition = transform.position;
         m_velocity = (currentPosition - m_lastPosition) / Mathf.Max(Time.deltaTime, 0.0001f);
         m_lastPosition = currentPosition;
+        m_buffStack?.Tick(Time.deltaTime);
     }
 
     // ─── 移动与朝向 ───
@@ -164,33 +207,33 @@ public abstract class Entity : MonoBehaviour
 
     public virtual void RestoreHealthToFull()
     {
-        var oldValue = m_health;
-        m_health = maxHealth;
-        PublishHealthChanged(oldValue, m_health, "RestoreFull");
+        var oldValue = Health;
+        m_resources.SetCurrent(ResourceType.HP, m_resources.GetMax(ResourceType.HP));
+        PublishHealthChanged(oldValue, Health, "RestoreFull");
     }
 
-    public virtual void TakeDamage(float amount, Object source = null)
+    public virtual void TakeDamage(float amount, UnityEngine.Object damageSource = null)
     {
         if (IsDead || amount <= 0f) return;
 
-        var oldValue = m_health;
-        m_health = Mathf.Max(0f, m_health - amount);
-        PublishHealthChanged(oldValue, m_health, "Damage");
+        var oldValue = Health;
+        m_resources.Drain(ResourceType.HP, amount, out _);
+        PublishHealthChanged(oldValue, Health, "Damage");
 
-        if (m_health <= 0f)
+        if (IsDead)
         {
             PublishEvent(new EntityDiedEvent(GetInstanceID(), name,
-                source ? source.name : "Unknown"));
+                damageSource ? damageSource.name : "Unknown"));
         }
     }
 
-    public virtual void Heal(float amount, Object source = null)
+    public virtual void Heal(float amount, UnityEngine.Object healSource = null)
     {
         if (IsDead || amount <= 0f) return;
 
-        var oldValue = m_health;
-        m_health = Mathf.Min(maxHealth, m_health + amount);
-        PublishHealthChanged(oldValue, m_health, "Heal");
+        var oldValue = Health;
+        m_resources.Refill(ResourceType.HP, amount, out _);
+        PublishHealthChanged(oldValue, Health, "Heal");
     }
 
     // ─── 事件发布 ───
@@ -210,6 +253,57 @@ public abstract class Entity : MonoBehaviour
         PublishEvent(new EntityHealthChangedEvent(
             GetInstanceID(), name, oldValue, newValue, reason));
     }
+
+    void OnResourceCurrentChanged(ResourceType type, float oldValue, float newValue)
+    {
+        PublishEvent(new EntityResourceChangedEvent(
+            GetInstanceID(),
+            name,
+            type,
+            oldValue,
+            newValue));
+    }
+
+    protected virtual void OnBuffPeriodElapsed(BuffInstance instance)
+    {
+        var def = instance.Definition;
+        if (def == null || !def.ApplyPeriodicResourceDelta)
+        {
+            return;
+        }
+
+        var amount = def.PeriodicAmount;
+        var resourceType = def.PeriodicResource;
+        if (resourceType == ResourceType.HP)
+        {
+            var oldHp = Health;
+            if (amount > 0f)
+            {
+                m_resources.Drain(ResourceType.HP, amount, out _);
+                PublishHealthChanged(oldHp, Health, "BuffPeriodicDrain");
+                if (IsDead)
+                {
+                    PublishEvent(new EntityDiedEvent(GetInstanceID(), name, def.name));
+                }
+            }
+            else if (amount < 0f)
+            {
+                m_resources.Refill(ResourceType.HP, -amount, out _);
+                PublishHealthChanged(oldHp, Health, "BuffPeriodicRefill");
+            }
+            return;
+        }
+
+        if (amount > 0f)
+        {
+            m_resources.Drain(resourceType, amount, out _);
+        }
+        else if (amount < 0f)
+        {
+            m_resources.Refill(resourceType, -amount, out _);
+        }
+    }
+
 }
 
 /// <summary>

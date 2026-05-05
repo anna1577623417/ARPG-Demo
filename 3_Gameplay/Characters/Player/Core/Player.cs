@@ -110,7 +110,6 @@ public class Player : Entity<Player>, IDamageable {
     [Tooltip("当前武器招式表；轻/重/蓄力/翻滚/剑冲动作数据均从此注入。")]
     [SerializeField] private WeaponMovesetSO weaponMoveset;
 
-    private float m_stamina;
     private int m_lightComboIndex;
     private int m_heavyComboIndex;
     private int m_chargedComboIndex;
@@ -129,8 +128,8 @@ public class Player : Entity<Player>, IDamageable {
     public bool IsGrounded => m_motor != null && m_motor.IsGrounded;
     public bool IsAttacking => m_attackTimer > 0f;
 
-    public float Stamina => m_stamina;
-    public float StaminaMax => maxStamina;
+    public float Stamina => Resources.GetCurrent(ResourceType.Stamina);
+    public float StaminaMax => Resources.GetMax(ResourceType.Stamina);
     public bool CanDodge => m_dodgeCooldownTimer <= 0f;
     public bool CanSwordDash => m_swordDashCooldownTimer <= 0f;
     public WeaponMovesetSO WeaponMoveset => weaponMoveset;
@@ -178,6 +177,7 @@ public class Player : Entity<Player>, IDamageable {
         if (statsBlueprint is PlayerStatsSO ps) {
             maxStamina = Mathf.Max(1f, ps.MaxStamina);
         }
+        Stats.SetBase(StatType.MaxStamina, maxStamina);
         Init();
     }
 
@@ -193,12 +193,18 @@ public class Player : Entity<Player>, IDamageable {
             m_motor.RefreshInitialGroundedState();
         }
 
-        m_stamina = maxStamina;
+        if (Resources is ResourcePool pool)
+        {
+            pool.RegisterSlot(
+                ResourceType.Stamina,
+                maxProvider: () => Stats.Get(StatType.MaxStamina),
+                initialCurrent: Stats.Get(StatType.MaxStamina));
+        }
     }
 
-    void OnEnable()
+    protected override void OnEnable()
     {
-
+        base.OnEnable();
     }
 
     /// <summary>构建本帧只读上下文，供意图仲裁与状态查询。</summary>
@@ -217,8 +223,8 @@ public class Player : Entity<Player>, IDamageable {
             VerticalSpeed = VerticalSpeed,
             CurrentTags = GameplayTags,
             CurrentAbilityTags = m_gameplayTags.Ability,
-            StaminaCurrent = m_stamina,
-            StaminaMax = maxStamina,
+            StaminaCurrent = Stamina,
+            StaminaMax = StaminaMax,
             IsPrimaryAttackHeld = attackHeld,
         };
     }
@@ -270,10 +276,45 @@ public class Player : Entity<Player>, IDamageable {
     // ─── IDamageable ───
 
     public void TakeDamage(DamageInfo info) {
-        TakeDamage(info.Amount, info.Source);
+        var attacker = ResolveAttackerEntity(info.Source);
+        var ctx = new CombatContext(
+            attackerAttackPower: attacker != null ? attacker.Stats.Get(StatType.AttackPower) : 0f,
+            defenderDefense: Stats.Get(StatType.Defense),
+            defenderCurrentHP: Resources.GetCurrent(ResourceType.HP),
+            defenderMaxHP: Resources.GetMax(ResourceType.HP),
+            attackerTags: ResolveEntityStateTags(attacker),
+            defenderTags: GameplayTags.Value);
+        var hit = new HitContext(
+            baseDamage: info.Amount,
+            isCritical: false,
+            criticalMultiplier: 1.5f,
+            hitPoint: info.HitPoint);
+        var result = DamagePipeline.Compute(in ctx, in hit);
+
+        TakeDamage(result.FinalDamage, info.Source);
         if (IsDead) {
             States.Change<PlayerDeadState>();
         }
+    }
+
+    static Entity ResolveAttackerEntity(GameObject source)
+    {
+        if (source == null)
+        {
+            return null;
+        }
+
+        return source.GetComponentInParent<Entity>();
+    }
+
+    static ulong ResolveEntityStateTags(Entity entity)
+    {
+        if (entity is Player player)
+        {
+            return player.GameplayTags.Value;
+        }
+
+        return 0UL;
     }
 
     // ─── 移动意图（由 PlayerController 设置） ───
