@@ -196,11 +196,12 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
         _inputActions?.UI.Disable();
     }
 
-    // ═══ 焦点切换（Gameplay / UI 互斥） ═══
+    // ═══ 焦点切换（Gameplay / UI 互斥或 Mixed 双开） ═══
 
     /// <summary>
-    /// 切换输入焦点。同时只能有一个 ActionMap 激活。
-    /// Gameplay 激活时 UI 禁用，反之亦然。
+    /// 切换 ActionMap 激活策略。
+    /// <see cref="InputFocusMode.Gameplay"/> 与 <see cref="InputFocusMode.UI"/> 互斥；
+    /// <see cref="InputFocusMode.Mixed"/> 同时启用两图（见 <see cref="EnableGameplayAndUiMaps"/>）。
     /// </summary>
     public void SetFocus(InputFocusMode mode)
     {
@@ -217,9 +218,21 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
                 _inputActions.UI.Enable();
                 ClearGameplayCache();
                 break;
+            case InputFocusMode.Mixed:
+                _inputActions.GamePlay.Enable();
+                _inputActions.UI.Enable();
+                break;
         }
 
         GlobalEventBus.Publish(new InputFocusChangedEvent(mode));
+    }
+
+    /// <summary>
+    /// 战斗 HUD 等场景：GamePlay 与 UI 两图同时 Enable。等同 <c>SetFocus(InputFocusMode.Mixed)</c>。
+    /// </summary>
+    public void EnableGameplayAndUiMaps()
+    {
+        SetFocus(InputFocusMode.Mixed);
     }
 
     // ═══ 输入禁用（眩晕、过场动画等） ═══
@@ -269,7 +282,12 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
     /// </summary>
     public void RestoreGameplayControlsWhileFocused()
     {
-        if (_inputActions == null || _currentFocus != InputFocusMode.Gameplay)
+        if (_inputActions == null)
+        {
+            return;
+        }
+
+        if (_currentFocus != InputFocusMode.Gameplay && _currentFocus != InputFocusMode.Mixed)
         {
             return;
         }

@@ -43,5 +43,6 @@ public static class GameMathBootstrap
         yield return new DefenseReductionStage();
         yield return new CritStage();
         yield return new FinalClampStage();
+        yield return new DamageTextEmitStage();
     }
 }

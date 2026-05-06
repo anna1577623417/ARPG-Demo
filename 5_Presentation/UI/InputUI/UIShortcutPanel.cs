@@ -75,9 +75,9 @@ public class UIShortcutPanel : MonoBehaviour
             rebindManager.OnRebindStarted -= HandleRebindStarted;
         }
 
-        // 恢复 Gameplay 输入模式
+        // 与 UI 栈默认一致：关闭设置后恢复 HUD 可点（GamePlay + UI 双图）
         if (inputReader != null)
-            inputReader.SetFocus(InputFocusMode.Gameplay);
+            inputReader.EnableGameplayAndUiMaps();
     }
 
     // ─── 列表填充 ───

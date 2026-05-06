@@ -16,7 +16,7 @@ public readonly struct PauseInputEvent : IGameEvent { }
 /// <summary>切换相机视角键。</summary>
 public readonly struct SwitchGameModeInputEvent : IGameEvent { }
 
-// ─── 输入焦点切换事件（InputReader 内部发布，用于 Gameplay/UI 互斥） ───
+// ─── 输入焦点切换事件（InputReader.SetFocus 发布后旁路订阅；含 Mixed 双开） ───
 
 public readonly struct InputFocusChangedEvent : IGameEvent
 {
@@ -25,13 +25,14 @@ public readonly struct InputFocusChangedEvent : IGameEvent
 }
 
 /// <summary>
-/// 输入焦点模式。
-/// 同时只能有一个焦点处于激活状态：
-/// - Gameplay：角色移动、攻击、跳跃等
-/// - UI：菜单导航、背包操作等
+/// Gameplay / UI ActionMap 激活策略（由 <see cref="InputReader.SetFocus"/> 应用）。
+/// - Gameplay：仅 GamePlay 图（UI 图关闭）
+/// - UI：仅 UI 图（全屏菜单等，GamePlay 关闭并清缓存）
+/// - Mixed：两图同时 Enable，战斗时点 HUD / InputSystemUI 模块等（勿与 Gameplay 绑定同一键位）
 /// </summary>
 public enum InputFocusMode
 {
     Gameplay,
-    UI
+    UI,
+    Mixed
 }
