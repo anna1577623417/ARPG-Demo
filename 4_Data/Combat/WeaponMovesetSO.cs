@@ -21,9 +21,6 @@ public class WeaponMovesetSO : ScriptableObject
     [Tooltip("重攻击连段（预留）")]
     public ActionDataSO[] HeavyAttacks;
 
-    [Tooltip("蓄力攻击连段（独立 Clip + Charge；对应 GameplayIntentKind.ChargedAttack，由主攻击键长按从 PrimaryAttackPressTracker 派发）")]
-    public ActionDataSO[] ChargedAttacks;
-
     [Header("Skills (预留)")]
     public ActionDataSO SkillA;
     public ActionDataSO SkillB;

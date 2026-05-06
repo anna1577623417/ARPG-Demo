@@ -49,6 +49,9 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
     /// <summary>攻击键是否持续按下（用于蓄力判定等）。</summary>
     public bool IsAttackHeld { get; private set; }
 
+    /// <summary>交互键是否持续按下（副攻 HoldRelease / 松手 Heavy 等）。</summary>
+    public bool IsInteractHeld { get; private set; }
+
     /// <summary>跳跃键是否持续按下。</summary>
     public bool IsJumpHeld { get; private set; }
 
@@ -299,6 +302,7 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
         MoveActuatedByGamepad = false;
         LookInput = Vector2.zero;
         IsAttackHeld = false;
+        IsInteractHeld = false;
         IsJumpHeld = false;
         _jumpPressedPulse = false;
         _dodgePressedPulse = false;
@@ -385,11 +389,19 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
     }
 
     /// <summary>
-    /// 交互（离散型）。
-    /// 拾取物品、对话、开门等。
+    /// 交互：拾取/对话等脉冲 + 持续按住态（副攻技能管线）。
     /// </summary>
     public void OnInteract(InputAction.CallbackContext context)
     {
+        if (context.started)
+        {
+            IsInteractHeld = true;
+        }
+        else if (context.canceled)
+        {
+            IsInteractHeld = false;
+        }
+
         if (context.performed)
         {
             GlobalEventBus.Publish(new InteractInputEvent());

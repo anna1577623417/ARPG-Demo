@@ -55,14 +55,16 @@ public class PlayerController : EntityController
     [Tooltip("箭头起点相对 transform.position 的抬高（模拟贴在脚底上方）。")]
     [SerializeField] private float debugArrowHeightOffset = 0.08f;
 
-    [Header("Primary attack — tap vs hold")]
-    [Tooltip("左键（Attack）短按派发轻击，长按达到阈值派发蓄力意图；与 WeaponMoveset 中 LightAttacks / ChargedAttacks 对应。")]
+    [Header("Primary + secondary (Interact) — hold duration on release")]
+    [Tooltip("Attack 松手 → LightAttack + PrimaryHoldDuration。Interact 松手 → HeavyAttack + SecondaryHoldDuration。两者在施法中均会通知同槽 Cast（读条取消 / 引导早停 / HoldRelease 收尾）。")]
     [SerializeField] private PrimaryAttackSplitPolicy primaryAttackSplit = new PrimaryAttackSplitPolicy
     {
         HoldSecondsBeforeChargedIntent = 0.18f,
     };
 
     private readonly PrimaryAttackPressTracker _primaryAttackPress = new PrimaryAttackPressTracker();
+
+    private readonly SecondaryInteractPressTracker _secondaryInteractPress = new SecondaryInteractPressTracker();
 
     private IGameModeMovementContext _movementContext;
     private bool _isInitialized;
@@ -120,6 +122,7 @@ public class PlayerController : EntityController
         if (inputReader != null)
         {
             _primaryAttackPress.SyncInitialHeldState(inputReader.IsAttackHeld);
+            _secondaryInteractPress.SyncInitialHeldState(inputReader.IsInteractHeld);
         }
     }
 
@@ -128,6 +131,7 @@ public class PlayerController : EntityController
         if (inputReader != null)
         {
             _primaryAttackPress.SyncInitialHeldState(inputReader.IsAttackHeld);
+            _secondaryInteractPress.SyncInitialHeldState(inputReader.IsInteractHeld);
         }
     }
 
@@ -140,6 +144,7 @@ public class PlayerController : EntityController
 
         ConsumeDiscreteIntents();
         _primaryAttackPress.Tick(Time.time, inputReader.IsAttackHeld, player);
+        _secondaryInteractPress.Tick(Time.time, inputReader.IsInteractHeld, player);
 
         var rawInput = inputReader.MoveInput;
         var releaseSq = moveReleaseThreshold * moveReleaseThreshold;

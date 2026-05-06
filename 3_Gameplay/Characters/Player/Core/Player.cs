@@ -69,9 +69,6 @@ public class Player : Entity<Player>, IDamageable {
     [SerializeField, Range(0f, 1f)] private float walkSpeedMultiplier = 0.55f;
 
     [Header("Debug")]
-    [Tooltip("在 Console 打印蓄力相关：输入按住、Action 是否启用 CanCharge、蓄力微阶段与归一化进度。")]
-    [SerializeField] private bool debugChargeAttackFlow;
-
     [Tooltip("在 Console 打印意图仲裁与 Action 打断窗口判定日志。")]
     [SerializeField] private bool debugInterruptFlow;
 
@@ -107,12 +104,39 @@ public class Player : Entity<Player>, IDamageable {
     [SerializeField] private float maxStamina = 100f;
 
     [Header("Combat Data")]
-    [Tooltip("当前武器招式表；轻/重/蓄力/翻滚/剑冲动作数据均从此注入。")]
+    [Tooltip("迁移期回退路：仅在未装配 SkillLoadout、或勾选「Loadout 下允许 Moveset 回退」时使用轻/重/翻滚/剑冲默认 Action。")]
     [SerializeField] private WeaponMovesetSO weaponMoveset;
+
+    [Header("Skill System (Phase 6+)")]
+    [Tooltip("推荐始终绑定：由 SkillSystem 解析 Intent→SkillData→Action。为空则回退 WeaponMoveset 连招（迁移期双轨）。菜单 Tools/Skill/* 可从 Action 批量生成 Skill 资产。")]
+    [SerializeField] private SkillLoadoutSO skillLoadout;
+
+    [Tooltip("已绑定 Loadout 但未配置某槽位 Skill 时：勾选则仍回退 WeaponMoveset；取消勾选则队列阻塞（收尾全技能化推荐取消）。")]
+    [SerializeField] private bool allowWeaponMovesetFallbackWhenSkillLoadoutPresent;
+
+    [Tooltip("施法成功起手后触发全局 GCD；可在 SkillData.ignoreGlobalCooldown 逐项关闭。")]
+    [SerializeField] private bool skillGlobalCooldownEnabled = true;
+
+    [SerializeField] private SkillIndicatorController skillIndicatorController;
+
+    private readonly SkillOverrideManager m_skillOverrides = new SkillOverrideManager();
+    readonly System.Collections.Generic.Dictionary<SkillSlotType, SkillRuntime> m_skillRuntimes =
+        new System.Collections.Generic.Dictionary<SkillSlotType, SkillRuntime>();
+    readonly CooldownTracker m_skillGcd = new CooldownTracker();
+    SkillContext m_skillContextPool;
+    SkillContext m_activeSkillContext;
+    SkillSlotType m_activeSkillSlot;
+
+    bool m_deferredSkillPreparePending;
+    SkillContext m_deferredSkillContext;
+    SkillSlotType m_deferredSkillSlot;
+    SkillRuntime m_deferredSkillRuntime;
+    bool m_deferredSecondStageBump;
+
+    bool m_pendingConsumeRevertStageBump;
 
     private int m_lightComboIndex;
     private int m_heavyComboIndex;
-    private int m_chargedComboIndex;
     private GameplayIntentKind m_pendingActionKind;
     private ActionDataSO m_pendingAction;
     private bool m_pendingActionArmed;
@@ -133,6 +157,63 @@ public class Player : Entity<Player>, IDamageable {
     public bool CanDodge => m_dodgeCooldownTimer <= 0f;
     public bool CanSwordDash => m_swordDashCooldownTimer <= 0f;
     public WeaponMovesetSO WeaponMoveset => weaponMoveset;
+    public SkillLoadoutSO SkillLoadout => skillLoadout;
+    public SkillIndicatorController SkillIndicators => skillIndicatorController;
+    public SkillContext ActiveSkillContext => m_activeSkillContext;
+
+    /// <summary>
+    /// 与当前释放技能同槽的「松开」语义：<see cref="CastType.HoldRelease"/> 收尾；
+    /// <see cref="CastType.CastTime"/> 读条中途打断；<see cref="CastType.Channel"/> 引导提前结束。
+    /// Primary 由 <see cref="PrimaryAttackPressTracker"/>，Secondary 由 Interact 按住追踪调用；
+    /// Ability 槽需在绑定按住输入处类比调用。
+    /// </summary>
+    public void TryNotifySkillCastInputReleasedForSlot(SkillSlotType slot)
+    {
+        if (m_activeSkillContext?.CastHandler == null || m_activeSkillSlot != slot)
+        {
+            return;
+        }
+
+        var sheet = m_activeSkillContext.ResolvedSkillSheet;
+        if (sheet == null)
+        {
+            return;
+        }
+
+        switch (sheet.castType)
+        {
+            case CastType.HoldRelease:
+            case CastType.CastTime:
+            case CastType.Channel:
+                m_activeSkillContext.CastHandler.OnInputReleased(m_activeSkillContext);
+                break;
+        }
+    }
+    public SkillOverrideManager SkillOverrides => m_skillOverrides;
+    public CooldownTracker SkillGcd => m_skillGcd;
+
+    /// <summary>收尾：Loadout 就位且未勾选回退时，缺技能绑定不静默走 Moveset。</summary>
+    public bool AllowMovesetFallbackAfterMissingSkillBindings()
+    {
+        return skillLoadout == null || allowWeaponMovesetFallbackWhenSkillLoadoutPresent;
+    }
+
+    public bool SkillGlobalCooldownEnabled => skillGlobalCooldownEnabled;
+
+    /// <summary>在 Action 起手成功时触发，避免 Transition 拦截仍烧 GCD。</summary>
+    public void TriggerSkillGlobalCooldownIfCommitted()
+    {
+        if (!skillGlobalCooldownEnabled || m_activeSkillContext == null)
+        {
+            return;
+        }
+
+        var seg = m_activeSkillContext.ResolvedSkillSheet;
+        if (seg != null && !seg.ignoreGlobalCooldown)
+        {
+            m_skillGcd.TriggerGlobalCooldown();
+        }
+    }
     public float AttackDuration => attackDuration;
     public float FallbackDodgeDurationSeconds => fallbackDodgeDurationSeconds;
     public float FallbackSwordDashDurationSeconds => fallbackSwordDashDurationSeconds;
@@ -199,6 +280,271 @@ public class Player : Entity<Player>, IDamageable {
                 ResourceType.Stamina,
                 maxProvider: () => Stats.Get(StatType.MaxStamina),
                 initialCurrent: Stats.Get(StatType.MaxStamina));
+        }
+
+        RebuildSkillRuntimes();
+    }
+
+    void RebuildSkillRuntimes()
+    {
+        m_skillRuntimes.Clear();
+        if (skillLoadout == null || skillLoadout.bindings == null)
+        {
+            return;
+        }
+
+        for (var i = 0; i < skillLoadout.bindings.Length; i++)
+        {
+            var b = skillLoadout.bindings[i];
+            if (b.skill == null)
+            {
+                continue;
+            }
+
+            m_skillRuntimes[b.slot] = new SkillRuntime(b.skill);
+        }
+    }
+
+    public SkillContext BorrowSkillContext()
+    {
+        if (m_skillContextPool == null)
+        {
+            m_skillContextPool = new SkillContext();
+        }
+
+        return m_skillContextPool;
+    }
+
+    public void CommitActiveSkillPlanning(SkillContext ctx, SkillSlotType slot)
+    {
+        m_activeSkillContext = ctx;
+        m_activeSkillSlot = slot;
+    }
+
+    public void ClearActiveSkillPlanning()
+    {
+        m_activeSkillContext = null;
+    }
+
+    /// <summary>
+    /// 技能管线：仅在 <see cref="SkillSystem.TryPrepareIntentForSkills"/> 成功但未提交时使用；不要在 Action 起手后调用以免与池化上下文错乱。
+    /// </summary>
+    public void BeginDeferredSkillPlanning(SkillContext ctx, SkillSlotType slot, SkillRuntime runtime, bool secondStageBump)
+    {
+        m_deferredSkillPreparePending = true;
+        m_deferredSkillContext = ctx;
+        m_deferredSkillSlot = slot;
+        m_deferredSkillRuntime = runtime;
+        m_deferredSecondStageBump = secondStageBump;
+    }
+
+    /// <summary>Transition 被拒或不再需要本次规划时丢弃延迟提交。</summary>
+    public void CancelDeferredSkillPlanning()
+    {
+        m_deferredSkillPreparePending = false;
+        m_deferredSkillContext = null;
+        m_deferredSkillRuntime = null;
+        m_deferredSecondStageBump = false;
+    }
+
+    /// <summary>
+    /// <see cref="TransitionResolver.CanOfferIntent"/> 通过后：<see cref="AdvanceStage"/>（若本次为二段虚推）、提交 <see cref="ActiveSkillContext"/>、标记 <see cref="SkillRuntime.IsActive"/>。
+    /// </summary>
+    public void FinalizeDeferredSkillPlanning()
+    {
+        if (!m_deferredSkillPreparePending || m_deferredSkillContext == null)
+        {
+            return;
+        }
+
+        var ctx = m_deferredSkillContext;
+        var slot = m_deferredSkillSlot;
+        var rt = m_deferredSkillRuntime;
+        var bump = m_deferredSecondStageBump;
+
+        CancelDeferredSkillPlanning();
+
+        if (rt != null && bump)
+        {
+            rt.AdvanceStage();
+        }
+
+        m_pendingConsumeRevertStageBump = bump;
+        CommitActiveSkillPlanning(ctx, slot);
+        if (rt != null)
+        {
+            rt.IsActive = true;
+        }
+    }
+
+    /// <summary><see cref="FinalizeDeferredSkillPlanning"/> 之后若当前状态 <c>TryConsumeGameplayIntent</c> 失败，撤销提交与运行时脏标记。</summary>
+    public void RevertCommittedSkillPlanningAfterFailedConsume()
+    {
+        var ctx = m_activeSkillContext;
+        var rt = ctx?.Runtime;
+        if (m_pendingConsumeRevertStageBump && rt != null)
+        {
+            rt.CurrentStageIndex = Mathf.Max(0, rt.CurrentStageIndex - 1);
+        }
+
+        m_pendingConsumeRevertStageBump = false;
+        ClearActiveSkillPlanning();
+        if (rt != null)
+        {
+            rt.IsActive = false;
+        }
+    }
+
+    public void AcknowledgeCommittedSkillConsumed()
+    {
+        m_pendingConsumeRevertStageBump = false;
+    }
+
+    public bool TryGetActiveSkillRuntime(out SkillRuntime runtime, out SkillSlotType slot)
+    {
+        if (m_activeSkillContext != null && m_activeSkillContext.Runtime != null)
+        {
+            runtime = m_activeSkillContext.Runtime;
+            slot = m_activeSkillSlot;
+            return true;
+        }
+
+        runtime = null;
+        slot = default;
+        return false;
+    }
+
+    public bool TryGetResolvedSkill(SkillSlotType slot, out SkillDataSO skill)
+    {
+        skill = m_skillOverrides.ResolveSkill(slot, skillLoadout);
+        return skill != null;
+    }
+
+    public bool TryGetSkillRuntime(SkillSlotType slot, out SkillRuntime runtime)
+    {
+        if (!TryGetResolvedSkill(slot, out var resolved) || resolved == null)
+        {
+            runtime = null;
+            return false;
+        }
+
+        if (!m_skillRuntimes.TryGetValue(slot, out runtime) || runtime == null || runtime.Data != resolved)
+        {
+            runtime = new SkillRuntime(resolved);
+            m_skillRuntimes[slot] = runtime;
+        }
+
+        return true;
+    }
+
+    /// <summary>由技能任务（如二段窗）打开窗口。</summary>
+    public void SkillNotifySecondStageAvailable(float windowSeconds)
+    {
+        if (!TryGetActiveSkillRuntime(out var rt, out _))
+        {
+            return;
+        }
+
+        rt.OpenSecondStageWindow(windowSeconds);
+    }
+
+    public void TickSkillRuntimes(float deltaTime)
+    {
+        m_skillOverrides.Tick(deltaTime);
+        m_skillGcd.Tick(deltaTime);
+
+        foreach (var kv in m_skillRuntimes)
+        {
+            kv.Value?.TickCooldown(deltaTime, Stats);
+            kv.Value?.TickSecondStageWindow();
+        }
+    }
+
+    bool TryDrainSkillCosts(SkillRuntime runtime)
+    {
+        if (runtime?.Data?.costs == null)
+        {
+            return true;
+        }
+
+        for (var i = 0; i < runtime.Data.costs.Length; i++)
+        {
+            var c = runtime.Data.costs[i];
+            var amt = runtime.GetScaledCost(c);
+            if (!Resources.Drain(c.resourceType, amt, out _))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>Action 起手：扣除技能消耗（若有）。失败时不应起手。</summary>
+    public bool TryBeginSkillCostsIfNeeded()
+    {
+        if (!TryGetActiveSkillRuntime(out var rt, out _))
+        {
+            return true;
+        }
+
+        return TryDrainSkillCosts(rt);
+    }
+
+    public void SkillNotifyCooldownOnCastEnter()
+    {
+        if (!TryGetActiveSkillRuntime(out var rt, out _))
+        {
+            return;
+        }
+
+        var data = rt.Data;
+        if (data == null)
+        {
+            return;
+        }
+
+        if (data.cdPolicy == CooldownPolicy.OnFirstCast && rt.CurrentStageIndex == 0)
+        {
+            rt.StartCooldown(Stats);
+        }
+    }
+
+    public void SkillNotifyCooldownOnCastExit()
+    {
+        if (!TryGetActiveSkillRuntime(out var rt, out _))
+        {
+            return;
+        }
+
+        var data = rt.Data;
+        if (data == null)
+        {
+            return;
+        }
+
+        if (data.cdPolicy == CooldownPolicy.OnLastCast)
+        {
+            if (rt.SuppressLastCastCooldownThisExit)
+            {
+                rt.SuppressLastCastCooldownThisExit = false;
+                return;
+            }
+
+            rt.StartCooldown(Stats);
+        }
+    }
+
+    public void SkillNotifyClearContext()
+    {
+        m_activeSkillContext = null;
+    }
+
+    public void SkillNotifyRuntimeInactive()
+    {
+        if (TryGetActiveSkillRuntime(out var rt, out _))
+        {
+            rt.IsActive = false;
         }
     }
 
@@ -430,16 +776,6 @@ public class Player : Entity<Player>, IDamageable {
         return weaponMoveset.HeavyAttacks[m_heavyComboIndex % weaponMoveset.HeavyAttacks.Length];
     }
 
-    public ActionDataSO ResolveChargedAttackForCombo()
-    {
-        if (weaponMoveset == null || weaponMoveset.ChargedAttacks == null || weaponMoveset.ChargedAttacks.Length == 0)
-        {
-            return null;
-        }
-
-        return weaponMoveset.ChargedAttacks[m_chargedComboIndex % weaponMoveset.ChargedAttacks.Length];
-    }
-
     /// <summary>轻攻击完整播完后调用以推进连段索引。</summary>
     public void AdvanceLightComboIndex()
     {
@@ -451,22 +787,10 @@ public class Player : Entity<Player>, IDamageable {
         m_lightComboIndex = (m_lightComboIndex + 1) % weaponMoveset.LightAttacks.Length;
     }
 
-    /// <summary>蓄力攻击完整播完后推进连段索引。</summary>
-    public void AdvanceChargedComboIndex()
-    {
-        if (weaponMoveset == null || weaponMoveset.ChargedAttacks == null || weaponMoveset.ChargedAttacks.Length == 0)
-        {
-            return;
-        }
-
-        m_chargedComboIndex = (m_chargedComboIndex + 1) % weaponMoveset.ChargedAttacks.Length;
-    }
-
     public void ResetComboIndices()
     {
         m_lightComboIndex = 0;
         m_heavyComboIndex = 0;
-        m_chargedComboIndex = 0;
     }
 
     /// <param name="durationOverride">小于 0 时使用 Inspector 中的 attackDuration。</param>

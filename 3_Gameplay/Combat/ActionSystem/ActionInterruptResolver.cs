@@ -60,7 +60,6 @@ public static class ActionInterruptResolver
             case GameplayIntentKind.SwordDash:     return (ulong)StateTag.AllowInterruptBySwordDash;
             case GameplayIntentKind.LightAttack:   return (ulong)StateTag.AllowInterruptByLight;
             case GameplayIntentKind.HeavyAttack:   return (ulong)StateTag.AllowInterruptByHeavy;
-            case GameplayIntentKind.ChargedAttack: return (ulong)StateTag.AllowInterruptByCharged;
             case GameplayIntentKind.Jump:          return (ulong)StateTag.AllowInterruptByJump;
             default: return 0UL;
         }

@@ -11,11 +11,8 @@ public enum GameplayIntentKind : byte
     /// <summary>直线爆发位移（原 Shift「冲刺」语义，走 ActionDataSO，非连续 Run）。</summary>
     SwordDash = 5,
 
-    /// <summary>
-    /// 蓄力型攻击（独立 ActionDataSO，走 <see cref="WeaponMovesetSO.ChargedAttacks"/>；
-    /// 与 <see cref="LightAttack"/> 同源主攻击键，由 <see cref="PrimaryAttackPressTracker"/> 长按阈值派发）。
-    /// </summary>
-    ChargedAttack = 6,
+    /// <summary>序列化占位（历史值为旧蓄力枚举）；禁止入队。</summary>
+    UnusedLegacy6 = 6,
 }
 
 /// <summary>
@@ -52,6 +49,12 @@ public struct GameplayIntent
     /// <summary>可选：注入到 Action 支柱的动作资产（可为 null，走代码内默认动作）。</summary>
     public ActionDataSO Action;
 
+    /// <summary>主攻击抬起时的累计按住时长（秒）；其它意图保持 0。</summary>
+    public float PrimaryHoldDurationSeconds;
+
+    /// <summary>交互/副攻键抬起时的按住时长（秒）；供 Secondary 槽 Charge 等扩展。</summary>
+    public float SecondaryHoldDurationSeconds;
+
     public static GameplayIntent Create(
         GameplayIntentKind kind,
         float time,
@@ -61,7 +64,9 @@ public struct GameplayIntent
         ulong forbidden,
         ActionDataSO action = null,
         ulong requiredAllAbility = 0UL,
-        ulong forbiddenAbility = 0UL)
+        ulong forbiddenAbility = 0UL,
+        float primaryHoldDurationSeconds = 0f,
+        float secondaryHoldDurationSeconds = 0f)
     {
         return new GameplayIntent
         {
@@ -74,6 +79,8 @@ public struct GameplayIntent
             RequiredAllAbilityTags = requiredAllAbility,
             ForbiddenAbilityTags = forbiddenAbility,
             Action = action,
+            PrimaryHoldDurationSeconds = primaryHoldDurationSeconds,
+            SecondaryHoldDurationSeconds = secondaryHoldDurationSeconds,
         };
     }
 }

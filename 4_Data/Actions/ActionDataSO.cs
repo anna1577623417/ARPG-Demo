@@ -3,39 +3,6 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// 单 Clip 蓄力：慢速起手 → 在归一化点定格 → 松键或超时后加速播完劈砍。逻辑归一化时间与 Playable 速度由事件对齐。
-/// </summary>
-[Serializable]
-public sealed class ActionChargeConfig
-{
-    [Tooltip("开启后本动作为轻/重普攻时走蓄力微阶段，而非线性 Duration。")]
-    public bool CanCharge;
-
-    [Tooltip("举刀至「可蓄力滞留」的归一化时刻（须小于 1）。")]
-    [Range(0.02f, 0.95f)]
-    public float ChargeHoldPoint = 0.32f;
-
-    [Tooltip("按住时趋近滞留点的逻辑/动画倍率（小于 1 变慢）。")]
-    [Range(0.05f, 2f)]
-    public float ChargeStartupSpeed = 0.45f;
-
-    [Tooltip("在滞留点最长保持（秒），超时自动进入劈砍。")]
-    [Range(0f, 12f)]
-    public float MaxChargeHoldTime = 2.5f;
-
-    [Tooltip("释放后劈砍段逻辑/动画倍率（可大于 1 更利落）。")]
-    [Range(0.1f, 4f)]
-    public float ExecutionSpeed = 1.35f;
-
-    [Tooltip("在滞留点至少经过多久才打上蓄力标签；0 表示只要进入过滞留即算蓄力完成。")]
-    [Range(0f, 5f)]
-    public float MinHoldTimeForChargedTag;
-
-    [Tooltip("满足蓄力条件时叠加的标签（如 AttackCharged）；ulong 位掩码，Inspector 以 StateTag 勾选编辑。")]
-    public ulong ChargedPayloadTags = (ulong)StateTag.AttackCharged;
-}
-
-/// <summary>
 /// 动作归一化时间轴上的离散瞬移触发点。
 /// Why: 瞬移属于单帧事件，不应塞进连续位移曲线。
 /// </summary>
@@ -79,9 +46,6 @@ public class ActionDataSO : ScriptableObject
     [Tooltip("归一化时间轴上的标签切片。")]
     public List<ActionWindow> Windows = new List<ActionWindow>();
 
-    [Header("Charge attack (single MainClip — light tap vs hold-release)")]
-    public ActionChargeConfig Charge = new ActionChargeConfig();
-
     [Header("Teleport (discrete events)")]
     [Tooltip("离散瞬移触发点；仅在归一化时间跨过触发点时执行一次。")]
     public List<TeleportTrigger> TeleportTriggers = new List<TeleportTrigger>();
@@ -99,7 +63,7 @@ public class ActionDataSO : ScriptableObject
         return ResolveLogicalDurationSeconds();
     }
 
-    /// <summary>蓄力/普攻逻辑用：优先 <see cref="Duration"/>，否则按 Clip 墙钟。</summary>
+    /// <summary>普攻等逻辑用：优先 <see cref="Duration"/>，否则按 Clip 墙钟。</summary>
     public float ResolveLogicalDurationSeconds()
     {
         if (Duration > 0.001f)

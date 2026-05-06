@@ -60,6 +60,19 @@ public sealed class GameplayIntentBuffer
         return true;
     }
 
+    /// <summary>
+    /// 在原位覆盖队首意图（用于 SkillSystem 注入 <see cref="GameplayIntent.Action"/> 等字段）。
+    /// </summary>
+    public void ReplaceFront(in GameplayIntent intent)
+    {
+        if (_count <= 0)
+        {
+            return;
+        }
+
+        _items[_head] = intent;
+    }
+
     public void Pop()
     {
         if (_count <= 0)

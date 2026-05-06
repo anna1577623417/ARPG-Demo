@@ -18,7 +18,5 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 9f6e9385934813541a38ee69cfd3fe5f, type: 2}
   HeavyAttacks:
   - {fileID: 11400000, guid: 1d37a5f195aaa4f47b696e49195de30e, type: 2}
-  ChargedAttacks:
-  - {fileID: 11400000, guid: 1d37a5f195aaa4f47b696e49195de30e, type: 2}
   SkillA: {fileID: 0}
   SkillB: {fileID: 0}

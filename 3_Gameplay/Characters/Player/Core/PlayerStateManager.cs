@@ -88,6 +88,7 @@ public class PlayerStateManager : EntityStateManager<Player>
             return;
         }
 
+        Entity.TickSkillRuntimes(deltaTime);
         Entity.IntentBuffer.FlushExpired(Time.time);
 
         for (var i = 0; i < maxIntentConsumptionsPerFrame; i++)
@@ -97,10 +98,22 @@ public class PlayerStateManager : EntityStateManager<Player>
                 break;
             }
 
+            if (!SkillSystem.TryPrepareIntentForSkills(Entity, ref intent))
+            {
+                if (debugIntentArbitration || Entity.DebugInterruptFlow)
+                {
+                    Debug.Log("[IntentArb] BLOCK SkillSystem.CanCast/CD | intent remains queued", this);
+                }
+                break;
+            }
+
+            Entity.IntentBuffer.ReplaceFront(in intent);
+
             var ctx = Entity.BuildFrameContext(deltaTime);
             var canOffer = TransitionResolver.CanOfferIntent(in ctx, in intent, out var rejectReason);
             if (!canOffer)
             {
+                Entity.CancelDeferredSkillPlanning();
                 if (debugIntentArbitration || Entity.DebugInterruptFlow)
                 {
                     Debug.Log(
@@ -110,8 +123,11 @@ public class PlayerStateManager : EntityStateManager<Player>
                 break;
             }
 
+            Entity.FinalizeDeferredSkillPlanning();
+
             if (!Current.TryConsumeGameplayIntent(Entity, in ctx, in intent))
             {
+                Entity.RevertCommittedSkillPlanningAfterFailedConsume();
                 if (debugIntentArbitration || Entity.DebugInterruptFlow)
                 {
                     Debug.Log(
@@ -120,6 +136,8 @@ public class PlayerStateManager : EntityStateManager<Player>
                 }
                 break;
             }
+
+            Entity.AcknowledgeCommittedSkillConsumed();
 
             if (debugIntentArbitration || Entity.DebugInterruptFlow)
             {

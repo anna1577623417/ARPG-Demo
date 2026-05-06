@@ -18,7 +18,8 @@ public static class PlayerIntentCatalog
             requiredAllAbility: (ulong)EntityCapabilityTag.CanJump);
     }
 
-    public static GameplayIntent LightAttack(float time, ActionDataSO overrideAction = null)
+    /// <summary>左键松开派发；蓄力阈值由按住时长传给 <see cref="SkillChargeCommit"/>。</summary>
+    public static GameplayIntent LightAttack(float time, ActionDataSO overrideAction = null, float primaryHoldDurationSeconds = 0f)
     {
         return GameplayIntent.Create(
             GameplayIntentKind.LightAttack,
@@ -28,10 +29,12 @@ public static class PlayerIntentCatalog
             requiredAny: 0UL,
             forbidden: (ulong)(StateTag.Dead | StateTag.Stunned),
             action: overrideAction,
-            requiredAllAbility: (ulong)EntityCapabilityTag.CanLightAttack);
+            requiredAllAbility: (ulong)EntityCapabilityTag.CanLightAttack,
+            forbiddenAbility: 0UL,
+            primaryHoldDurationSeconds: primaryHoldDurationSeconds);
     }
 
-    public static GameplayIntent HeavyAttack(float time, ActionDataSO overrideAction = null)
+    public static GameplayIntent HeavyAttack(float time, ActionDataSO overrideAction = null, float secondaryHoldDurationSeconds = 0f)
     {
         return GameplayIntent.Create(
             GameplayIntentKind.HeavyAttack,
@@ -41,21 +44,10 @@ public static class PlayerIntentCatalog
             requiredAny: 0UL,
             forbidden: (ulong)(StateTag.Dead | StateTag.Stunned),
             action: overrideAction,
-            requiredAllAbility: (ulong)EntityCapabilityTag.CanHeavyAttack);
-    }
-
-    /// <summary>蓄力攻击：与轻击同一主攻击键派生，走 <see cref="WeaponMovesetSO.ChargedAttacks"/> 与独立 Charge 配置。</summary>
-    public static GameplayIntent ChargedAttack(float time, ActionDataSO overrideAction = null)
-    {
-        return GameplayIntent.Create(
-            GameplayIntentKind.ChargedAttack,
-            time,
-            DefaultBufferSeconds,
-            requiredAll: 0UL,
-            requiredAny: 0UL,
-            forbidden: (ulong)(StateTag.Dead | StateTag.Stunned),
-            action: overrideAction,
-            requiredAllAbility: (ulong)EntityCapabilityTag.CanLightAttack);
+            requiredAllAbility: (ulong)EntityCapabilityTag.CanHeavyAttack,
+            forbiddenAbility: 0UL,
+            primaryHoldDurationSeconds: 0f,
+            secondaryHoldDurationSeconds: secondaryHoldDurationSeconds);
     }
 
     public static GameplayIntent Dodge(float time, ActionDataSO overrideAction = null)

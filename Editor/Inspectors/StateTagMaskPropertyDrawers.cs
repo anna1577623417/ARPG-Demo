@@ -252,7 +252,6 @@ internal static class StateTagMaskDrawerUtility
 #endif
     }
 
-    // ── 给 ActionChargeConfig.ChargedPayloadTags 用：ulong 直接是 StateTag 位 ──
     internal static float GetMaskHeight(SerializedProperty prop, GUIContent label)
     {
         return GetMaskHeight(prop, label, TagDrawerMode.Full);
@@ -663,9 +662,6 @@ internal sealed class ActionWindowDrawer : PropertyDrawer
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
-//   ActionChargeConfig：ChargedPayloadTags 字段使用 StateTag 直接位
-// ───────────────────────────────────────────────────────────────────────────────
-// ───────────────────────────────────────────────────────────────────────────────
 //   [StateTagMask] 属性抽屉 — 让任意 ulong/long 字段获得分组折叠 UI
 // ───────────────────────────────────────────────────────────────────────────────
 [CustomPropertyDrawer(typeof(StateTagMaskAttribute))]
@@ -704,72 +700,4 @@ internal sealed class StateTagMaskAttributeDrawer : PropertyDrawer
     }
 }
 
-[CustomPropertyDrawer(typeof(ActionChargeConfig))]
-internal sealed class ActionChargeConfigDrawer : PropertyDrawer
-{
-    static readonly string[] s_fieldOrder =
-    {
-        nameof(ActionChargeConfig.CanCharge),
-        nameof(ActionChargeConfig.ChargeHoldPoint),
-        nameof(ActionChargeConfig.ChargeStartupSpeed),
-        nameof(ActionChargeConfig.MaxChargeHoldTime),
-        nameof(ActionChargeConfig.ExecutionSpeed),
-        nameof(ActionChargeConfig.MinHoldTimeForChargedTag),
-        nameof(ActionChargeConfig.ChargedPayloadTags),
-    };
-
-    public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
-    {
-        EditorGUI.BeginProperty(position, label, property);
-
-        var y = position.y;
-        var space = EditorGUIUtility.standardVerticalSpacing;
-
-        for (var i = 0; i < s_fieldOrder.Length; i++)
-        {
-            var child = property.FindPropertyRelative(s_fieldOrder[i]);
-            if (child == null) continue;
-
-            float h;
-            if (child.name == nameof(ActionChargeConfig.ChargedPayloadTags))
-            {
-                h = StateTagMaskDrawerUtility.GetMaskHeight(child, new GUIContent(child.displayName));
-                StateTagMaskDrawerUtility.DrawMaskField(
-                    new Rect(position.x, y, position.width, h),
-                    child,
-                    new GUIContent(child.displayName));
-            }
-            else
-            {
-                h = EditorGUI.GetPropertyHeight(child, true);
-                EditorGUI.PropertyField(new Rect(position.x, y, position.width, h), child, true);
-            }
-
-            y += h + space;
-        }
-
-        EditorGUI.EndProperty();
-    }
-
-    public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
-    {
-        var space = EditorGUIUtility.standardVerticalSpacing;
-        float h = 0f;
-
-        for (var i = 0; i < s_fieldOrder.Length; i++)
-        {
-            var child = property.FindPropertyRelative(s_fieldOrder[i]);
-            if (child == null) continue;
-
-            if (child.name == nameof(ActionChargeConfig.ChargedPayloadTags))
-                h += StateTagMaskDrawerUtility.GetMaskHeight(child, new GUIContent(child.displayName));
-            else
-                h += EditorGUI.GetPropertyHeight(child, true);
-
-            h += space;
-        }
-
-        return h;
-    }
-}
 #endif

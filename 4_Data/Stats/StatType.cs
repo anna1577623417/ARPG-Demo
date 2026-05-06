@@ -12,4 +12,7 @@ public enum StatType : byte
     RunSpeed = 5,
     RotationSpeed = 6,
     Poise = 7,
+
+    /// <summary>冷却缩减（0~0.4 表示 0%~40%；最终 CD 由技能层乘算）。</summary>
+    CooldownReduction = 8,
 }
