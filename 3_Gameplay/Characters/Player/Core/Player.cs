@@ -22,7 +22,7 @@ using UnityEngine;
 [RequireComponent(typeof(PlayerStateManager))]
 [RequireComponent(typeof(PlayerController))]
 [RequireComponent(typeof(PlayerKCCMotor))]
-public class Player : Entity<Player>, IDamageable {
+public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver {
     // ─── 输入 ───
 
     [Header("Input")]
@@ -233,6 +233,16 @@ public class Player : Entity<Player>, IDamageable {
     public bool WantsWalk => HasMovementIntent && !m_runIntent;
     public Vector3 MovementIntent => m_movementIntent;
     public bool DebugInterruptFlow => debugInterruptFlow;
+    Transform IEntity.Transform => transform;
+    IReadOnlyStatSet IEntity.Stats => Stats;
+    IResourcePool IEntity.Resources => Resources;
+    GameplayTagContainer ITagOwner.Tags => m_gameplayTags;
+    GameplayTagContainer IEffectReceiver.Tags => m_gameplayTags;
+    GameplayTagContainer IEntity.Tags => m_gameplayTags;
+    bool IEntity.IsAlive => !IsDead;
+    IBuffStack IEffectReceiver.BuffStack => Buffs;
+    IReadOnlyStatSet IEffectReceiver.Stats => Stats;
+    IResourcePool IEffectReceiver.Resources => Resources;
 
     /// <summary>
     /// 原地转身表现层快照，由 PlayerLocomotionState 每帧通过 <see cref="SetTurnInfo"/> 写入；
@@ -619,6 +629,16 @@ public class Player : Entity<Player>, IDamageable {
         return true;
     }
 
+    public bool HasTag(GameplayTagMask mask)
+    {
+        var bits = mask.Value;
+        return m_gameplayTags.State.HasAll(bits)
+               || m_gameplayTags.Status.HasAll(bits)
+               || m_gameplayTags.Ability.HasAll(bits)
+               || m_gameplayTags.Mechanic.HasAll(bits)
+               || m_gameplayTags.Faction.HasAll(bits);
+    }
+
     // ─── IDamageable ───
 
     public void TakeDamage(DamageInfo info) {
@@ -639,6 +659,15 @@ public class Player : Entity<Player>, IDamageable {
 
         TakeDamage(result.FinalDamage, info.Source);
         if (IsDead) {
+            States.Change<PlayerDeadState>();
+        }
+    }
+
+    public void ReceiveDamage(in DamageResult result, in CombatContext ctx)
+    {
+        TakeDamage(result.FinalDamage, this);
+        if (IsDead)
+        {
             States.Change<PlayerDeadState>();
         }
     }
