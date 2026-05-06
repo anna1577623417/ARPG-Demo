@@ -237,8 +237,6 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver {
     IReadOnlyStatSet IEntity.Stats => Stats;
     IResourcePool IEntity.Resources => Resources;
     GameplayTagContainer ITagOwner.Tags => m_gameplayTags;
-    GameplayTagContainer IEffectReceiver.Tags => m_gameplayTags;
-    GameplayTagContainer IEntity.Tags => m_gameplayTags;
     bool IEntity.IsAlive => !IsDead;
     IBuffStack IEffectReceiver.BuffStack => Buffs;
     IReadOnlyStatSet IEffectReceiver.Stats => Stats;
