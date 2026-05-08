@@ -19,7 +19,11 @@ public static class EntityAbilitySystem
             return;
         }
 
-        ulong bits = (ulong)(EntityCapabilityTag.CanLightAttack | EntityCapabilityTag.CanHeavyAttack);
+        ulong bits = (ulong)(
+            EntityCapabilityTag.CanLightAttack
+            | EntityCapabilityTag.CanHeavyAttack
+            | EntityCapabilityTag.CanCastAbility1
+            | EntityCapabilityTag.CanCastUltimate);
         if (player.IsGrounded)
         {
             bits |= (ulong)EntityCapabilityTag.CanJump;

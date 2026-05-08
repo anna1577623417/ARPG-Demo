@@ -178,31 +178,62 @@ public class PlayerController : EntityController
     }
 
     /// <summary>
-    /// 核心控制流改为直接依赖调用：控制器直接消费 InputReader 的离散脉冲并入队意图。
+    /// v4.4 重构：按 SkillSlotType 循环派发，不再硬编码 Jump/Dodge/SwordDash 名字。
+    ///
+    /// ═══ 数据流 ═══
+    ///
+    ///   物理键 (.inputactions)  →  InputReader.WriteSlotEdge(SkillSlotType, pressed)
+    ///                          →  本方法 ConsumeSkillSlotPressed(slot)
+    ///                          →  PlayerIntentCatalog.ForSlot(slot, time) 反向解析为对应 IntentKind
+    ///                          →  IntentBuffer.Enqueue
+    ///                          →  TransitionResolver / ActionInterruptResolver 仲裁
+    ///                          →  SkillSystem.TryPrepareIntentForSkills (TryMapIntentToSlot)
+    ///                          →  SkillLoadout.Resolve(slot) 拿到具体 SkillData
+    ///                          →  执行
+    ///
+    /// 槽位 → 物理键的实际绑定由 .inputactions 资产 + RebindManager 决定。
+    /// 默认配置（用户可自由换绑）：
+    ///   LM    → Primary    （蓄力/连段由 PrimaryAttackPressTracker 处理）
+    ///   RM    → Secondary  （需 .inputactions 新增 SkillSlotSecondary 动作）
+    ///   Q     → Ability1
+    ///   R     → Ultimate
+    ///   Shift → Ability2  （历史 InputAction 名 "Sprint"，仅是名字）
+    ///   Space → Jump
+    ///   Dodge 槽位 → 备用（Loadout 可绑闪避技能；当前 .inputactions 中 Dodge action 默认空）
     /// </summary>
     private void ConsumeDiscreteIntents()
     {
-        if (inputReader.ConsumeJumpPressed())
+        TryDispatchSlot(SkillSlotType.Secondary);
+        TryDispatchSlot(SkillSlotType.Ability1);
+        TryDispatchSlot(SkillSlotType.Ability2);
+        TryDispatchSlot(SkillSlotType.Dodge);
+        TryDispatchSlot(SkillSlotType.Ultimate);
+        TryDispatchSlot(SkillSlotType.Jump);
+        // Primary 槽位脉冲被 PrimaryAttackPressTracker 在 Tick() 中独立消费（轻击 vs 蓄力分流），
+        // 不走通用 dispatch；同时由 PressTracker 调用 PlayerIntentCatalog.LightAttack(holdDuration)。
+    }
+
+    /// <summary>消费指定 slot 的脉冲并入队对应 Intent。无脉冲则什么都不做。</summary>
+    private void TryDispatchSlot(SkillSlotType slot)
+    {
+        if (!PlayerIntentCatalog.HasFactoryFor(slot))
         {
-            player.EnqueueGameplayIntent(PlayerIntentCatalog.Jump(Time.time));
+            return;
         }
 
-        if (inputReader.ConsumeDodgePressed())
+        if (!inputReader.ConsumeSkillSlotPressed(slot, out var holdSeconds))
         {
-            player.EnqueueGameplayIntent(PlayerIntentCatalog.Dodge(Time.time, null));
-            if (player.DebugInterruptFlow)
-            {
-                Debug.Log("[IntentInput] enqueue Dodge", this);
-            }
+            return;
         }
 
-        if (inputReader.ConsumeSwordDashPressed())
+        // ForSlot 内部根据 slot 选择对应 IntentKind（与 SkillSystem.TryMapIntentToSlot 双向一致）。
+        // 注意：长按时长仅对 Primary/Ability1（蓄力主攻）有意义；其它槽传入但不使用。
+        var intent = PlayerIntentCatalog.ForSlot(slot, Time.time, primaryHold: holdSeconds);
+        player.EnqueueGameplayIntent(intent);
+
+        if (player.DebugInterruptFlow)
         {
-            player.EnqueueGameplayIntent(PlayerIntentCatalog.SwordDash(Time.time, null));
-            if (player.DebugInterruptFlow)
-            {
-                Debug.Log("[IntentInput] enqueue SwordDash", this);
-            }
+            Debug.Log($"[IntentInput] enqueue slot={slot} kind={intent.Kind} hold={holdSeconds:F3}s", this);
         }
     }
 

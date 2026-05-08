@@ -3,6 +3,7 @@ using UnityEngine;
 /// <summary>
 /// CastType.Charge：按住时长 → 覆盖段/动作/伤害倍率。
 /// Primary+轻击 用 <see cref="GameplayIntent.PrimaryHoldDurationSeconds"/>；Secondary+重击 用 <see cref="GameplayIntent.SecondaryHoldDurationSeconds"/>。
+/// Ability1+CastAbility1 用 Primary；Ultimate+CastUltimate 用 Secondary（与 <see cref="SkillSystem"/> 侧取 hold 的口径一致）。
 /// </summary>
 public static class SkillChargeCommit
 {
@@ -23,6 +24,12 @@ public static class SkillChargeCommit
                 && chargeHoldSeconds >= threshold)
                || (slot == SkillSlotType.Secondary
                    && kind == GameplayIntentKind.HeavyAttack
+                   && chargeHoldSeconds >= threshold)
+               || (slot == SkillSlotType.Ability1
+                   && kind == GameplayIntentKind.CastAbility1
+                   && chargeHoldSeconds >= threshold)
+               || (slot == SkillSlotType.Ultimate
+                   && kind == GameplayIntentKind.CastUltimate
                    && chargeHoldSeconds >= threshold);
     }
 
@@ -47,7 +54,9 @@ public static class SkillChargeCommit
 
         var appliesToSlot =
             (slot == SkillSlotType.Primary && kind == GameplayIntentKind.LightAttack)
-            || (slot == SkillSlotType.Secondary && kind == GameplayIntentKind.HeavyAttack);
+            || (slot == SkillSlotType.Secondary && kind == GameplayIntentKind.HeavyAttack)
+            || (slot == SkillSlotType.Ability1 && kind == GameplayIntentKind.CastAbility1)
+            || (slot == SkillSlotType.Ultimate && kind == GameplayIntentKind.CastUltimate);
 
         if (!appliesToSlot
             || chargeHoldSeconds < Mathf.Max(0f, segment.chargeThreshold))

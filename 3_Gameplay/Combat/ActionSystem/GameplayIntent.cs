@@ -13,6 +13,12 @@ public enum GameplayIntentKind : byte
 
     /// <summary>序列化占位（历史值为旧蓄力枚举）；禁止入队。</summary>
     UnusedLegacy6 = 6,
+
+    /// <summary>技能槽 Ability1（对应 <see cref="SkillSlotType.Ability1"/>）。</summary>
+    CastAbility1 = 7,
+
+    /// <summary>技能槽 Ultimate（对应 <see cref="SkillSlotType.Ultimate"/>）。</summary>
+    CastUltimate = 8,
 }
 
 /// <summary>

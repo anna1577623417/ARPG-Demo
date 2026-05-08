@@ -12,4 +12,22 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2753173ca79dd6e44b15746d527bf22d, type: 3}
   m_Name: Sword_01_SkillLoadout
   m_EditorClassIdentifier: 
-  bindings: []
+  bindings:
+  - slot: 0
+    skill: {fileID: 11400000, guid: 3817bc6947efac74b831829924d0d61c, type: 2}
+    hudKeyLabel: 
+  - slot: 1
+    skill: {fileID: 11400000, guid: 3817bc6947efac74b831829924d0d61c, type: 2}
+    hudKeyLabel: 
+  - slot: 0
+    skill: {fileID: 11400000, guid: 3817bc6947efac74b831829924d0d61c, type: 2}
+    hudKeyLabel: 
+  - slot: 0
+    skill: {fileID: 11400000, guid: 3817bc6947efac74b831829924d0d61c, type: 2}
+    hudKeyLabel: 
+  - slot: 0
+    skill: {fileID: 11400000, guid: 3817bc6947efac74b831829924d0d61c, type: 2}
+    hudKeyLabel: 
+  - slot: 0
+    skill: {fileID: 11400000, guid: 3817bc6947efac74b831829924d0d61c, type: 2}
+    hudKeyLabel: 

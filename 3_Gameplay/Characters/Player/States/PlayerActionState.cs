@@ -8,6 +8,15 @@ using UnityEngine;
 /// </summary>
 public sealed class PlayerActionState : PlayerState
 {
+    static bool IsMeleeStrikeIntent(GameplayIntentKind k) =>
+        k == GameplayIntentKind.LightAttack
+        || k == GameplayIntentKind.HeavyAttack
+        || k == GameplayIntentKind.CastAbility1
+        || k == GameplayIntentKind.CastUltimate;
+
+    static bool IsAttackComboCleanExit(GameplayIntentKind k) =>
+        k == GameplayIntentKind.LightAttack || k == GameplayIntentKind.CastAbility1;
+
     private GameplayIntentKind m_kind;
     private ActionDataSO m_action;
 
@@ -112,7 +121,7 @@ public sealed class PlayerActionState : PlayerState
             {
                 ApplyBurstEnterSideEffects(player, motionDir);
             }
-            else if (m_kind == GameplayIntentKind.LightAttack || m_kind == GameplayIntentKind.HeavyAttack)
+            else if (IsMeleeStrikeIntent(m_kind))
             {
                 player.BeginAttackWithManualCompletion();
             }
@@ -121,7 +130,7 @@ public sealed class PlayerActionState : PlayerState
         {
             ConfigureBurst(player);
         }
-        else if (m_kind == GameplayIntentKind.LightAttack || m_kind == GameplayIntentKind.HeavyAttack)
+        else if (IsMeleeStrikeIntent(m_kind))
         {
             var duration = m_action != null && m_action.Duration > 0.001f ? m_action.Duration : -1f;
             player.BeginAttack(duration);
@@ -226,18 +235,28 @@ public sealed class PlayerActionState : PlayerState
             }
         }
 
-        if (!m_isBurst && (m_kind == GameplayIntentKind.LightAttack || m_kind == GameplayIntentKind.HeavyAttack))
+        if (!m_isBurst && IsMeleeStrikeIntent(m_kind))
         {
             player.ForceEndAttackIfActive();
-            if (m_kind == GameplayIntentKind.LightAttack && m_lightAttackFinishedCleanly)
+            if (m_lightAttackFinishedCleanly)
             {
-                if (m_usedSkillRouting && skillRt?.Data?.comboChain != null && skillRt.Data.comboChain.Length > 0)
+                if (m_kind == GameplayIntentKind.LightAttack)
+                {
+                    if (m_usedSkillRouting && skillRt?.Data?.comboChain != null && skillRt.Data.comboChain.Length > 0)
+                    {
+                        skillRt.AdvanceCombo();
+                    }
+                    else
+                    {
+                        player.AdvanceLightComboIndex();
+                    }
+                }
+                else if (m_kind == GameplayIntentKind.CastAbility1
+                         && m_usedSkillRouting
+                         && skillRt?.Data?.comboChain != null
+                         && skillRt.Data.comboChain.Length > 0)
                 {
                     skillRt.AdvanceCombo();
-                }
-                else
-                {
-                    player.AdvanceLightComboIndex();
                 }
             }
         }
@@ -323,7 +342,7 @@ public sealed class PlayerActionState : PlayerState
 
         if (!player.IsAttacking)
         {
-            m_lightAttackFinishedCleanly = m_kind == GameplayIntentKind.LightAttack;
+            m_lightAttackFinishedCleanly = IsAttackComboCleanExit(m_kind);
             TransitionToLocomotionOrAirborne(player);
         }
     }
@@ -611,10 +630,10 @@ public sealed class PlayerActionState : PlayerState
             return;
         }
 
-        if (m_kind == GameplayIntentKind.LightAttack || m_kind == GameplayIntentKind.HeavyAttack)
+        if (IsMeleeStrikeIntent(m_kind))
         {
             player.ForceEndAttackIfActive();
-            m_lightAttackFinishedCleanly = m_kind == GameplayIntentKind.LightAttack;
+            m_lightAttackFinishedCleanly = IsAttackComboCleanExit(m_kind);
         }
 
         TransitionToLocomotionOrAirborne(player);

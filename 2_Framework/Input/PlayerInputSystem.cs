@@ -262,6 +262,24 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
                     ""processors"": """",
                     ""interactions"": """",
                     ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""SlotAbility1"",
+                    ""type"": ""Button"",
+                    ""id"": ""f1e2d3c4-b5a6-4789-abcd-ef0123456789"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""SlotUltimate"",
+                    ""type"": ""Button"",
+                    ""id"": ""e1d2c3b4-a596-4789-abcd-ef012345678a"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
                 }
             ],
             ""bindings"": [
@@ -388,6 +406,17 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
                 },
                 {
                     ""name"": """",
+                    ""id"": ""cd333333-3333-4333-8333-333333333333"",
+                    ""path"": ""<Keyboard>/space"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""Jump"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
                     ""id"": ""2bd08c28-3068-4128-b23c-ad7a67fd1481"",
                     ""path"": ""<Gamepad>/buttonSouth"",
                     ""interactions"": """",
@@ -444,7 +473,7 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
                 {
                     ""name"": """",
                     ""id"": ""085e0690-7811-4e49-a6a1-394663e4ae44"",
-                    ""path"": ""<Keyboard>/space"",
+                    ""path"": ""<Keyboard>/shift"",
                     ""interactions"": """",
                     ""processors"": """",
                     ""groups"": """",
@@ -478,6 +507,17 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
                     ""name"": """",
                     ""id"": ""af2d248a-3ee3-44ba-b0a5-af6ba476012f"",
                     ""path"": ""<Keyboard>/e"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""Interact"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""cd444444-4444-4444-8444-444444444444"",
+                    ""path"": ""<Mouse>/rightButton"",
                     ""interactions"": """",
                     ""processors"": """",
                     ""groups"": """",
@@ -543,7 +583,7 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
                 {
                     ""name"": """",
                     ""id"": ""839a7a9d-598b-44ee-9933-f4da5fb8f37f"",
-                    ""path"": ""<Keyboard>/shift"",
+                    ""path"": ""<Keyboard>/x"",
                     ""interactions"": """",
                     ""processors"": """",
                     ""groups"": """",
@@ -576,7 +616,7 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
                 {
                     ""name"": """",
                     ""id"": ""e25a078b-daf7-4420-8b9a-b5a10db20cb0"",
-                    ""path"": ""<Keyboard>/q"",
+                    ""path"": ""<Keyboard>/z"",
                     ""interactions"": """",
                     ""processors"": """",
                     ""groups"": """",
@@ -598,7 +638,7 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
                 {
                     ""name"": """",
                     ""id"": ""08644cf3-dd29-4e2e-9caf-c79d817a8d05"",
-                    ""path"": ""<Keyboard>/r"",
+                    ""path"": ""<Keyboard>/c"",
                     ""interactions"": """",
                     ""processors"": """",
                     ""groups"": """",
@@ -702,6 +742,28 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
                     ""processors"": """",
                     ""groups"": """",
                     ""action"": ""PartySlot8"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""ab111111-1111-4111-8111-111111111111"",
+                    ""path"": ""<Keyboard>/q"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""SlotAbility1"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""ab222222-2222-4222-8222-222222222222"",
+                    ""path"": ""<Keyboard>/r"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""SlotUltimate"",
                     ""isComposite"": false,
                     ""isPartOfComposite"": false
                 }
@@ -854,6 +916,8 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
         m_GamePlay_PartySlot6 = m_GamePlay.FindAction("PartySlot6", throwIfNotFound: true);
         m_GamePlay_PartySlot7 = m_GamePlay.FindAction("PartySlot7", throwIfNotFound: true);
         m_GamePlay_PartySlot8 = m_GamePlay.FindAction("PartySlot8", throwIfNotFound: true);
+        m_GamePlay_SlotAbility1 = m_GamePlay.FindAction("SlotAbility1", throwIfNotFound: true);
+        m_GamePlay_SlotUltimate = m_GamePlay.FindAction("SlotUltimate", throwIfNotFound: true);
         // UI
         m_UI = asset.FindActionMap("UI", throwIfNotFound: true);
         m_UI_Cancel = m_UI.FindAction("Cancel", throwIfNotFound: true);
@@ -959,6 +1023,8 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
     private readonly InputAction m_GamePlay_PartySlot6;
     private readonly InputAction m_GamePlay_PartySlot7;
     private readonly InputAction m_GamePlay_PartySlot8;
+    private readonly InputAction m_GamePlay_SlotAbility1;
+    private readonly InputAction m_GamePlay_SlotUltimate;
     /// <summary>
     /// Provides access to input actions defined in input action map "GamePlay".
     /// </summary>
@@ -1047,6 +1113,14 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
         /// </summary>
         public InputAction @PartySlot8 => m_Wrapper.m_GamePlay_PartySlot8;
         /// <summary>
+        /// Provides access to the underlying input action "GamePlay/SlotAbility1".
+        /// </summary>
+        public InputAction @SlotAbility1 => m_Wrapper.m_GamePlay_SlotAbility1;
+        /// <summary>
+        /// Provides access to the underlying input action "GamePlay/SlotUltimate".
+        /// </summary>
+        public InputAction @SlotUltimate => m_Wrapper.m_GamePlay_SlotUltimate;
+        /// <summary>
         /// Provides access to the underlying input action map instance.
         /// </summary>
         public InputActionMap Get() { return m_Wrapper.m_GamePlay; }
@@ -1129,6 +1203,12 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
             @PartySlot8.started += instance.OnPartySlot8;
             @PartySlot8.performed += instance.OnPartySlot8;
             @PartySlot8.canceled += instance.OnPartySlot8;
+            @SlotAbility1.started += instance.OnSlotAbility1;
+            @SlotAbility1.performed += instance.OnSlotAbility1;
+            @SlotAbility1.canceled += instance.OnSlotAbility1;
+            @SlotUltimate.started += instance.OnSlotUltimate;
+            @SlotUltimate.performed += instance.OnSlotUltimate;
+            @SlotUltimate.canceled += instance.OnSlotUltimate;
         }
 
         /// <summary>
@@ -1197,6 +1277,12 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
             @PartySlot8.started -= instance.OnPartySlot8;
             @PartySlot8.performed -= instance.OnPartySlot8;
             @PartySlot8.canceled -= instance.OnPartySlot8;
+            @SlotAbility1.started -= instance.OnSlotAbility1;
+            @SlotAbility1.performed -= instance.OnSlotAbility1;
+            @SlotAbility1.canceled -= instance.OnSlotAbility1;
+            @SlotUltimate.started -= instance.OnSlotUltimate;
+            @SlotUltimate.performed -= instance.OnSlotUltimate;
+            @SlotUltimate.canceled -= instance.OnSlotUltimate;
         }
 
         /// <summary>
@@ -1488,6 +1574,20 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
         /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
         /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
         void OnPartySlot8(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "SlotAbility1" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnSlotAbility1(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "SlotUltimate" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnSlotUltimate(InputAction.CallbackContext context);
     }
     /// <summary>
     /// Interface to implement callback methods for all input action callbacks associated with input actions defined by "UI" which allows adding and removing callbacks.

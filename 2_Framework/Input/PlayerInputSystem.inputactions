@@ -176,6 +176,24 @@
                     "processors": "",
                     "interactions": "",
                     "initialStateCheck": false
+                },
+                {
+                    "name": "SlotAbility1",
+                    "type": "Button",
+                    "id": "f1e2d3c4-b5a6-4789-abcd-ef0123456789",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "SlotUltimate",
+                    "type": "Button",
+                    "id": "e1d2c3b4-a596-4789-abcd-ef012345678a",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
                 }
             ],
             "bindings": [
@@ -302,6 +320,17 @@
                 },
                 {
                     "name": "",
+                    "id": "cd333333-3333-4333-8333-333333333333",
+                    "path": "<Keyboard>/space",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Jump",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
                     "id": "2bd08c28-3068-4128-b23c-ad7a67fd1481",
                     "path": "<Gamepad>/buttonSouth",
                     "interactions": "",
@@ -358,7 +387,7 @@
                 {
                     "name": "",
                     "id": "085e0690-7811-4e49-a6a1-394663e4ae44",
-                    "path": "<Keyboard>/space",
+                    "path": "<Keyboard>/shift",
                     "interactions": "",
                     "processors": "",
                     "groups": "",
@@ -392,6 +421,17 @@
                     "name": "",
                     "id": "af2d248a-3ee3-44ba-b0a5-af6ba476012f",
                     "path": "<Keyboard>/e",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Interact",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "cd444444-4444-4444-8444-444444444444",
+                    "path": "<Mouse>/rightButton",
                     "interactions": "",
                     "processors": "",
                     "groups": "",
@@ -457,7 +497,7 @@
                 {
                     "name": "",
                     "id": "839a7a9d-598b-44ee-9933-f4da5fb8f37f",
-                    "path": "<Keyboard>/shift",
+                    "path": "<Keyboard>/x",
                     "interactions": "",
                     "processors": "",
                     "groups": "",
@@ -490,7 +530,7 @@
                 {
                     "name": "",
                     "id": "e25a078b-daf7-4420-8b9a-b5a10db20cb0",
-                    "path": "<Keyboard>/q",
+                    "path": "<Keyboard>/z",
                     "interactions": "",
                     "processors": "",
                     "groups": "",
@@ -512,7 +552,7 @@
                 {
                     "name": "",
                     "id": "08644cf3-dd29-4e2e-9caf-c79d817a8d05",
-                    "path": "<Keyboard>/r",
+                    "path": "<Keyboard>/c",
                     "interactions": "",
                     "processors": "",
                     "groups": "",
@@ -616,6 +656,28 @@
                     "processors": "",
                     "groups": "",
                     "action": "PartySlot8",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "ab111111-1111-4111-8111-111111111111",
+                    "path": "<Keyboard>/q",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "SlotAbility1",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "ab222222-2222-4222-8222-222222222222",
+                    "path": "<Keyboard>/r",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "SlotUltimate",
                     "isComposite": false,
                     "isPartOfComposite": false
                 }

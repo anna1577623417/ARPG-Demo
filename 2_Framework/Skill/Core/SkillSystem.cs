@@ -34,9 +34,10 @@ public static class SkillSystem
             return player.AllowMovesetFallbackAfterMissingSkillBindings();
         }
 
-        if (intent.Kind == GameplayIntentKind.LightAttack && runtime.Data != null &&
-            runtime.Data.comboChain != null && runtime.Data.comboChain.Length > 0 &&
-            runtime.IsComboExpired())
+        if ((intent.Kind == GameplayIntentKind.LightAttack || intent.Kind == GameplayIntentKind.CastAbility1)
+            && runtime.Data != null
+            && runtime.Data.comboChain != null && runtime.Data.comboChain.Length > 0
+            && runtime.IsComboExpired())
         {
             runtime.ResetCombo();
         }
@@ -44,6 +45,7 @@ public static class SkillSystem
         var rootData = runtime.Data;
 
         var chargeHoldSeconds = intent.Kind == GameplayIntentKind.HeavyAttack
+            || intent.Kind == GameplayIntentKind.CastUltimate
             ? intent.SecondaryHoldDurationSeconds
             : intent.PrimaryHoldDurationSeconds;
 
@@ -177,6 +179,12 @@ public static class SkillSystem
                 return true;
             case GameplayIntentKind.SwordDash:
                 slot = SkillSlotType.Ability2;
+                return true;
+            case GameplayIntentKind.CastAbility1:
+                slot = SkillSlotType.Ability1;
+                return true;
+            case GameplayIntentKind.CastUltimate:
+                slot = SkillSlotType.Ultimate;
                 return true;
             default:
                 slot = default;

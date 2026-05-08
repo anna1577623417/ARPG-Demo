@@ -8,6 +8,7 @@
 ///   HeavyAttack   → PlayerActionState
 ///   Dodge         → PlayerActionState
 ///   SwordDash     → PlayerActionState
+///   CastAbility1 / CastUltimate → PlayerActionState（技能管线注入 Action）
 /// </summary>
 public static class IntentRouter
 {
@@ -20,6 +21,8 @@ public static class IntentRouter
             case GameplayIntentKind.HeavyAttack:
             case GameplayIntentKind.Dodge:
             case GameplayIntentKind.SwordDash:
+            case GameplayIntentKind.CastAbility1:
+            case GameplayIntentKind.CastUltimate:
                 return true;
             default:
                 return false;
@@ -39,6 +42,8 @@ public static class IntentRouter
             case GameplayIntentKind.HeavyAttack:
             case GameplayIntentKind.Dodge:
             case GameplayIntentKind.SwordDash:
+            case GameplayIntentKind.CastAbility1:
+            case GameplayIntentKind.CastUltimate:
                 player.ArmPendingAction(intent.Kind, ResolveActionData(player, in intent));
                 if (forceActionReentry)
                 {

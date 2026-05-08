@@ -22,4 +22,10 @@ public enum EntityCapabilityTag : ulong
     CanCancelToLocomotion = 1UL << 4,
 
     CanSwordDash = 1UL << 5,
+
+    /// <summary>Ability1 槽技能（与 Loadout <see cref="SkillSlotType.Ability1"/> 对齐）。</summary>
+    CanCastAbility1 = 1UL << 6,
+
+    /// <summary>Ultimate 槽技能。</summary>
+    CanCastUltimate = 1UL << 7,
 }

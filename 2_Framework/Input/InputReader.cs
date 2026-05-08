@@ -138,6 +138,30 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
         return true;
     }
 
+    /// <summary>离散脉冲：<see cref="SkillSlotType.Ability1"/>（默认键盘 Q）。</summary>
+    public bool ConsumeSlotAbility1Pressed()
+    {
+        if (!_slotAbility1PressedPulse)
+        {
+            return false;
+        }
+
+        _slotAbility1PressedPulse = false;
+        return true;
+    }
+
+    /// <summary>离散脉冲：<see cref="SkillSlotType.Ultimate"/>（默认键盘 R）。</summary>
+    public bool ConsumeSlotUltimatePressed()
+    {
+        if (!_slotUltimatePressedPulse)
+        {
+            return false;
+        }
+
+        _slotUltimatePressedPulse = false;
+        return true;
+    }
+
     /// <summary>当前输入焦点模式。</summary>
     public InputFocusMode CurrentFocus => _currentFocus;
 
@@ -148,11 +172,11 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
     //
     // 以下功能需要在 Unity 编辑器中的 .inputactions 文件中手动添加：
     //
-    // 【GamePlay ActionMap】
-    //   1. "Sprint"  — 离散「剑冲」；键盘 Shift + 手柄 LB（见 .inputactions）
-    //   2. "Jump"    — 键盘 F；手柄 South
-    //   3. "Dodge"  — 键盘 Space；手柄 East
-    //   4. "SwitchCamera" — <Keyboard>/v
+    // 【GamePlay ActionMap】（默认键盘 — 见 PlayerInputSystem.inputactions，可用 RebindManager 改绑）
+    //   Attack → Primary（轻击）；Interact(+RMB) → Secondary（重击）
+    //   SlotAbility1（Ability1 槽）、SlotUltimate（Ultimate 槽）
+    //   Dodge → Shift；Sprint →「剑冲」Ability2 槽（键盘 X / 手柄 LB）；Jump → Space（兼 F）
+    //   PartyNext / PartyPrev → Z / C；Interact 对话拾取仍可用 E
     //
     // 添加后 Unity 会自动重新生成 PlayerInputSystem.cs，届时：
     //   - IGamePlayActions 接口会新增 OnSprint / OnSwitchCamera 方法
@@ -170,6 +194,87 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
 
     private bool _partyNextPulse;
     private bool _partyPrevPulse;
+    private bool _slotAbility1PressedPulse;
+    private bool _slotUltimatePressedPulse;
+
+    // ═══ v4.4：Slot-Based 统一脉冲 + 持续按住状态 ═══════════════════════════════
+    // 设计：物理 InputAction 的回调"双写"——既保留旧 pulse（向后兼容），也写入按 SkillSlotType
+    // 索引的统一表，使 PlayerController 可按 slot 循环派发，不再硬编码 SwordDash/Dodge。
+    //
+    // 槽位维度（与 SkillSlotType enum 严格对齐，0..6 共 7 槽）：
+    //   [0] Primary    ← LM (Attack action)        蓄力可读 PrimaryHoldDuration
+    //   [1] Secondary  ← RM (Interact-as-Secondary 或新增 InputAction)
+    //   [2] Ability1   ← Q  (SlotAbility1 action)
+    //   [3] Ability2   ← Shift (Sprint action)     ← 历史名"Sprint"，语义为 Ability2 槽
+    //   [4] Dodge      ← Dodge action              （可在 .inputactions 中拆出独立键，或并入其它槽）
+    //   [5] Ultimate   ← R  (SlotUltimate action)
+    //   [6] Jump       ← Space (Jump action)
+    private const int SkillSlotCount = 7;
+    private readonly bool[] _slotPressedPulses = new bool[SkillSlotCount];
+    private readonly bool[] _slotHeld = new bool[SkillSlotCount];
+    private readonly float[] _slotHeldStartTime = new float[SkillSlotCount];
+
+    /// <summary>消费指定槽位的"按下"脉冲（与既有 ConsumeXxxPressed 一致语义）。</summary>
+    public bool ConsumeSkillSlotPressed(SkillSlotType slot)
+    {
+        var idx = (int)slot;
+        if ((uint)idx >= SkillSlotCount) return false;
+        if (!_slotPressedPulses[idx]) return false;
+        _slotPressedPulses[idx] = false;
+        return true;
+    }
+
+    /// <summary>消费"按下"脉冲并附带按住时长（用于蓄力/长按）。Primary 长按场景常用。</summary>
+    public bool ConsumeSkillSlotPressed(SkillSlotType slot, out float holdDurationSeconds)
+    {
+        holdDurationSeconds = 0f;
+        var idx = (int)slot;
+        if ((uint)idx >= SkillSlotCount) return false;
+        if (!_slotPressedPulses[idx]) return false;
+        _slotPressedPulses[idx] = false;
+        // 注：此处返回的是"截至本帧的累积按住时长"。若按下即松开（短点），返回 ~0。
+        // 真正的"松手时拿到完整时长"用法见 PrimaryAttackPressTracker（基于 Held + 时间戳）。
+        if (_slotHeldStartTime[idx] > 0f)
+        {
+            holdDurationSeconds = Mathf.Max(0f, Time.time - _slotHeldStartTime[idx]);
+        }
+        return true;
+    }
+
+    /// <summary>该槽位当前是否被按住（用于轮询）。</summary>
+    public bool IsSkillSlotHeld(SkillSlotType slot)
+    {
+        var idx = (int)slot;
+        if ((uint)idx >= SkillSlotCount) return false;
+        return _slotHeld[idx];
+    }
+
+    /// <summary>该槽位已按住的时长（秒）。未按住返回 0。</summary>
+    public float GetSkillSlotHoldDuration(SkillSlotType slot)
+    {
+        var idx = (int)slot;
+        if ((uint)idx >= SkillSlotCount) return 0f;
+        if (!_slotHeld[idx] || _slotHeldStartTime[idx] <= 0f) return 0f;
+        return Mathf.Max(0f, Time.time - _slotHeldStartTime[idx]);
+    }
+
+    /// <summary>底层共用：物理回调收到 started/canceled 时双写到 slot 表。</summary>
+    private void WriteSlotEdge(SkillSlotType slot, bool pressed)
+    {
+        var idx = (int)slot;
+        if ((uint)idx >= SkillSlotCount) return;
+        if (pressed)
+        {
+            _slotPressedPulses[idx] = true;
+            _slotHeld[idx] = true;
+            _slotHeldStartTime[idx] = Time.time;
+        }
+        else
+        {
+            _slotHeld[idx] = false;
+            _slotHeldStartTime[idx] = 0f;
+        }
+    }
 
     /// <summary>-1 表示无；否则为 0～7 的队伍槽索引。</summary>
     private int _partySlotPulseIndex = -1;
@@ -328,6 +433,14 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
         _partyNextPulse = false;
         _partyPrevPulse = false;
         _partySlotPulseIndex = -1;
+        _slotAbility1PressedPulse = false;
+        _slotUltimatePressedPulse = false;
+        for (var i = 0; i < SkillSlotCount; i++)
+        {
+            _slotPressedPulses[i] = false;
+            _slotHeld[i] = false;
+            _slotHeldStartTime[i] = 0f;
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -372,10 +485,12 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
         {
             IsJumpHeld = true;
             _jumpPressedPulse = true;
+            WriteSlotEdge(SkillSlotType.Jump, pressed: true);   // ★ v4.4 双写
         }
         else if (context.canceled)
         {
             IsJumpHeld = false;
+            WriteSlotEdge(SkillSlotType.Jump, pressed: false);
         }
     }
 
@@ -387,10 +502,12 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
         if (context.started)
         {
             IsAttackHeld = true;
+            WriteSlotEdge(SkillSlotType.Primary, pressed: true);   // ★ v4.4 双写：LM = Primary 槽
         }
         else if (context.canceled)
         {
             IsAttackHeld = false;
+            WriteSlotEdge(SkillSlotType.Primary, pressed: false);
         }
     }
 
@@ -403,6 +520,11 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
         if (context.performed)
         {
             _dodgePressedPulse = true;
+            WriteSlotEdge(SkillSlotType.Dodge, pressed: true);   // ★ v4.4 双写：Dodge 槽（可由 Loadout 重定向）
+        }
+        else if (context.canceled)
+        {
+            WriteSlotEdge(SkillSlotType.Dodge, pressed: false);
         }
     }
 
@@ -439,13 +561,20 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
     }
 
     /// <summary>
-    /// Sprint 在输入资产中保留名称，语义为离散「剑道冲刺」，不再驱动连续跑步。
+    /// Sprint InputAction（默认 Shift）映射到 <see cref="SkillSlotType.Ability2"/> 槽位。
+    /// 语义由 Loadout 决定（默认绑剑冲，但可换成任意技能）；InputReader 不再写死"剑冲"。
+    /// 旧 ConsumeSwordDashPressed 仍保留为兼容期 API。
     /// </summary>
     public void OnSprint(InputAction.CallbackContext context)
     {
         if (context.performed)
         {
             _swordDashPressedPulse = true;
+            WriteSlotEdge(SkillSlotType.Ability2, pressed: true);   // ★ v4.4 双写：Shift = Ability2 槽
+        }
+        else if (context.canceled)
+        {
+            WriteSlotEdge(SkillSlotType.Ability2, pressed: false);
         }
     }
     public void OnSwitchCamera(InputAction.CallbackContext context)
@@ -510,6 +639,32 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
     public void OnPartySlot8(InputAction.CallbackContext context)
     {
         if (context.performed) QueuePartySlot(7);
+    }
+
+    public void OnSlotAbility1(InputAction.CallbackContext context)
+    {
+        if (context.performed)
+        {
+            _slotAbility1PressedPulse = true;
+            WriteSlotEdge(SkillSlotType.Ability1, pressed: true);   // ★ v4.4 双写
+        }
+        else if (context.canceled)
+        {
+            WriteSlotEdge(SkillSlotType.Ability1, pressed: false);
+        }
+    }
+
+    public void OnSlotUltimate(InputAction.CallbackContext context)
+    {
+        if (context.performed)
+        {
+            _slotUltimatePressedPulse = true;
+            WriteSlotEdge(SkillSlotType.Ultimate, pressed: true);   // ★ v4.4 双写
+        }
+        else if (context.canceled)
+        {
+            WriteSlotEdge(SkillSlotType.Ultimate, pressed: false);
+        }
     }
 
     private void QueuePartySlot(int slotIndex0Based)
