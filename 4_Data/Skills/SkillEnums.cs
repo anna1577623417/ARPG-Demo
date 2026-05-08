@@ -38,15 +38,18 @@ public enum StageTransitionType : byte
 }
 
 /// <summary>技能机制位标签。</summary>
+/// <remarks>
+/// 必须使用 int 作为底层类型：Unity 序列化/Inspector 不支持 ulong 枚举（会报 Unsupported enum type）。
+/// </remarks>
 [Flags]
-public enum SkillTrait : ulong
+public enum SkillTrait
 {
     None = 0,
-    ResetCooldownOnKill = 1UL << 0,
-    IgnoreDefense = 1UL << 1,
-    Unstoppable = 1UL << 2,
-    RefundCostOnMiss = 1UL << 3,
-    ScaleWithAttackSpeed = 1UL << 4,
+    ResetCooldownOnKill = 1 << 0,
+    IgnoreDefense = 1 << 1,
+    Unstoppable = 1 << 2,
+    RefundCostOnMiss = 1 << 3,
+    ScaleWithAttackSpeed = 1 << 4,
 }
 
 /// <summary>资源消耗条目。</summary>

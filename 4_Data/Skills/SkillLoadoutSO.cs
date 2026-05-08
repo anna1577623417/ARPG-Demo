@@ -11,6 +11,9 @@ public class SkillLoadoutSO : ScriptableObject
     {
         public SkillSlotType slot;
         public SkillDataSO skill;
+
+        [Tooltip("HUD 按键提示（纯展示）。应与 Input Actions / Rebind 一致，例如 LMB、RMB、Shift。")]
+        public string hudKeyLabel;
     }
 
     public SlotBinding[] bindings;

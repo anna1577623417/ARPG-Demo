@@ -1,0 +1,601 @@
+01-performance-zero-gc.mdc
+
+---
+
+description: ARPG performance and zero-gc rules
+alwaysApply: true
+
+ARPG Performance & Zero-GC Rule
+
+ARPG 性能与运行时稳定性宪法
+
+目标：
+
+- 稳定帧时间
+- 零 GC Spike
+- 可预测 Tick 成本
+- 高并发稳定运行
+- Runtime 可观测
+- 长时间运行稳定
+
+性能目标不仅是：
+
+- “没有 GC”
+
+还包括：
+
+- Tick 稳定
+- Cache 友好
+- 调度稳定
+- 生命周期稳定
+- 批量化
+- 数据局部性
+- 大规模实体稳定性
+
+---
+
+1. 核心性能原则
+
+1.1 帧稳定性优先
+
+优先级：
+
+稳定帧时间 > 平均 FPS。
+
+禁止：
+
+- 周期性卡顿
+- GC Spike
+- Tick 峰值爆炸
+- 瞬时大量分配
+
+目标：
+
+Frame Time 稳定可预测。
+
+---
+
+1.2 热路径必须可预测
+
+热路径包括：
+
+- Update
+- FixedUpdate
+- Tick
+- Combat Loop
+- Physics Query
+- AI Tick
+- Animation Tick
+- Projectile Loop
+
+热路径必须：
+
+- 无 GC
+- 无动态分配
+- 无不可预测复杂度
+- 无隐藏系统调用
+
+---
+
+1.3 性能优先于理论优雅
+
+商业级 ARPG 中：
+
+稳定性 > 理论优雅。
+
+热路径允许：
+
+- 直接引用
+- 扁平逻辑
+- 显式流程
+- 轻度重复代码
+
+禁止：
+
+- 为优雅增加调用层级
+- 为抽象增加 Tick 成本
+- 为通用性增加 Runtime 开销
+
+---
+
+2. Zero-GC 强制规则
+
+2.1 热路径禁止 GC Alloc
+
+以下区域禁止任何 GC：
+
+- Update
+- FixedUpdate
+- 高频 Tick
+- Combat Pipeline
+- Projectile Loop
+- Animation Tick
+- AI Loop
+
+禁止：
+
+- new
+- boxing
+- 闭包
+- Lambda Capture
+- Delegate Alloc
+- 非缓存 Enumerator
+- Runtime String Alloc
+
+---
+
+2.2 LINQ 禁止
+
+热路径禁止：
+
+- LINQ
+- ToList
+- OrderBy
+- Select
+- Where
+- FirstOrDefault
+
+统一使用：
+
+- for
+- Cached Array
+- Preallocated Buffer
+
+---
+
+2.3 foreach 使用限制
+
+禁止：
+
+- 未知 Enumerator foreach
+- Interface Enumerator
+- Runtime Alloc Enumerator
+
+允许：
+
+- 已确认无 Alloc 的 Native 容器
+
+默认：
+
+优先 for。
+
+---
+
+2.4 字符串分配限制
+
+禁止：
+
+- 高频 string 拼接
+- Debug 字符串动态构建
+- Runtime Format
+
+禁止：
+
+string + string
+$"{value}"
+
+热路径必须：
+
+- Cached String
+- StringBuilder Pool
+- Conditional Debug
+
+---
+
+3. Object Pool 强制规则
+
+以下对象必须对象池化：
+
+- Projectile
+- Hit Effect
+- VFX
+- Damage Number
+- UI Floating Text
+- 临时碰撞体
+- Runtime Indicator
+- Audio Emitter
+
+禁止：
+
+Instantiate / Destroy 高频调用。
+
+---
+
+3.1 Pool 生命周期必须明确
+
+必须明确：
+
+- Spawn
+- Active
+- Return
+- Reset
+- Reuse
+
+禁止：
+
+- 脏状态复用
+- 未 Reset 的对象重新激活
+
+---
+
+3.2 Pool Reset 必须完整
+
+必须重置：
+
+- 状态
+- Timer
+- 引用
+- Runtime Flag
+- 粒子状态
+- Timeline 状态
+
+---
+
+4. Tick System 规则
+
+4.1 避免大量 MonoBehaviour.Update
+
+禁止：
+
+数百个 MonoBehaviour 分散调度。
+
+优先：
+
+- Central Tick
+- Tick Manager
+- Batch Update
+- Group Tick
+
+---
+
+4.2 Tick 必须可分级
+
+系统必须支持：
+
+- 高频 Tick
+- 低频 Tick
+- 条件 Tick
+- 可暂停 Tick
+
+避免：
+
+所有系统每帧运行。
+
+---
+
+4.3 Tick 必须可观测
+
+必须支持：
+
+- Tick Profiling
+- Tick Cost Tracking
+- Runtime Timing
+
+能够定位：
+
+- 哪个系统耗时
+- 哪个 Tick 峰值异常
+
+---
+
+5. Cache 与数据局部性
+
+5.1 高频引用必须缓存
+
+必须缓存：
+
+- Transform
+- Animator
+- Collider
+- Rigidbody
+- CharacterController
+- Camera.main
+- WaitForSeconds
+
+禁止：
+
+热路径重复获取组件。
+
+---
+
+5.2 避免深层引用链
+
+禁止：
+
+Player.Combat.Runtime.Target.Transform.Position
+
+优先：
+
+局部缓存。
+
+---
+
+5.3 数据局部性优先
+
+优先：
+
+- 连续数组
+- 扁平数据
+- Struct
+- Sequential Access
+
+避免：
+
+- 高频随机访问
+- 深层对象嵌套
+- 链式调用
+
+---
+
+6. Struct 与内存规则
+
+6.1 高频数据必须 Struct 化
+
+以下数据优先 Struct：
+
+- Snapshot
+- InputFrame
+- HitResult
+- MotionState
+- DamageContext
+- BuffContext
+
+---
+
+6.2 避免高频 Class 创建
+
+禁止：
+
+高频 Runtime 临时 Class。
+
+---
+
+6.3 避免隐藏装箱
+
+禁止：
+
+- Interface Boxing
+- Enum Boxing
+- object 参数
+- 非泛型集合
+
+---
+
+7. Physics 与碰撞规则
+
+7.1 高频 Physics Query 必须 NonAlloc
+
+必须使用：
+
+- OverlapSphereNonAlloc
+- RaycastNonAlloc
+- CapsuleCastNonAlloc
+
+禁止：
+
+Alloc Physics Query。
+
+---
+
+7.2 避免无意义 Physics Tick
+
+禁止：
+
+- 无目标持续检测
+- 无条件 Physics Query
+- 大范围无过滤扫描
+
+必须：
+
+- LayerMask
+- 距离过滤
+- Tick 分级
+
+---
+
+8. Animator 与动画性能
+
+8.1 Animator 不得驱动核心 Gameplay
+
+Animator 只负责：
+
+- 表现
+- 混合
+- 播放
+
+禁止：
+
+Animator 驱动：
+
+- Damage
+- Combat Logic
+- 状态机
+
+---
+
+8.2 Animation Event 使用限制
+
+Animation Event 只能用于：
+
+- SFX
+- VFX
+- 轻量表现
+
+禁止：
+
+- 核心战斗逻辑
+- Buff
+- Damage
+- 状态切换
+
+---
+
+8.3 避免 Animator 参数爆炸
+
+禁止：
+
+大量 Bool / Trigger。
+
+优先：
+
+- Hash Cache
+- 扁平参数
+- 状态驱动
+
+---
+
+9. Debug 与性能观测
+
+9.1 Debug 必须可关闭
+
+高频 Debug：
+
+必须支持：
+
+- Compile Flag
+- Runtime Toggle
+- Conditional Log
+
+禁止：
+
+正式环境高频 Debug.Log。
+
+---
+
+9.2 必须支持 Runtime 性能观测
+
+必须能够观察：
+
+- Tick Cost
+- GC Alloc
+- Physics Cost
+- Animation Cost
+- Combat Cost
+
+---
+
+9.3 性能问题优先 Runtime 分析
+
+禁止：
+
+理论猜测优化。
+
+必须：
+
+- Profiler
+- Runtime Timing
+- Memory Analysis
+- Allocation Tracking
+
+---
+
+10. 大规模实体稳定性
+
+10.1 所有系统必须考虑规模化
+
+新增系统必须考虑：
+
+- 100+ Enemy
+- 500+ Projectile
+- 大量 Buff
+- 高频 Hit Detection
+
+---
+
+10.2 禁止线性爆炸
+
+避免：
+
+O(n²)
+
+必须考虑：
+
+- 批量化
+- 分区
+- Tick 分级
+- 空间过滤
+
+---
+
+11. AI 行为性能限制
+
+11.1 禁止“高级感性能杀手”
+
+禁止：
+
+- 为优雅增加层级
+- 为抽象增加虚调用
+- 为泛化增加 Runtime 成本
+
+---
+
+11.2 不允许无意义框架化
+
+禁止：
+
+- 单技能大型框架
+- 一次性逻辑配置化
+- 不必要 ScriptableObject
+
+---
+
+11.3 性能优先于炫技
+
+目标：
+
+- 稳定
+- 可预测
+- 可维护
+
+不是：
+
+- 架构炫技
+- 设计模式堆叠
+
+---
+
+12. 功能交付必须输出
+
+每次实现后必须说明：
+
+功能：
+Tick 影响：
+GC 风险：
+Physics 成本：
+Animation 成本：
+压力测试方式：
+最大实体规模：
+已知限制：
+
+---
+
+最终原则
+
+商业级 ARPG 性能核心：
+
+不是：
+
+“平均 FPS 很高”
+
+而是：
+
+- 帧时间稳定
+- Tick 成本可预测
+- 无 GC Spike
+- 大规模实体稳定
+- Runtime 可观测
+- 长时间运行稳定
+
+任何系统都必须回答：
+
+- 是否产生 GC？
+- Tick 成本是多少？
+- 是否可批量化？
+- 是否支持规模化？
+- 是否可观测？
+- 是否存在峰值风险？
+- 是否影响帧稳定？
+
+如果回答不清：
+
+说明设计存在性能风险。

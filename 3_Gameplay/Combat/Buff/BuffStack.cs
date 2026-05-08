@@ -8,10 +8,40 @@ public sealed class BuffStack : IBuffStack
     int _nextId = 1;
     public event Action<BuffInstance> OnPeriodElapsed;
     public event Action<BuffInstance> OnExpired;
+    public event Action<BuffInstance> OnApplied;
+    public event Action<BuffInstance> OnRemoved;
+    public event Action<BuffDefinitionSO, int> OnStackChanged;
+
+    public int ActiveInstanceCount => _instances.Count;
 
     public BuffStack(IStatSet stats)
     {
         _stats = stats;
+    }
+
+    public BuffInstance GetActiveInstanceAt(int index)
+    {
+        if (index < 0 || index >= _instances.Count)
+        {
+            return default;
+        }
+
+        return _instances[index];
+    }
+
+    public bool TryGetInstance(int runtimeId, out BuffInstance instance)
+    {
+        for (var i = 0; i < _instances.Count; i++)
+        {
+            if (_instances[i].RuntimeId == runtimeId)
+            {
+                instance = _instances[i];
+                return true;
+            }
+        }
+
+        instance = default;
+        return false;
     }
 
     public BuffInstance Apply(BuffDefinitionSO def, object source)
@@ -40,6 +70,12 @@ public sealed class BuffStack : IBuffStack
         }
 
         _instances.Add(instance);
+        OnApplied?.Invoke(instance);
+        if (def != null)
+        {
+            OnStackChanged?.Invoke(def, Count(def));
+        }
+
         return instance;
     }
 
@@ -54,6 +90,12 @@ public sealed class BuffStack : IBuffStack
         var removed = _instances[idx];
         _instances.RemoveAt(idx);
         _stats?.RemoveAllModifiersFromSource(removed);
+        OnRemoved?.Invoke(removed);
+        if (removed.Definition != null)
+        {
+            OnStackChanged?.Invoke(removed.Definition, Count(removed.Definition));
+        }
+
         return true;
     }
 

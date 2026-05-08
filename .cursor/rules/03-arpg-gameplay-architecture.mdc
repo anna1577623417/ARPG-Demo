@@ -1,0 +1,672 @@
+03-arpg-gameplay-architecture.mdc
+
+---
+
+description: ARPG gameplay architecture and combat framework rules
+alwaysApply: true
+
+ARPG Gameplay Architecture Rule
+
+ARPG Gameplay 架构宪法
+
+目标：
+
+- 时序稳定
+- 战斗可控
+- 状态唯一真源
+- 表现层隔离
+- Runtime 可观测
+- 长期可扩展
+- 大规模内容可维护
+
+ARPG 核心不是：
+
+“技能能放”
+
+而是：
+
+- 状态稳定
+- 时序稳定
+- Cancel 正确
+- Combo 正确
+- HitStop 正确
+- 多系统协作稳定
+
+---
+
+1. Gameplay 核心原则
+
+1.1 ARPG 本质是时序游戏
+
+必须优先保证：
+
+- Frame 一致性
+- 输入响应一致
+- Combo Window 正确
+- Cancel Window 正确
+- Timeline 正确
+- RootMotion 时序正确
+- Buff 生效顺序正确
+
+禁止：
+
+- 不可预测状态变化
+- 多系统争夺控制权
+- Timeline 不一致
+
+---
+
+1.2 状态必须唯一真源
+
+必须：
+
+Input
+→ Gameplay
+→ Presentation
+
+禁止：
+
+Animation
+→ Gameplay
+
+UI
+→ Gameplay
+
+VFX
+→ Gameplay
+
+---
+
+1.3 Gameplay 必须脱离表现层运行
+
+必须支持：
+
+- 无动画运行
+- 无特效运行
+- 无 UI 运行
+
+因为：
+
+- Dedicated Server
+- Replay
+- 自动化测试
+- Combat Verification
+
+都依赖这一点。
+
+---
+
+2. StateMachine Rule
+
+2.1 状态机必须是唯一真源
+
+状态只能由：
+
+- Gameplay StateMachine
+
+决定。
+
+禁止：
+
+- Animator 修改核心状态
+- Buff 直接篡改状态
+- UI 修改状态
+- 多系统同时改状态
+
+---
+
+2.2 状态切换必须明确
+
+必须明确：
+
+- PreviousState
+- NextState
+- Transition Condition
+- Timeline 时机
+- Interrupt Source
+
+禁止：
+
+- 隐式切换
+- 黑盒切换
+- 无来源切换
+
+---
+
+2.3 状态机必须可中断
+
+必须支持：
+
+- Interrupt
+- Priority
+- Cancel Window
+- Buffered Input
+
+---
+
+2.4 状态机禁止深层耦合
+
+禁止：
+
+StateA 硬编码控制 StateB。
+
+优先：
+
+- Transition Rule
+- Shared Context
+- Explicit Condition
+
+---
+
+3. Skill System Rule
+
+3.1 技能必须行为分层
+
+技能必须拆分：
+
+- SkillDefinition
+- SkillRuntime
+- SkillExecution
+- SkillEffect
+- SkillTimeline
+
+禁止：
+
+一个 Skill 类处理全部逻辑。
+
+---
+
+3.2 SkillDefinition 必须静态化
+
+SkillDefinition 只允许：
+
+- 配置
+- 参数
+- Timeline 数据
+- 数值
+
+禁止：
+
+- Runtime 状态
+- 临时数据
+- 动态引用
+
+---
+
+3.3 SkillRuntime 必须短生命周期
+
+SkillRuntime：
+
+- 只存在于技能执行期间
+- 必须支持复用
+- 必须支持回收
+
+禁止：
+
+长期残留 Runtime 状态。
+
+---
+
+3.4 技能逻辑禁止直连表现层
+
+禁止：
+
+Skill
+→ UI
+
+Skill
+→ VFX
+
+Skill
+→ Animator
+
+优先：
+
+Gameplay Event
+→ Presentation Layer
+
+---
+
+3.5 技能必须支持时序控制
+
+必须支持：
+
+- Cast
+- Startup
+- Active
+- Recovery
+- Cancel
+- Interrupt
+- HitStop
+
+---
+
+4. Combat Pipeline Rule
+
+4.1 Combat Pipeline 必须固定
+
+推荐流程：
+
+Input
+→ Validation
+→ Cost
+→ Skill Start
+→ Timeline
+→ Hit Detection
+→ Damage
+→ Buff
+→ Gameplay Result
+→ Presentation
+
+禁止：
+
+跳步骤。
+
+---
+
+4.2 Damage 必须 Pipeline 化
+
+禁止：
+
+直接修改 HP。
+
+必须：
+
+DamageContext
+→ Modifier
+→ Resistance
+→ Shield
+→ FinalDamage
+
+---
+
+4.3 Damage 来源必须明确
+
+必须记录：
+
+- Source Entity
+- SkillId
+- DamageType
+- HitDirection
+- Frame
+
+---
+
+4.4 HitStop 必须统一管理
+
+禁止：
+
+多个系统独立暂停时间。
+
+必须：
+
+统一 HitStop Controller。
+
+---
+
+5. Buff System Rule
+
+5.1 Buff 必须独立于 Skill
+
+Skill 负责：
+
+Apply Buff。
+
+Buff 自己负责：
+
+- 生命周期
+- Tick
+- Stack
+- Expire
+
+---
+
+5.2 Buff 禁止直接篡改底层系统
+
+禁止：
+
+Buff 直接修改：
+
+- StateMachine
+- Physics
+- Animator
+
+优先：
+
+Gameplay Tag
+Modifier
+Shared State
+
+---
+
+5.3 Buff 必须支持来源追踪
+
+必须记录：
+
+- Source
+- Stack Source
+- Apply Reason
+- Remove Reason
+
+---
+
+6. Input System Rule
+
+6.1 Input 必须与 Gameplay 解耦
+
+Input 只负责：
+
+- Intent
+
+Gameplay 决定：
+
+- 是否执行
+- 是否允许
+- 当前状态是否合法
+
+---
+
+6.2 必须支持 Input Buffer
+
+ARPG 必须支持：
+
+- Input Buffer
+- Queue
+- Buffered Combo
+
+---
+
+6.3 禁止 Input 直接驱动动画
+
+禁止：
+
+Input
+→ Animator
+
+必须：
+
+Input
+→ Gameplay
+→ Presentation
+
+---
+
+7. Animation Architecture Rule
+
+7.1 Animator 不得成为核心逻辑层
+
+Animator 只负责：
+
+- 播放
+- 混合
+- 表现
+
+禁止：
+
+- Animator 决定 Damage
+- Animator 决定 Gameplay
+- Animator 决定状态
+
+---
+
+7.2 Animation Event 使用限制
+
+Animation Event 只能用于：
+
+- SFX
+- VFX
+- Camera Shake
+
+禁止：
+
+- Damage
+- Buff
+- Gameplay State
+- Skill Validation
+
+---
+
+7.3 RootMotion 必须 Gameplay 控制
+
+Gameplay 决定：
+
+- 是否允许 RootMotion
+- RootMotion 权重
+- RootMotion 生命周期
+
+禁止：
+
+Animator 完全控制位移。
+
+---
+
+8. Movement & KCC Rule
+
+8.1 Movement 必须独立于 Combat
+
+MovementSystem 不处理：
+
+- Damage
+- Buff
+- Skill
+
+CombatSystem 不处理：
+
+- Grounding
+- Step
+- Slope Solve
+
+---
+
+8.2 KCC 必须稳定优先
+
+优先：
+
+- 稳定
+- 可预测
+- 无抖动
+- 可 Debug
+
+不是：
+
+理论最优解。
+
+---
+
+8.3 Ground State 必须唯一
+
+禁止：
+
+多个系统同时判断：
+
+- Grounded
+- Airborne
+- Falling
+
+---
+
+9. Gameplay Event Rule
+
+9.1 Gameplay Event 必须单向流动
+
+Gameplay
+→ Event
+→ Presentation
+
+禁止：
+
+Presentation
+→ Gameplay
+
+---
+
+9.2 Event 必须轻量
+
+禁止：
+
+Event 中执行重逻辑。
+
+Event 只负责：
+
+- 通知
+- 广播
+- 状态同步
+
+---
+
+10. AI Gameplay Rule
+
+10.1 AI 必须使用统一 Gameplay Pipeline
+
+AI 与 Player：
+
+必须走相同：
+
+- Combat Pipeline
+- Damage Pipeline
+- Buff Pipeline
+
+禁止：
+
+AI 特殊作弊逻辑污染主系统。
+
+---
+
+10.2 AI 决策必须可中断
+
+必须支持：
+
+- Threat Change
+- Hit React
+- Interrupt
+- Priority Override
+
+---
+
+11. Gameplay 数据规则
+
+11.1 Runtime 数据必须集中管理
+
+禁止：
+
+到处散落 Runtime 状态。
+
+必须明确：
+
+- 数据拥有者
+- 生命周期
+- 修改入口
+
+---
+
+11.2 ScriptableObject 仅用于静态配置
+
+SO 只允许：
+
+- Skill Config
+- Buff Config
+- Timeline Config
+
+禁止：
+
+Runtime 状态。
+
+---
+
+12. 表现层隔离
+
+12.1 表现层不得反向驱动 Gameplay
+
+禁止：
+
+- UI 改状态
+- 特效改伤害
+- 动画改 Combat
+
+---
+
+12.2 Gameplay 必须可 Headless
+
+必须支持：
+
+- 无 UI
+- 无 Animator
+- 无 VFX
+
+仍可运行完整战斗。
+
+---
+
+13. Gameplay Debug Rule
+
+13.1 所有核心系统必须可观测
+
+必须支持：
+
+- 状态追踪
+- Timeline
+- Damage Trace
+- Buff Trace
+- Hit Trace
+
+---
+
+13.2 Gameplay 必须支持 Runtime Debug
+
+必须能观察：
+
+- 当前 State
+- 当前 Skill
+- 当前 Timeline
+- 当前 Buff
+- 当前 Velocity
+- 当前 RootMotion
+
+---
+
+14. AI 行为约束
+
+14.1 禁止伪 Gameplay 架构
+
+禁止：
+
+- 为单技能建立大型框架
+- 为不存在需求过度抽象
+- 过度配置化
+
+---
+
+14.2 Gameplay 稳定性优先
+
+优先：
+
+- Runtime 稳定
+- 时序稳定
+- 生命周期稳定
+
+不是：
+
+- 理论优雅
+- 模式炫技
+
+---
+
+15. 功能交付必须输出
+
+每次功能完成后必须说明：
+
+Gameplay 影响：
+StateMachine 影响：
+Timeline 影响：
+Buff 影响：
+Animation 影响：
+Tick 成本：
+GC 风险：
+验证方式：
+压力测试：
+
+---
+
+最终原则
+
+商业级 ARPG Gameplay 

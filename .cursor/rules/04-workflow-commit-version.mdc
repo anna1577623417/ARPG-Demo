@@ -1,0 +1,442 @@
+04-workflow-versioning.mdc
+
+---
+
+description: ARPG workflow, delivery, commit and versioning rules
+alwaysApply: true
+
+ARPG Workflow & Versioning Rule
+
+ARPG 工作流与版本管理宪法
+
+目标：
+
+- 长期可维护
+- 提交历史清晰
+- 版本可追踪
+- Runtime 问题可回溯
+- AI 输出统一
+- 降低维护成本
+- 降低 Token 消耗
+
+原则：
+
+Commit 与 Version 不只是记录。
+
+而是：
+
+- Debug 时间线
+- 功能演化历史
+- 性能变化追踪
+- 架构变更记录
+
+---
+
+1. 工作流核心原则
+
+1.1 每次任务必须可追踪
+
+每次修改必须明确：
+
+- 修改目标
+- 修改系统
+- Runtime 影响
+- 性能影响
+- 风险点
+
+禁止：
+
+“黑盒式开发”。
+
+---
+
+1.2 功能必须阶段化
+
+大型功能必须拆阶段：
+
+- Core
+- Runtime
+- Validation
+- Polish
+
+禁止：
+
+一次提交超大系统。
+
+---
+
+1.3 必须保持小步提交
+
+优先：
+
+- 小 Commit
+- 单一职责 Commit
+- 单系统 Commit
+
+禁止：
+
+一个 Commit 混合：
+
+- Gameplay
+- UI
+- Animation
+- Refactor
+- Tool
+
+---
+
+2. Commit Convention
+
+2.1 必须生成 Commit 建议
+
+每次代码完成后必须输出：
+
+English:
+feat(combat): add hit reaction pipeline
+
+中文:
+新增受击反馈流程
+
+Tag:
+v0.4.0-hit-reaction ⚔️
+
+限制：
+
+- 总长度不超过三行
+- 不允许长篇解释
+- 节省 Token
+
+---
+
+2.2 Commit 类型规范
+
+允许：
+
+- feat
+- fix
+- refactor
+- perf
+- docs
+- test
+- chore
+
+---
+
+2.3 Commit 必须描述实际行为
+
+必须明确：
+
+- 修改系统
+- 功能目标
+- Runtime 行为
+
+禁止：
+
+- update
+- optimize
+- fix bug
+- change code
+
+这种无意义命名。
+
+---
+
+2.4 Commit 必须短且高密度
+
+优先：
+
+feat(skill): add projectile reflect
+
+禁止：
+
+feat(skill): add a very powerful and extensible projectile reflection framework
+
+---
+
+3. Version Tag Rule
+
+3.1 Version Tag 必须统一
+
+推荐格式：
+
+v主版本.次版本.修订-功能名
+
+例如：
+
+v0.4.0-combat
+v0.5.1-buff
+v0.6.0-ui
+
+---
+
+3.2 功能名必须短
+
+功能名限制：
+
+1~3 个单词。
+
+禁止：
+
+v0.4.0-super-complex-combat-refactor-system
+
+---
+
+3.3 大版本必须对应阶段目标
+
+例如：
+
+v0.3.x:
+Movement & KCC
+
+v0.4.x:
+Combat Core
+
+v0.5.x:
+Skill System
+
+v0.6.x:
+Buff Pipeline
+
+---
+
+4. Emoji Convention
+
+4.1 每个版本必须带 Emoji
+
+用于：
+
+- 开发日志
+- Git Tag
+- Notion
+- 阶段追踪
+
+---
+
+4.2 Emoji 规范
+
+⚔️ Combat
+
+🎯 Skill
+
+🩸 Buff
+
+🛡 Defense
+
+🧠 AI
+
+🦶 Movement/KCC
+
+🪜 IK/Stair
+
+🔥 VFX
+
+🔊 Audio
+
+🖥 UI
+
+📦 Pool
+
+🚀 Performance
+
+🧪 Test
+
+🌐 Network
+
+🐞 Bug Fix
+
+📚 Docs
+
+🛠 Tool
+
+✨ Milestone
+
+---
+
+5. 功能验收规则
+
+5.1 每次交付必须输出验收信息
+
+必须输出：
+
+功能：
+风险：
+GC：
+Tick：
+验证：
+压测：
+
+---
+
+5.2 禁止“代码完成=功能完成”
+
+功能完成必须满足：
+
+- Runtime 正常
+- 无新增 GC
+- 无时序错误
+- 无生命周期错误
+- 压测通过
+
+---
+
+6. Runtime 回归规则
+
+6.1 Bug 修复必须可回溯
+
+必须记录：
+
+- 问题来源
+- 影响系统
+- 修复方式
+- 验证方式
+
+---
+
+6.2 性能修改必须可追踪
+
+必须说明：
+
+- Tick 变化
+- Alloc 变化
+- Runtime 成本变化
+
+---
+
+7. AI 输出格式规则
+
+7.1 AI 输出必须高密度
+
+禁止：
+
+长篇 Commit 描述。
+
+必须：
+
+三行内完成：
+
+English:
+中文:
+Tag:
+
+---
+
+7.2 AI 禁止生成无意义版本名
+
+禁止：
+
+- final
+- test
+- update
+- optimize
+- new system
+
+---
+
+7.3 AI 必须优先短命名
+
+优先：
+
+combat
+skill
+buff
+runtime
+movement
+targeting
+
+避免：
+
+过长语义。
+
+---
+
+8. 开发日志规则
+
+8.1 必须记录阶段目标
+
+必须明确：
+
+- 当前阶段
+- 当前目标
+- 当前风险
+- 下一阶段
+
+---
+
+8.2 日志必须可回溯
+
+必须能定位：
+
+- 哪个版本
+- 哪个 Commit
+- 哪个系统
+- 哪次修改
+
+---
+
+9. AI 工作流行为限制
+
+9.1 AI 禁止一次生成超大改动
+
+必须：
+
+- 分阶段
+- 分步骤
+- 分系统
+
+---
+
+9.2 AI 必须优先兼容现有工作流
+
+禁止：
+
+擅自改变：
+
+- Commit 风格
+- Tag 风格
+- 项目结构
+
+---
+
+9.3 AI 必须减少 Token 消耗
+
+优先：
+
+- 高密度输出
+- Checklist
+- 短 Commit
+- 短 Tag
+
+禁止：
+
+长篇重复解释。
+
+---
+
+最终原则
+
+商业级 ARPG 工作流核心：
+
+不是：
+
+“代码提交了”
+
+而是：
+
+- 功能可追踪
+- Runtime 可回溯
+- 性能变化可定位
+- 版本演化清晰
+- Debug 时间线明确
+
+任何提交都必须回答：
+
+- 修改了什么？
+- 影响了什么？
+- 是否影响 Runtime？
+- 是否影响 GC？
+- 如何验证？
+- 如何回滚？
+
+如果回答不清：
+
+说明工作流存在风险。

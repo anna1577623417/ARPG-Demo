@@ -3,6 +3,10 @@ using UnityEngine;
 [CreateAssetMenu(fileName = "BuffDefinition", menuName = "GameMain/Buff/Buff Definition")]
 public class BuffDefinitionSO : ScriptableObject
 {
+    [Header("HUD (optional)")]
+    [Tooltip("HUD Buff 条图标；不配则仅显示时长环。")]
+    public Sprite Icon;
+
     [Min(0f)] public float Duration = 5f;
     [Min(0f)] public float PeriodSeconds;
     public BuffEffectEntry[] Effects;

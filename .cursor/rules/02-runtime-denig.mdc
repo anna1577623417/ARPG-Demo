@@ -1,0 +1,564 @@
+02-runtime-debug.mdc
+
+---
+
+description: ARPG runtime debugging and observability rules
+alwaysApply: true
+
+ARPG Runtime Debug & Observability Rule
+
+ARPG 运行时调试与可观测性宪法
+
+目标：
+
+- Runtime 问题可定位
+- 状态变化可追踪
+- 生命周期可观测
+- 时序问题可复现
+- Bug 可快速收敛
+- 长时间运行稳定
+
+商业级 ARPG 的核心不是：
+
+“代码能运行”
+
+而是：
+
+- 问题能定位
+- 状态能观测
+- 生命周期能追踪
+- 时序能复现
+
+---
+
+1. Debug First 原则
+
+1.1 优先观测问题
+
+禁止：
+
+- 猜测 Bug
+- 理论推断修复
+- “应该不会发生”
+
+必须：
+
+- 观察 Runtime 数据
+- 观察真实状态
+- 观察生命周期
+- 观察 Timeline
+- 观察 Frame 行为
+
+原则：
+
+不要猜问题，要观测问题。
+
+---
+
+1.2 Bug 修复流程固定
+
+必须遵循：
+
+1. 构建复现路径
+2. 观察 Runtime 数据
+3. 定位状态来源
+4. 定位生命周期
+5. 定位 Frame 时序
+6. 修复
+7. 回归验证
+8. 压力测试
+
+禁止：
+
+直接修改代码碰运气。
+
+---
+
+1.3 Runtime 数据优先于静态推测
+
+优先：
+
+- Runtime Log
+- Timeline
+- 状态快照
+- Tick Trace
+- Frame Trace
+
+禁止：
+
+仅通过代码阅读推断问题。
+
+---
+
+2. Runtime Observability
+
+2.1 所有核心状态必须可追踪
+
+以下系统必须支持状态追踪：
+
+- StateMachine
+- Skill
+- Buff
+- Combat
+- AI
+- Movement
+- Animation
+- Targeting
+
+---
+
+2.2 状态切换必须记录
+
+必须记录：
+
+- PreviousState
+- NextState
+- TriggerSource
+- Frame
+- Timestamp
+
+例如：
+
+Idle -> Attack
+Source: Input
+Frame: 10235
+
+禁止：
+
+- 静默切换
+- 多处同时修改
+- 隐式状态变化
+
+---
+
+2.3 所有核心行为必须有来源
+
+禁止：
+
+hp -= damage;
+
+必须：
+
+ApplyDamage(damage, source, skillId);
+
+原则：
+
+“谁修改数据”
+比
+“怎么修改数据”
+更重要。
+
+---
+
+3. 生命周期追踪
+
+3.1 生命周期必须完整
+
+必须能追踪：
+
+- Create
+- Initialize
+- Activate
+- Running
+- Disable
+- Destroy
+- ReturnToPool
+
+---
+
+3.2 Skill 生命周期必须可观测
+
+必须追踪：
+
+- Skill Begin
+- Cast Start
+- Timeline Start
+- Hit Begin
+- Cancel
+- Interrupt
+- Finish
+
+---
+
+3.3 Buff 生命周期必须可观测
+
+必须追踪：
+
+- Apply
+- Refresh
+- Stack
+- Tick
+- Remove
+- Expire
+
+---
+
+3.4 Projectile 生命周期必须可观测
+
+必须追踪：
+
+- Spawn
+- Launch
+- Collision
+- Hit
+- Despawn
+- ReturnToPool
+
+---
+
+4. 时序调试规则
+
+4.1 ARPG 本质是时序游戏
+
+必须优先验证：
+
+- 输入时序
+- Combo Window
+- Cancel Window
+- HitStop
+- Invincible Frame
+- Timeline 同步
+
+---
+
+4.2 所有 Frame 关键行为必须可观察
+
+必须能够观察：
+
+- 当前帧输入
+- 当前状态
+- Timeline 位置
+- 当前 Buff
+- 当前 RootMotion
+- 当前 Velocity
+
+---
+
+4.3 禁止 Frame 隐式副作用
+
+禁止：
+
+- 多系统同帧修改状态
+- 无顺序保证修改
+- 动画反向驱动 Gameplay
+
+必须：
+
+明确：
+
+- 谁先执行
+- 谁后执行
+- 谁拥有最终决定权
+
+---
+
+5. 日志规则
+
+5.1 Log 必须有上下文
+
+禁止：
+
+Debug.Log("Attack");
+
+必须：
+
+Debug.Log("[Combat] Attack Begin | Skill=Slash | Frame=2031");
+
+---
+
+5.2 高频 Log 必须可关闭
+
+必须支持：
+
+- Runtime Toggle
+- Compile Flag
+- Debug Switch
+
+禁止：
+
+正式环境高频日志。
+
+---
+
+5.3 日志必须可过滤
+
+推荐格式：
+
+[System]
+[Skill]
+[Buff]
+[Combat]
+[AI]
+[Movement]
+
+方便：
+
+- 搜索
+- 分类
+- Runtime 过滤
+
+---
+
+6. Runtime Debug UI
+
+6.1 核心系统必须支持 Debug Overlay
+
+建议支持：
+
+- 当前状态
+- Velocity
+- 当前 Buff
+- Skill Timeline
+- Hitbox
+- Hurtbox
+- Ground State
+
+---
+
+6.2 Debug 可视化优先
+
+优先：
+
+- Gizmo
+- Runtime Overlay
+- Timeline 可视化
+- 状态树可视化
+
+而不是：
+
+大量文本猜测。
+
+---
+
+7. Combat Debug
+
+7.1 Hit Detection 必须可观察
+
+必须能观察：
+
+- Hitbox
+- Hurtbox
+- 命中时间
+- 命中来源
+- 命中方向
+- Damage Context
+
+---
+
+7.2 Damage Pipeline 必须完整
+
+必须追踪：
+
+Input
+→ Skill
+→ Hit
+→ Damage
+→ Modifier
+→ Buff
+→ Final Result
+
+禁止：
+
+直接修改 HP。
+
+---
+
+7.3 Buff 修改必须有来源
+
+必须明确：
+
+- 来源 Skill
+- 来源 Entity
+- Stack 来源
+- Remove 原因
+
+---
+
+8. Pool Debug
+
+8.1 Pool 必须可观测
+
+必须能观察：
+
+- Active Count
+- Spawn Count
+- Return Count
+- Reuse Count
+
+---
+
+8.2 Pool 状态必须可验证
+
+必须验证：
+
+- Reset 是否完整
+- 是否存在脏状态
+- 是否存在引用残留
+
+---
+
+9. AI Runtime Debug
+
+9.1 AI 决策必须可观察
+
+必须能观察：
+
+- 当前 State
+- 当前 Target
+- 当前 Decision
+- 当前 Threat
+- 当前 Cooldown
+
+---
+
+9.2 禁止 AI 黑盒行为
+
+禁止：
+
+- 不可追踪 Decision
+- 无来源状态切换
+- 隐式行为变化
+
+---
+
+10. Animation Runtime Debug
+
+10.1 动画状态必须可观测
+
+必须能观察：
+
+- 当前 Animation
+- 当前 Transition
+- 当前 Blend
+- 当前 RootMotion
+
+---
+
+10.2 动画不得成为黑盒
+
+禁止：
+
+- Animator 决定 Gameplay
+- Animation Event 驱动核心逻辑
+
+---
+
+11. Runtime Regression
+
+11.1 Bug 修复必须可回归验证
+
+修复后必须验证：
+
+- 原问题消失
+- 无新增状态错误
+- 无新增 GC
+- 无新增时序错误
+
+---
+
+11.2 必须保留复现路径
+
+必须记录：
+
+- 如何复现
+- 什么条件触发
+- 哪些状态参与
+- 哪些 Timeline 参与
+
+---
+
+12. AI Debug 行为规则
+
+12.1 AI 必须优先增加观测能力
+
+复杂 Bug 时：
+
+优先：
+
+- Log
+- Trace
+- Timeline
+- Runtime State
+
+不是：
+
+直接修改逻辑。
+
+---
+
+12.2 AI 禁止“猜测式修复”
+
+禁止：
+
+“可能是这里的问题”
+
+直接改代码。
+
+必须：
+
+先定位 Runtime 来源。
+
+---
+
+12.3 AI 必须解释 Bug 根因
+
+必须说明：
+
+- 根因
+- 生命周期问题
+- 时序问题
+- 状态来源问题
+- Frame 顺序问题
+
+不是：
+
+只给修复代码。
+
+---
+
+13. 功能交付必须输出
+
+每次修改后必须说明：
+
+问题来源：
+影响系统：
+生命周期影响：
+状态机影响：
+Timeline 影响：
+GC 风险：
+验证方式：
+复现方式：
+压力测试：
+
+---
+
+最终原则
+
+商业级 ARPG Debug 核心：
+
+不是：
+
+“Bug 修好了”
+
+而是：
+
+- Bug 为什么发生
+- Runtime 如何定位
+- 状态如何变化
+- 生命周期如何流动
+- Frame 如何演进
+- 后续如何避免
+
+任何系统都必须回答：
+
+- 状态从哪里来？
+- 谁修改状态？
+- 生命周期在哪？
+- Frame 顺序是什么？
+- Runtime 如何观测？
+- 如何复现？
+- 如何压测？
+
+如果回答不清：
+
+说明系统存在 Debug 风险。
