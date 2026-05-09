@@ -60,6 +60,7 @@ public class PlayerController : EntityController
     [SerializeField] private PrimaryAttackSplitPolicy primaryAttackSplit = new PrimaryAttackSplitPolicy
     {
         HoldSecondsBeforeChargedIntent = 0.18f,
+        ComboTapWindowSeconds = 0.28f,
     };
 
     private readonly PrimaryAttackPressTracker _primaryAttackPress = new PrimaryAttackPressTracker();
@@ -178,7 +179,7 @@ public class PlayerController : EntityController
     }
 
     /// <summary>
-    /// v4.4 重构：按 SkillSlotType 循环派发，不再硬编码 Jump/Dodge/SwordDash 名字。
+    /// v4.4 重构：按 SkillSlotType 循环派发；物理键与 InputAction 名见输入表（Attack_01-03、SlotAbility_06…）。
     ///
     /// ═══ 数据流 ═══
     ///
@@ -192,23 +193,37 @@ public class PlayerController : EntityController
     ///                          →  执行
     ///
     /// 槽位 → 物理键的实际绑定由 .inputactions 资产 + RebindManager 决定。
-    /// 默认配置（用户可自由换绑）：
-    ///   LM    → Primary    （蓄力/连段由 PrimaryAttackPressTracker 处理）
-    ///   RM    → Secondary  （需 .inputactions 新增 SkillSlotSecondary 动作）
-    ///   Q     → Ability1
-    ///   R     → Ultimate
-    ///   Shift → Ability2  （历史 InputAction 名 "Sprint"，仅是名字）
-    ///   Space → Jump
-    ///   Dodge 槽位 → 备用（Loadout 可绑闪避技能；当前 .inputactions 中 Dodge action 默认空）
+    /// 默认配置（用户可自由换绑；Action 名与槽位表一致）：
+    ///   LMB → Attack_01-03（PrimaryAttackPressTracker 细分 Light / Combo / Charge）
+    ///   RMB → SkillSlotSecondary_04（Interact 右键并行；E 仅交互）
+    ///   Q   → SlotAbility_06 / Ability_06
+    ///   R   → SlotUltimate_05 / Ultimate_05
+    ///   Shift → SlotAbility_07 / Ability_07
+    ///   Space → SlotAbility_08 / Ability_08
+    ///   1–9 → SlotAbility_09 … SlotAbility_17
+    ///   F   → Jump（非技能）
     /// </summary>
     private void ConsumeDiscreteIntents()
     {
-        TryDispatchSlot(SkillSlotType.Secondary);
-        TryDispatchSlot(SkillSlotType.Ability1);
-        TryDispatchSlot(SkillSlotType.Ability2);
-        TryDispatchSlot(SkillSlotType.Dodge);
-        TryDispatchSlot(SkillSlotType.Ultimate);
-        TryDispatchSlot(SkillSlotType.Jump);
+        if (inputReader.ConsumeJumpPressed())
+        {
+            player.EnqueueGameplayIntent(PlayerIntentCatalog.Jump(Time.time));
+        }
+
+        TryDispatchSlot(SkillSlotType.Secondary_04);
+        TryDispatchSlot(SkillSlotType.Ability_06);
+        TryDispatchSlot(SkillSlotType.Ability_07);
+        TryDispatchSlot(SkillSlotType.Ability_08);
+        TryDispatchSlot(SkillSlotType.Ultimate_05);
+        TryDispatchSlot(SkillSlotType.Ability_09);
+        TryDispatchSlot(SkillSlotType.Ability_10);
+        TryDispatchSlot(SkillSlotType.Ability_11);
+        TryDispatchSlot(SkillSlotType.Ability_12);
+        TryDispatchSlot(SkillSlotType.Ability_13);
+        TryDispatchSlot(SkillSlotType.Ability_14);
+        TryDispatchSlot(SkillSlotType.Ability_15);
+        TryDispatchSlot(SkillSlotType.Ability_16);
+        TryDispatchSlot(SkillSlotType.Ability_17);
         // Primary 槽位脉冲被 PrimaryAttackPressTracker 在 Tick() 中独立消费（轻击 vs 蓄力分流），
         // 不走通用 dispatch；同时由 PressTracker 调用 PlayerIntentCatalog.LightAttack(holdDuration)。
     }

@@ -14,11 +14,38 @@ public enum GameplayIntentKind : byte
     /// <summary>序列化占位（历史值为旧蓄力枚举）；禁止入队。</summary>
     UnusedLegacy6 = 6,
 
-    /// <summary>技能槽 Ability1（对应 <see cref="SkillSlotType.Ability1"/>）。</summary>
+    /// <summary>技能槽 Ability_06（对应 <see cref="SkillSlotType.Ability_06"/>）。</summary>
     CastAbility1 = 7,
 
-    /// <summary>技能槽 Ultimate（对应 <see cref="SkillSlotType.Ultimate"/>）。</summary>
+    /// <summary>技能槽 Ultimate_05（对应 <see cref="SkillSlotType.Ultimate_05"/>）。</summary>
     CastUltimate = 8,
+
+    /// <summary>左键连段（对应 <see cref="SkillSlotType.Skill_Primary_02"/>）。</summary>
+    ComboAttack = 9,
+
+    /// <summary>左键蓄力（对应 <see cref="SkillSlotType.Skill_Primary_03"/>）。</summary>
+    ChargeAttack = 10,
+
+    /// <summary>Shift 技能槽（对应 <see cref="SkillSlotType.Ability_07"/>）。</summary>
+    CastAbility7 = 11,
+
+    /// <summary>Space 技能槽（对应 <see cref="SkillSlotType.Ability_08"/>）。</summary>
+    CastAbility8 = 12,
+
+    Secondary_Combat = HeavyAttack,
+    Ultimate_05 = CastUltimate,
+    Ability_06 = CastAbility1,
+    Ability_07 = CastAbility7,
+    Ability_08 = CastAbility8,
+    Ability_09 = 13,
+    Ability_10 = 14,
+    Ability_11 = 15,
+    Ability_12 = 16,
+    Ability_13 = 17,
+    Ability_14 = 18,
+    Ability_15 = 19,
+    Ability_16 = 20,
+    Ability_17 = 21,
 }
 
 /// <summary>

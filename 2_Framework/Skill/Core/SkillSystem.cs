@@ -13,7 +13,7 @@ public static class SkillSystem
     /// </summary>
     public static bool TryPrepareIntentForSkills(Player player, ref GameplayIntent intent)
     {
-        if (!TryMapIntentToSlot(intent.Kind, out var slot))
+        if (!TryMapIntentToSlot(player, intent.Kind, out var slot))
         {
             player.CancelDeferredSkillPlanning();
             player.ClearActiveSkillPlanning();
@@ -22,6 +22,7 @@ public static class SkillSystem
 
         if (!player.TryGetResolvedSkill(slot, out var rootSkill) || rootSkill == null)
         {
+            TryLogMissingSkill(player, intent.Kind, slot, "resolved skill is null");
             player.CancelDeferredSkillPlanning();
             player.ClearActiveSkillPlanning();
             return player.AllowMovesetFallbackAfterMissingSkillBindings();
@@ -29,12 +30,15 @@ public static class SkillSystem
 
         if (!player.TryGetSkillRuntime(slot, out var runtime) || runtime == null)
         {
+            TryLogMissingSkill(player, intent.Kind, slot, "runtime missing");
             player.CancelDeferredSkillPlanning();
             player.ClearActiveSkillPlanning();
             return player.AllowMovesetFallbackAfterMissingSkillBindings();
         }
 
-        if ((intent.Kind == GameplayIntentKind.LightAttack || intent.Kind == GameplayIntentKind.CastAbility1)
+        if ((intent.Kind == GameplayIntentKind.LightAttack
+             || intent.Kind == GameplayIntentKind.ComboAttack
+             || intent.Kind == GameplayIntentKind.CastAbility1)
             && runtime.Data != null
             && runtime.Data.comboChain != null && runtime.Data.comboChain.Length > 0
             && runtime.IsComboExpired())
@@ -86,6 +90,7 @@ public static class SkillSystem
         var stage = SkillSegmentResolver.ResolveActiveStage(segment, effectiveStageIndex);
         if (stage == null || stage.action == null)
         {
+            TryLogMissingSkill(player, intent.Kind, slot, "stage/action missing");
             player.CancelDeferredSkillPlanning();
             player.ClearActiveSkillPlanning();
             return player.AllowMovesetFallbackAfterMissingSkillBindings();
@@ -164,32 +169,87 @@ public static class SkillSystem
         }
     }
 
-    static bool TryMapIntentToSlot(GameplayIntentKind kind, out SkillSlotType slot)
+    static bool TryMapIntentToSlot(Player player, GameplayIntentKind kind, out SkillSlotType slot)
+    {
+        if (player != null && player.TryResolveIntentSlot(kind, out slot))
+        {
+            return true;
+        }
+
+        return TryMapIntentToSlotDefault(kind, out slot);
+    }
+
+    static bool TryMapIntentToSlotDefault(GameplayIntentKind kind, out SkillSlotType slot)
     {
         switch (kind)
         {
             case GameplayIntentKind.LightAttack:
-                slot = SkillSlotType.Primary;
+                slot = SkillSlotType.Skill_Primary_01;
+                return true;
+            case GameplayIntentKind.ComboAttack:
+                slot = SkillSlotType.Skill_Primary_02;
+                return true;
+            case GameplayIntentKind.ChargeAttack:
+                slot = SkillSlotType.Skill_Primary_03;
                 return true;
             case GameplayIntentKind.HeavyAttack:
-                slot = SkillSlotType.Secondary;
-                return true;
-            case GameplayIntentKind.Dodge:
-                slot = SkillSlotType.Dodge;
-                return true;
-            case GameplayIntentKind.SwordDash:
-                slot = SkillSlotType.Ability2;
+                slot = SkillSlotType.Secondary_04;
                 return true;
             case GameplayIntentKind.CastAbility1:
-                slot = SkillSlotType.Ability1;
+                slot = SkillSlotType.Ability_06;
+                return true;
+            case GameplayIntentKind.CastAbility7:
+                slot = SkillSlotType.Ability_07;
+                return true;
+            case GameplayIntentKind.CastAbility8:
+                slot = SkillSlotType.Ability_08;
                 return true;
             case GameplayIntentKind.CastUltimate:
-                slot = SkillSlotType.Ultimate;
+                slot = SkillSlotType.Ultimate_05;
+                return true;
+            case GameplayIntentKind.Ability_09:
+                slot = SkillSlotType.Ability_09;
+                return true;
+            case GameplayIntentKind.Ability_10:
+                slot = SkillSlotType.Ability_10;
+                return true;
+            case GameplayIntentKind.Ability_11:
+                slot = SkillSlotType.Ability_11;
+                return true;
+            case GameplayIntentKind.Ability_12:
+                slot = SkillSlotType.Ability_12;
+                return true;
+            case GameplayIntentKind.Ability_13:
+                slot = SkillSlotType.Ability_13;
+                return true;
+            case GameplayIntentKind.Ability_14:
+                slot = SkillSlotType.Ability_14;
+                return true;
+            case GameplayIntentKind.Ability_15:
+                slot = SkillSlotType.Ability_15;
+                return true;
+            case GameplayIntentKind.Ability_16:
+                slot = SkillSlotType.Ability_16;
+                return true;
+            case GameplayIntentKind.Ability_17:
+                slot = SkillSlotType.Ability_17;
                 return true;
             default:
                 slot = default;
                 return false;
         }
+    }
+
+    static void TryLogMissingSkill(Player player, GameplayIntentKind intent, SkillSlotType slot, string reason)
+    {
+        if (player == null || !player.LogMissingSkillOnIntent)
+        {
+            return;
+        }
+
+        Debug.LogWarning(
+            $"[SkillSystem] Missing equipped skill for intent={intent}, slot={slot}. reason={reason}",
+            player);
     }
 }
 

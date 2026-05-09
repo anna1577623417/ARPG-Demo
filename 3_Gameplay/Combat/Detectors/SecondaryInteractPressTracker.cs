@@ -34,7 +34,7 @@ public sealed class SecondaryInteractPressTracker
 
         if (fell)
         {
-            player.TryNotifySkillCastInputReleasedForSlot(SkillSlotType.Secondary);
+            player.TryNotifySkillCastInputReleasedForSlot(SkillSlotType.Secondary_04);
         }
 
         if (rose)

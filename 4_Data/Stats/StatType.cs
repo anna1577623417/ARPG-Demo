@@ -15,4 +15,7 @@ public enum StatType : byte
 
     /// <summary>冷却缩减（0~0.4 表示 0%~40%；最终 CD 由技能层乘算）。</summary>
     CooldownReduction = 8,
+
+    /// <summary>最大法力（对应 <see cref="ResourceType.MP"/> 上限）。</summary>
+    MaxMana = 9,
 }

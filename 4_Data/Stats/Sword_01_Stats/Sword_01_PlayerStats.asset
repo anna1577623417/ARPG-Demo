@@ -1,0 +1,43 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4c033306babc5a2439e249b4fce1a61c, type: 3}
+  m_Name: Sword_01_PlayerStats
+  m_EditorClassIdentifier: 
+  baseStats:
+  - Type: 0
+    BaseValue: 200
+  - Type: 4
+    BaseValue: 2.4
+  - Type: 5
+    BaseValue: 5.5
+  - Type: 6
+    BaseValue: 540
+  - Type: 2
+    BaseValue: 15
+  - Type: 3
+    BaseValue: 10
+  - Type: 7
+    BaseValue: 5
+  maxHealthLegacy: 100
+  baseWalkSpeedLegacy: 2.4
+  baseRunSpeedLegacy: 5.5
+  baseRotationSpeedLegacy: 540
+  baseAttackPowerLegacy: 10
+  baseDefenseLegacy: 0
+  MaxStamina: 200
+  usePlayerBaseStatsPreset: 0
+  presetMaxHealth: 100
+  presetWalkSpeed: 2.4
+  presetRunSpeed: 5.5
+  presetRotationSpeed: 540
+  presetAttackPower: 10
+  presetDefense: 0

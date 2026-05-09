@@ -1,7 +1,7 @@
 using System;
 using UnityEngine;
 
-/// <summary>角色技能装配（槽位绑定）。槽位：<see cref="SkillSlotType"/>（Primary / Secondary / Ability1 / Ability2 / Dodge / Ultimate / Jump）。</summary>
+/// <summary>角色技能装配（槽位绑定）。槽位：<see cref="SkillSlotType"/>（Attack_01-03 ~ Ability_17）。</summary>
 [CreateAssetMenu(menuName = "Skill/Skill Loadout", fileName = "SkillLoadout")]
 public class SkillLoadoutSO : ScriptableObject
 {

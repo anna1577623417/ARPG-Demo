@@ -59,9 +59,22 @@ public static class ActionInterruptResolver
             case GameplayIntentKind.Dodge:         return (ulong)StateTag.AllowInterruptByDodge;
             case GameplayIntentKind.SwordDash:     return (ulong)StateTag.AllowInterruptBySwordDash;
             case GameplayIntentKind.LightAttack:   return (ulong)StateTag.AllowInterruptByLight;
+            case GameplayIntentKind.ComboAttack:   return (ulong)StateTag.AllowInterruptByLight;
+            case GameplayIntentKind.ChargeAttack:  return (ulong)StateTag.AllowInterruptByHeavy;
             case GameplayIntentKind.HeavyAttack:   return (ulong)StateTag.AllowInterruptByHeavy;
             case GameplayIntentKind.CastAbility1: return (ulong)StateTag.AllowInterruptByLight;
+            case GameplayIntentKind.CastAbility7: return (ulong)StateTag.AllowInterruptByHeavy;
+            case GameplayIntentKind.CastAbility8: return (ulong)StateTag.AllowInterruptByHeavy;
             case GameplayIntentKind.CastUltimate: return (ulong)StateTag.AllowInterruptByHeavy;
+            case GameplayIntentKind.Ability_09: return (ulong)StateTag.AllowInterruptByHeavy;
+            case GameplayIntentKind.Ability_10: return (ulong)StateTag.AllowInterruptByHeavy;
+            case GameplayIntentKind.Ability_11: return (ulong)StateTag.AllowInterruptByHeavy;
+            case GameplayIntentKind.Ability_12: return (ulong)StateTag.AllowInterruptByHeavy;
+            case GameplayIntentKind.Ability_13: return (ulong)StateTag.AllowInterruptByHeavy;
+            case GameplayIntentKind.Ability_14: return (ulong)StateTag.AllowInterruptByHeavy;
+            case GameplayIntentKind.Ability_15: return (ulong)StateTag.AllowInterruptByHeavy;
+            case GameplayIntentKind.Ability_16: return (ulong)StateTag.AllowInterruptByHeavy;
+            case GameplayIntentKind.Ability_17: return (ulong)StateTag.AllowInterruptByHeavy;
             case GameplayIntentKind.Jump:          return (ulong)StateTag.AllowInterruptByJump;
             default: return 0UL;
         }

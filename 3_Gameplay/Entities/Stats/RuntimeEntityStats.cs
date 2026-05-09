@@ -9,6 +9,8 @@ public sealed class RuntimeEntityStats
     public bool IsInitialized => _initialized && _stats != null;
 
     public float MaxHealth => Read(StatType.MaxHealth);
+    public float MaxStamina => Read(StatType.MaxStamina);
+    public float MaxMana => Read(StatType.MaxMana);
     public float WalkSpeed => Read(StatType.WalkSpeed);
     public float RunSpeed => Read(StatType.RunSpeed);
     public float RotationSpeed => Read(StatType.RotationSpeed);

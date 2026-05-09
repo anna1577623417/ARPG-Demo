@@ -107,6 +107,101 @@ public static class PlayerIntentCatalog
             secondaryHoldDurationSeconds: secondaryHoldDurationSeconds);
     }
 
+    public static GameplayIntent Ability_09(float time, ActionDataSO overrideAction = null)
+    {
+        return GameplayIntent.Create(
+            GameplayIntentKind.Ability_09,
+            time,
+            DefaultBufferSeconds,
+            requiredAll: 0UL,
+            requiredAny: 0UL,
+            forbidden: (ulong)(StateTag.Dead | StateTag.Stunned),
+            action: overrideAction,
+            requiredAllAbility: (ulong)EntityCapabilityTag.CanCastAbility1,
+            forbiddenAbility: 0UL);
+    }
+
+    public static GameplayIntent Ability_10(float time, ActionDataSO overrideAction = null) => CreateIndexedAbilityIntent(GameplayIntentKind.Ability_10, time, overrideAction);
+    public static GameplayIntent Ability_11(float time, ActionDataSO overrideAction = null) => CreateIndexedAbilityIntent(GameplayIntentKind.Ability_11, time, overrideAction);
+    public static GameplayIntent Ability_12(float time, ActionDataSO overrideAction = null) => CreateIndexedAbilityIntent(GameplayIntentKind.Ability_12, time, overrideAction);
+    public static GameplayIntent Ability_13(float time, ActionDataSO overrideAction = null) => CreateIndexedAbilityIntent(GameplayIntentKind.Ability_13, time, overrideAction);
+    public static GameplayIntent Ability_14(float time, ActionDataSO overrideAction = null) => CreateIndexedAbilityIntent(GameplayIntentKind.Ability_14, time, overrideAction);
+    public static GameplayIntent Ability_15(float time, ActionDataSO overrideAction = null) => CreateIndexedAbilityIntent(GameplayIntentKind.Ability_15, time, overrideAction);
+    public static GameplayIntent Ability_16(float time, ActionDataSO overrideAction = null) => CreateIndexedAbilityIntent(GameplayIntentKind.Ability_16, time, overrideAction);
+    public static GameplayIntent Ability_17(float time, ActionDataSO overrideAction = null) => CreateIndexedAbilityIntent(GameplayIntentKind.Ability_17, time, overrideAction);
+
+    static GameplayIntent CreateIndexedAbilityIntent(GameplayIntentKind kind, float time, ActionDataSO overrideAction)
+    {
+        return GameplayIntent.Create(
+            kind,
+            time,
+            DefaultBufferSeconds,
+            requiredAll: 0UL,
+            requiredAny: 0UL,
+            forbidden: (ulong)(StateTag.Dead | StateTag.Stunned),
+            action: overrideAction,
+            requiredAllAbility: (ulong)EntityCapabilityTag.CanCastAbility1,
+            forbiddenAbility: 0UL);
+    }
+
+    public static GameplayIntent ComboAttack(float time, ActionDataSO overrideAction = null, float primaryHoldDurationSeconds = 0f)
+    {
+        return GameplayIntent.Create(
+            GameplayIntentKind.ComboAttack,
+            time,
+            DefaultBufferSeconds,
+            requiredAll: 0UL,
+            requiredAny: 0UL,
+            forbidden: (ulong)(StateTag.Dead | StateTag.Stunned),
+            action: overrideAction,
+            requiredAllAbility: (ulong)EntityCapabilityTag.CanLightAttack,
+            forbiddenAbility: 0UL,
+            primaryHoldDurationSeconds: primaryHoldDurationSeconds);
+    }
+
+    public static GameplayIntent ChargeAttack(float time, ActionDataSO overrideAction = null, float primaryHoldDurationSeconds = 0f)
+    {
+        return GameplayIntent.Create(
+            GameplayIntentKind.ChargeAttack,
+            time,
+            DefaultBufferSeconds,
+            requiredAll: 0UL,
+            requiredAny: 0UL,
+            forbidden: (ulong)(StateTag.Dead | StateTag.Stunned),
+            action: overrideAction,
+            requiredAllAbility: (ulong)EntityCapabilityTag.CanLightAttack,
+            forbiddenAbility: 0UL,
+            primaryHoldDurationSeconds: primaryHoldDurationSeconds);
+    }
+
+    public static GameplayIntent CastAbility7(float time, ActionDataSO overrideAction = null)
+    {
+        return GameplayIntent.Create(
+            GameplayIntentKind.CastAbility7,
+            time,
+            DefaultBufferSeconds,
+            requiredAll: 0UL,
+            requiredAny: 0UL,
+            forbidden: (ulong)(StateTag.Dead | StateTag.Stunned),
+            action: overrideAction,
+            requiredAllAbility: (ulong)EntityCapabilityTag.CanSwordDash,
+            forbiddenAbility: 0UL);
+    }
+
+    public static GameplayIntent CastAbility8(float time, ActionDataSO overrideAction = null)
+    {
+        return GameplayIntent.Create(
+            GameplayIntentKind.CastAbility8,
+            time,
+            DefaultBufferSeconds,
+            requiredAll: 0UL,
+            requiredAny: 0UL,
+            forbidden: (ulong)(StateTag.Dead | StateTag.Stunned),
+            action: overrideAction,
+            requiredAllAbility: (ulong)EntityCapabilityTag.CanDodge,
+            forbiddenAbility: 0UL);
+    }
+
     /// <summary>
     /// ★ Slot-Based 派发入口（v4.4）：把 SkillSlotType 反向映射到对应的既有 Intent 工厂。
     ///
@@ -127,13 +222,23 @@ public static class PlayerIntentCatalog
     {
         switch (slot)
         {
-            case SkillSlotType.Primary:   return LightAttack(time, null, primaryHold);
-            case SkillSlotType.Secondary: return HeavyAttack(time, null, secondaryHold);
-            case SkillSlotType.Ability1:  return CastAbility1(time, null, primaryHold);
-            case SkillSlotType.Ultimate:  return CastUltimate(time, null, secondaryHold);
-            case SkillSlotType.Ability2:  return SwordDash(time, null);
-            case SkillSlotType.Dodge:     return Dodge(time, null);
-            case SkillSlotType.Jump:      return Jump(time);
+            case SkillSlotType.Skill_Primary_01: return LightAttack(time, null, primaryHold);
+            case SkillSlotType.Skill_Primary_02: return ComboAttack(time, null, primaryHold);
+            case SkillSlotType.Skill_Primary_03: return ChargeAttack(time, null, primaryHold);
+            case SkillSlotType.Secondary_04: return HeavyAttack(time, null, secondaryHold);
+            case SkillSlotType.Ultimate_05: return CastUltimate(time, null, secondaryHold);
+            case SkillSlotType.Ability_06: return CastAbility1(time, null, primaryHold);
+            case SkillSlotType.Ability_07: return CastAbility7(time, null);
+            case SkillSlotType.Ability_08: return CastAbility8(time, null);
+            case SkillSlotType.Ability_09: return Ability_09(time, null);
+            case SkillSlotType.Ability_10: return Ability_10(time, null);
+            case SkillSlotType.Ability_11: return Ability_11(time, null);
+            case SkillSlotType.Ability_12: return Ability_12(time, null);
+            case SkillSlotType.Ability_13: return Ability_13(time, null);
+            case SkillSlotType.Ability_14: return Ability_14(time, null);
+            case SkillSlotType.Ability_15: return Ability_15(time, null);
+            case SkillSlotType.Ability_16: return Ability_16(time, null);
+            case SkillSlotType.Ability_17: return Ability_17(time, null);
             default:                      return default;   // None / 未注册槽位：调用方自行过滤
         }
     }
@@ -143,13 +248,23 @@ public static class PlayerIntentCatalog
     {
         switch (slot)
         {
-            case SkillSlotType.Primary:
-            case SkillSlotType.Secondary:
-            case SkillSlotType.Ability1:
-            case SkillSlotType.Ultimate:
-            case SkillSlotType.Ability2:
-            case SkillSlotType.Dodge:
-            case SkillSlotType.Jump:
+            case SkillSlotType.Skill_Primary_01:
+            case SkillSlotType.Skill_Primary_02:
+            case SkillSlotType.Skill_Primary_03:
+            case SkillSlotType.Secondary_04:
+            case SkillSlotType.Ultimate_05:
+            case SkillSlotType.Ability_06:
+            case SkillSlotType.Ability_07:
+            case SkillSlotType.Ability_08:
+            case SkillSlotType.Ability_09:
+            case SkillSlotType.Ability_10:
+            case SkillSlotType.Ability_11:
+            case SkillSlotType.Ability_12:
+            case SkillSlotType.Ability_13:
+            case SkillSlotType.Ability_14:
+            case SkillSlotType.Ability_15:
+            case SkillSlotType.Ability_16:
+            case SkillSlotType.Ability_17:
                 return true;
             default:
                 return false;

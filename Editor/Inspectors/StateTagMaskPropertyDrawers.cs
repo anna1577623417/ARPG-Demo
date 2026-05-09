@@ -21,7 +21,7 @@ using UnityEngine;
 //   两条入口共用同一份分组数据与渲染主体，仅在读写时做位转换。
 // ═══════════════════════════════════════════════════════════════════════════════
 
-internal enum TagCategory
+internal enum StateTagDrawerCategory
 {
     Physical = 0,
     Phase = 1,
@@ -53,10 +53,10 @@ internal readonly struct TagEntry
     public readonly StateTag Tag;
     public readonly int BitIndex;
     public readonly int SlotIndex;
-    public readonly TagCategory Category;
+    public readonly StateTagDrawerCategory Category;
     public readonly string Display;
 
-    public TagEntry(StateTag tag, int bitIndex, int slotIndex, TagCategory cat, string display)
+    public TagEntry(StateTag tag, int bitIndex, int slotIndex, StateTagDrawerCategory cat, string display)
     {
         Tag = tag;
         BitIndex = bitIndex;
@@ -69,7 +69,7 @@ internal readonly struct TagEntry
 internal static class TagCatalog
 {
     public static readonly TagEntry[] All;
-    public static readonly Dictionary<TagCategory, List<TagEntry>> ByCategory;
+    public static readonly Dictionary<StateTagDrawerCategory, List<TagEntry>> ByCategory;
 
     /// <summary>第三行：无敌 / 缓冲 / Hitbox / RootMotion（排除 Phase 与 Interrupt）。</summary>
     public static readonly List<TagEntry> ActionWindowTimeBehaviorEntries;
@@ -96,8 +96,8 @@ internal static class TagCatalog
         list.Sort((a, b) => a.BitIndex.CompareTo(b.BitIndex));
         All = list.ToArray();
 
-        ByCategory = new Dictionary<TagCategory, List<TagEntry>>();
-        foreach (TagCategory c in Enum.GetValues(typeof(TagCategory))) ByCategory[c] = new List<TagEntry>();
+        ByCategory = new Dictionary<StateTagDrawerCategory, List<TagEntry>>();
+        foreach (StateTagDrawerCategory c in Enum.GetValues(typeof(StateTagDrawerCategory))) ByCategory[c] = new List<TagEntry>();
         foreach (var e in All) ByCategory[e.Category].Add(e);
 
         ActionWindowTimeBehaviorEntries = new List<TagEntry>();
@@ -142,19 +142,19 @@ internal static class TagCatalog
         return -1;
     }
 
-    static TagCategory InferCategory(int bit)
+    static StateTagDrawerCategory InferCategory(int bit)
     {
-        if (bit < 16) return TagCategory.Physical;
-        if (bit < 32) return TagCategory.Phase;
-        if (bit >= 40 && bit <= 45) return TagCategory.Interrupt;
-        if (bit == 46 || bit == 47) return TagCategory.WindowTimelineSemantic;
-        if (bit < 40) return TagCategory.Ability;
-        if (bit < 48) return TagCategory.Interrupt;
-        return TagCategory.Reserved;
+        if (bit < 16) return StateTagDrawerCategory.Physical;
+        if (bit < 32) return StateTagDrawerCategory.Phase;
+        if (bit >= 40 && bit <= 45) return StateTagDrawerCategory.Interrupt;
+        if (bit == 46 || bit == 47) return StateTagDrawerCategory.WindowTimelineSemantic;
+        if (bit < 40) return StateTagDrawerCategory.Ability;
+        if (bit < 48) return StateTagDrawerCategory.Interrupt;
+        return StateTagDrawerCategory.Reserved;
     }
 
     /// <summary>完整英文 snake_case；打断许可统一 *_Interrupt。</summary>
-    static string FormatTagDisplay(StateTag tag, TagCategory cat)
+    static string FormatTagDisplay(StateTag tag, StateTagDrawerCategory cat)
     {
 #pragma warning disable CS0618 // 遗留 Can* 枚举位仍参与槽位与全量掩码显示
         switch (tag)
@@ -217,14 +217,14 @@ internal static class TagCatalog
 #pragma warning restore CS0618
     }
 
-    public static string CategoryHeader(TagCategory c) => c switch
+    public static string CategoryHeader(StateTagDrawerCategory c) => c switch
     {
-        TagCategory.Physical               => "Physical",
-        TagCategory.Phase                  => "Phase",
-        TagCategory.Ability                => "Ability (legacy)",
-        TagCategory.Interrupt              => "Interrupt",
-        TagCategory.WindowTimelineSemantic => "time_WindowSemantics",
-        TagCategory.Reserved               => "Reserved",
+        StateTagDrawerCategory.Physical               => "Physical",
+        StateTagDrawerCategory.Phase                  => "Phase",
+        StateTagDrawerCategory.Ability                => "Ability (legacy)",
+        StateTagDrawerCategory.Interrupt              => "Interrupt",
+        StateTagDrawerCategory.WindowTimelineSemantic => "time_WindowSemantics",
+        StateTagDrawerCategory.Reserved               => "Reserved",
         _ => c.ToString(),
     };
 }
@@ -278,15 +278,15 @@ internal static class StateTagMaskDrawerUtility
 // ───────────────────────────────────────────────────────────────────────────────
 internal static class GroupedTagDrawer
 {
-    static readonly TagCategory[] s_orderFull =
+    static readonly StateTagDrawerCategory[] s_orderFull =
     {
-        TagCategory.Physical, TagCategory.Phase, TagCategory.Ability,
-        TagCategory.Interrupt, TagCategory.WindowTimelineSemantic, TagCategory.Reserved,
+        StateTagDrawerCategory.Physical, StateTagDrawerCategory.Phase, StateTagDrawerCategory.Ability,
+        StateTagDrawerCategory.Interrupt, StateTagDrawerCategory.WindowTimelineSemantic, StateTagDrawerCategory.Reserved,
     };
 
-    static readonly TagCategory[] s_orderInterruptOnly =
+    static readonly StateTagDrawerCategory[] s_orderInterruptOnly =
     {
-        TagCategory.Interrupt,
+        StateTagDrawerCategory.Interrupt,
     };
 
     /// <summary>
@@ -317,7 +317,7 @@ internal static class GroupedTagDrawer
             y = DrawTagMaskRow(rect, y, lineH, space, ulongProp, stateTagMask, isSlotMode,
                 "interruption_mechanism",
                 "AllowInterrupt* only. Not Can* / Ability.",
-                TagCatalog.ByCategory[TagCategory.Interrupt]);
+                TagCatalog.ByCategory[StateTagDrawerCategory.Interrupt]);
             y = DrawTagMaskRow(rect, y, lineH, space, ulongProp, stateTagMask, isSlotMode,
                 "combat_phase",
                 "startup_Phase / active_Phase / recovery_Phase — animation time stage.",
@@ -335,7 +335,7 @@ internal static class GroupedTagDrawer
             y = DrawTagMaskRow(rect, y, lineH, space, ulongProp, stateTagMask, isSlotMode,
                 "interruption_mechanism",
                 "AllowInterrupt* only (dodge_Interrupt, jump_Interrupt, …). Not ability gates.",
-                TagCatalog.ByCategory[TagCategory.Interrupt]);
+                TagCatalog.ByCategory[StateTagDrawerCategory.Interrupt]);
             y = DrawTagMaskRow(rect, y, lineH, space, ulongProp, stateTagMask, isSlotMode,
                 "time_WindowBehavior",
                 "Same time-behavior bits as ActionWindow row 3 (no combat_phase on locomotion).",
@@ -388,11 +388,11 @@ internal static class GroupedTagDrawer
         return y + lineH + space;
     }
 
-    static List<TagEntry> ResolveEntries(TagCategory cat, TagDrawerMode drawerMode)
+    static List<TagEntry> ResolveEntries(StateTagDrawerCategory cat, TagDrawerMode drawerMode)
     {
         if (drawerMode == TagDrawerMode.InterruptOnly)
         {
-            return cat == TagCategory.Interrupt ? TagCatalog.ByCategory[TagCategory.Interrupt] : new List<TagEntry>();
+            return cat == StateTagDrawerCategory.Interrupt ? TagCatalog.ByCategory[StateTagDrawerCategory.Interrupt] : new List<TagEntry>();
         }
 
         return TagCatalog.ByCategory[cat];
@@ -485,7 +485,7 @@ internal static class GroupedTagDrawer
         var selected = new List<string>(8);
         if (drawerMode == TagDrawerMode.InterruptOnly)
         {
-            foreach (var e in TagCatalog.ByCategory[TagCategory.Interrupt])
+            foreach (var e in TagCatalog.ByCategory[StateTagDrawerCategory.Interrupt])
             {
                 if ((stateTagMask & (ulong)e.Tag) != 0UL)
                 {
@@ -495,7 +495,7 @@ internal static class GroupedTagDrawer
         }
         else if (drawerMode == TagDrawerMode.WindowTimeline)
         {
-            foreach (var e in TagCatalog.ByCategory[TagCategory.Interrupt])
+            foreach (var e in TagCatalog.ByCategory[StateTagDrawerCategory.Interrupt])
             {
                 if ((stateTagMask & (ulong)e.Tag) != 0UL)
                 {
@@ -513,7 +513,7 @@ internal static class GroupedTagDrawer
         }
         else if (drawerMode == TagDrawerMode.ActionWindow)
         {
-            foreach (var e in TagCatalog.ByCategory[TagCategory.Interrupt])
+            foreach (var e in TagCatalog.ByCategory[StateTagDrawerCategory.Interrupt])
             {
                 if ((stateTagMask & (ulong)e.Tag) != 0UL)
                 {

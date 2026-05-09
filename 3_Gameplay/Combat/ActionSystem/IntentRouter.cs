@@ -8,7 +8,8 @@
 ///   HeavyAttack   → PlayerActionState
 ///   Dodge         → PlayerActionState
 ///   SwordDash     → PlayerActionState
-///   CastAbility1 / CastUltimate → PlayerActionState（技能管线注入 Action）
+///   CastAbility1 / CastAbility7 / CastAbility8 / CastUltimate / ComboAttack / ChargeAttack
+///                     → PlayerActionState（技能管线注入 Action）
 /// </summary>
 public static class IntentRouter
 {
@@ -22,7 +23,20 @@ public static class IntentRouter
             case GameplayIntentKind.Dodge:
             case GameplayIntentKind.SwordDash:
             case GameplayIntentKind.CastAbility1:
+            case GameplayIntentKind.CastAbility7:
+            case GameplayIntentKind.CastAbility8:
             case GameplayIntentKind.CastUltimate:
+            case GameplayIntentKind.ComboAttack:
+            case GameplayIntentKind.ChargeAttack:
+            case GameplayIntentKind.Ability_09:
+            case GameplayIntentKind.Ability_10:
+            case GameplayIntentKind.Ability_11:
+            case GameplayIntentKind.Ability_12:
+            case GameplayIntentKind.Ability_13:
+            case GameplayIntentKind.Ability_14:
+            case GameplayIntentKind.Ability_15:
+            case GameplayIntentKind.Ability_16:
+            case GameplayIntentKind.Ability_17:
                 return true;
             default:
                 return false;
@@ -43,7 +57,20 @@ public static class IntentRouter
             case GameplayIntentKind.Dodge:
             case GameplayIntentKind.SwordDash:
             case GameplayIntentKind.CastAbility1:
+            case GameplayIntentKind.CastAbility7:
+            case GameplayIntentKind.CastAbility8:
             case GameplayIntentKind.CastUltimate:
+            case GameplayIntentKind.ComboAttack:
+            case GameplayIntentKind.ChargeAttack:
+            case GameplayIntentKind.Ability_09:
+            case GameplayIntentKind.Ability_10:
+            case GameplayIntentKind.Ability_11:
+            case GameplayIntentKind.Ability_12:
+            case GameplayIntentKind.Ability_13:
+            case GameplayIntentKind.Ability_14:
+            case GameplayIntentKind.Ability_15:
+            case GameplayIntentKind.Ability_16:
+            case GameplayIntentKind.Ability_17:
                 player.ArmPendingAction(intent.Kind, ResolveActionData(player, in intent));
                 if (forceActionReentry)
                 {
@@ -71,6 +98,8 @@ public static class IntentRouter
         switch (intent.Kind)
         {
             case GameplayIntentKind.LightAttack:
+            case GameplayIntentKind.ComboAttack:
+            case GameplayIntentKind.ChargeAttack:
                 return player.ResolveLightAttackForCombo();
             case GameplayIntentKind.HeavyAttack:
                 return player.ResolveHeavyAttackForCombo();

@@ -99,15 +99,19 @@ public sealed class ResourceBarView : MonoBehaviour, IUIThemeable
 
         if (isDrain)
         {
-            // Buffer 暂留旧值，启动延迟计时
             m_bufferDelayTimer = bufferDelaySeconds;
         }
-        else
+        else if (useBufferOnDrainOnly)
         {
-            // Refill 或对齐：buffer 直接对齐 fill
+            // Refill：立即对齐（默认）
             m_bufferNormalized = m_normalized;
             bufferImage.fillAmount = m_bufferNormalized;
             m_bufferDelayTimer = 0f;
+        }
+        else
+        {
+            // 关闭「仅 Drain 延迟」：回复也走延迟 + 缓动追上 Fill
+            m_bufferDelayTimer = bufferDelaySeconds;
         }
     }
 
@@ -161,20 +165,18 @@ public sealed class ResourceBarView : MonoBehaviour, IUIThemeable
             return;
         }
 
-        // 已对齐：无须计算
-        if (m_bufferNormalized <= m_normalized + 1e-4f)
+        // 已与 Fill 重合（受伤后 buffer 下移 / 治疗后 buffer 上移）
+        if (Mathf.Abs(m_bufferNormalized - m_normalized) <= 1e-4f)
         {
             return;
         }
 
-        // 延迟期：Buffer 不动
         if (m_bufferDelayTimer > 0f)
         {
             m_bufferDelayTimer -= Time.deltaTime;
             return;
         }
 
-        // 缓动追上 Fill
         m_bufferNormalized = Mathf.MoveTowards(
             m_bufferNormalized,
             m_normalized,

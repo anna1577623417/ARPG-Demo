@@ -280,6 +280,141 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
                     ""processors"": """",
                     ""interactions"": """",
                     ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""Attack_01-03"",
+                    ""type"": ""Button"",
+                    ""id"": ""b3467551-8818-4cb1-baa5-319f27f42c7f"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""SkillSlotSecondary_04"",
+                    ""type"": ""Button"",
+                    ""id"": ""aa8d04ea-62f9-45d3-8c95-55316dabee89"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""SlotUltimate_05"",
+                    ""type"": ""Button"",
+                    ""id"": ""9a705ced-a4d8-4143-87e7-4a82e4dddd06"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""SlotAbility_06"",
+                    ""type"": ""Button"",
+                    ""id"": ""e0723fcf-e21e-4721-b457-1533b7c94868"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""SlotAbility_07"",
+                    ""type"": ""Button"",
+                    ""id"": ""433458a2-7696-4e69-b3c8-795e3f035bc7"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""SlotAbility_08"",
+                    ""type"": ""Button"",
+                    ""id"": ""82437d03-eed8-4bd6-b1ec-0907e0561df5"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""SlotAbility_09"",
+                    ""type"": ""Button"",
+                    ""id"": ""be2f67a0-f830-4052-86d6-191acf4b2f2c"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""SlotAbility_10"",
+                    ""type"": ""Button"",
+                    ""id"": ""099d3801-d22b-4f28-9356-dd08ee93420e"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""SlotAbility_11"",
+                    ""type"": ""Button"",
+                    ""id"": ""b9cca105-779d-45f2-a0df-4625c30fe706"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""SlotAbility_12"",
+                    ""type"": ""Button"",
+                    ""id"": ""0ca5e8a9-a99f-425d-9b02-fb9fd6ceb347"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""SlotAbility_13"",
+                    ""type"": ""Button"",
+                    ""id"": ""1aee3b37-aca5-470c-af83-c981d1306896"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""SlotAbility_14"",
+                    ""type"": ""Button"",
+                    ""id"": ""5b537736-e834-4534-9b6b-784ac93f615a"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""SlotAbility_15"",
+                    ""type"": ""Button"",
+                    ""id"": ""4d69c687-8ea0-47b7-b3e5-e5e38e9ced15"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""SlotAbility_16"",
+                    ""type"": ""Button"",
+                    ""id"": ""a6a2d83c-0b1b-4e24-bb7e-535c7fb5731f"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""SlotAbility_17"",
+                    ""type"": ""Button"",
+                    ""id"": ""a11df694-4e3b-4256-9d3a-9521c085b996"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
                 }
             ],
             ""bindings"": [
@@ -407,7 +542,7 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
                 {
                     ""name"": """",
                     ""id"": ""cd333333-3333-4333-8333-333333333333"",
-                    ""path"": ""<Keyboard>/space"",
+                    ""path"": ""<Keyboard>/f"",
                     ""interactions"": """",
                     ""processors"": """",
                     ""groups"": """",
@@ -473,7 +608,7 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
                 {
                     ""name"": """",
                     ""id"": ""085e0690-7811-4e49-a6a1-394663e4ae44"",
-                    ""path"": ""<Keyboard>/shift"",
+                    ""path"": ""<Keyboard>/space"",
                     ""interactions"": """",
                     ""processors"": """",
                     ""groups"": """",
@@ -583,7 +718,7 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
                 {
                     ""name"": """",
                     ""id"": ""839a7a9d-598b-44ee-9933-f4da5fb8f37f"",
-                    ""path"": ""<Keyboard>/x"",
+                    ""path"": ""<Keyboard>/shift"",
                     ""interactions"": """",
                     ""processors"": """",
                     ""groups"": """",
@@ -659,94 +794,6 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
                 },
                 {
                     ""name"": """",
-                    ""id"": ""ef7dd68b-fec8-415b-845b-1654baed2790"",
-                    ""path"": ""<Keyboard>/1"",
-                    ""interactions"": """",
-                    ""processors"": """",
-                    ""groups"": """",
-                    ""action"": ""PartySlot1"",
-                    ""isComposite"": false,
-                    ""isPartOfComposite"": false
-                },
-                {
-                    ""name"": """",
-                    ""id"": ""5bcbf47d-5b67-43a1-b751-9a759943e52e"",
-                    ""path"": ""<Keyboard>/2"",
-                    ""interactions"": """",
-                    ""processors"": """",
-                    ""groups"": """",
-                    ""action"": ""PartySlot2"",
-                    ""isComposite"": false,
-                    ""isPartOfComposite"": false
-                },
-                {
-                    ""name"": """",
-                    ""id"": ""f97f8172-ce11-45b8-8f72-6bd8fd7cb2b5"",
-                    ""path"": ""<Keyboard>/3"",
-                    ""interactions"": """",
-                    ""processors"": """",
-                    ""groups"": """",
-                    ""action"": ""PartySlot3"",
-                    ""isComposite"": false,
-                    ""isPartOfComposite"": false
-                },
-                {
-                    ""name"": """",
-                    ""id"": ""234403a0-f93a-43d0-bc93-9a2d8b263563"",
-                    ""path"": ""<Keyboard>/4"",
-                    ""interactions"": """",
-                    ""processors"": """",
-                    ""groups"": """",
-                    ""action"": ""PartySlot4"",
-                    ""isComposite"": false,
-                    ""isPartOfComposite"": false
-                },
-                {
-                    ""name"": """",
-                    ""id"": ""60ab62e6-e976-4645-8458-9f67523230df"",
-                    ""path"": ""<Keyboard>/5"",
-                    ""interactions"": """",
-                    ""processors"": """",
-                    ""groups"": """",
-                    ""action"": ""PartySlot5"",
-                    ""isComposite"": false,
-                    ""isPartOfComposite"": false
-                },
-                {
-                    ""name"": """",
-                    ""id"": ""b44723ad-8890-4454-a3de-647e22ea5087"",
-                    ""path"": ""<Keyboard>/6"",
-                    ""interactions"": """",
-                    ""processors"": """",
-                    ""groups"": """",
-                    ""action"": ""PartySlot6"",
-                    ""isComposite"": false,
-                    ""isPartOfComposite"": false
-                },
-                {
-                    ""name"": """",
-                    ""id"": ""0b9837db-0633-47d0-90c4-19de4223b169"",
-                    ""path"": ""<Keyboard>/7"",
-                    ""interactions"": """",
-                    ""processors"": """",
-                    ""groups"": """",
-                    ""action"": ""PartySlot7"",
-                    ""isComposite"": false,
-                    ""isPartOfComposite"": false
-                },
-                {
-                    ""name"": """",
-                    ""id"": ""28253aa8-c113-45e1-aebb-107eadc7fb65"",
-                    ""path"": ""<Keyboard>/8"",
-                    ""interactions"": """",
-                    ""processors"": """",
-                    ""groups"": """",
-                    ""action"": ""PartySlot8"",
-                    ""isComposite"": false,
-                    ""isPartOfComposite"": false
-                },
-                {
-                    ""name"": """",
                     ""id"": ""ab111111-1111-4111-8111-111111111111"",
                     ""path"": ""<Keyboard>/q"",
                     ""interactions"": """",
@@ -764,6 +811,171 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
                     ""processors"": """",
                     ""groups"": """",
                     ""action"": ""SlotUltimate"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""3383a841-57f5-4a04-905f-16d2e40d9e13"",
+                    ""path"": ""<Mouse>/leftButton"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""Attack_01-03"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""984e4d01-8849-4aaf-a0eb-73e22cc36d5d"",
+                    ""path"": ""<Mouse>/rightButton"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""SkillSlotSecondary_04"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""feb7eb40-f8b2-475b-9fac-e3859332149d"",
+                    ""path"": ""<Keyboard>/r"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""SlotUltimate_05"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""9482d584-b4bd-4820-8b04-f389ab2d7857"",
+                    ""path"": ""<Keyboard>/q"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""SlotAbility_06"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""024ecb54-2ff6-4493-836b-480d7032bdc5"",
+                    ""path"": ""<Keyboard>/shift"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""SlotAbility_07"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""983ddfa1-60c3-4cfe-8b75-9152bae90245"",
+                    ""path"": ""<Keyboard>/space"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""SlotAbility_08"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""5f6c5804-f5d8-49e0-805d-db0b36276bdc"",
+                    ""path"": ""<Keyboard>/1"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""SlotAbility_09"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""677cb9bc-1ef0-4c7e-a117-4aa0a7148186"",
+                    ""path"": ""<Keyboard>/2"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""SlotAbility_10"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""9a07eef6-0313-418d-90fb-48d80ceebd48"",
+                    ""path"": ""<Keyboard>/3"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""SlotAbility_11"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""6c85e8c5-fdc5-475d-8050-373aaca99e5f"",
+                    ""path"": ""<Keyboard>/4"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""SlotAbility_12"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""2a9480bd-11cb-44c0-b216-763587f0834e"",
+                    ""path"": ""<Keyboard>/5"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""SlotAbility_13"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""b164cd90-aef9-472d-987f-82fa18b60bf8"",
+                    ""path"": ""<Keyboard>/6"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""SlotAbility_14"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""a993f935-d0d9-4b3f-9af0-7b5bcbb116ce"",
+                    ""path"": ""<Keyboard>/7"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""SlotAbility_15"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""946bcee1-135d-4738-9b21-eb922898d177"",
+                    ""path"": ""<Keyboard>/8"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""SlotAbility_16"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""6be68b47-9af7-421f-84c5-b26ea79ea4ce"",
+                    ""path"": ""<Keyboard>/9"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""SlotAbility_17"",
                     ""isComposite"": false,
                     ""isPartOfComposite"": false
                 }
@@ -918,6 +1130,21 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
         m_GamePlay_PartySlot8 = m_GamePlay.FindAction("PartySlot8", throwIfNotFound: true);
         m_GamePlay_SlotAbility1 = m_GamePlay.FindAction("SlotAbility1", throwIfNotFound: true);
         m_GamePlay_SlotUltimate = m_GamePlay.FindAction("SlotUltimate", throwIfNotFound: true);
+        m_GamePlay_Attack_0103 = m_GamePlay.FindAction("Attack_01-03", throwIfNotFound: true);
+        m_GamePlay_SkillSlotSecondary_04 = m_GamePlay.FindAction("SkillSlotSecondary_04", throwIfNotFound: true);
+        m_GamePlay_SlotUltimate_05 = m_GamePlay.FindAction("SlotUltimate_05", throwIfNotFound: true);
+        m_GamePlay_SlotAbility_06 = m_GamePlay.FindAction("SlotAbility_06", throwIfNotFound: true);
+        m_GamePlay_SlotAbility_07 = m_GamePlay.FindAction("SlotAbility_07", throwIfNotFound: true);
+        m_GamePlay_SlotAbility_08 = m_GamePlay.FindAction("SlotAbility_08", throwIfNotFound: true);
+        m_GamePlay_SlotAbility_09 = m_GamePlay.FindAction("SlotAbility_09", throwIfNotFound: true);
+        m_GamePlay_SlotAbility_10 = m_GamePlay.FindAction("SlotAbility_10", throwIfNotFound: true);
+        m_GamePlay_SlotAbility_11 = m_GamePlay.FindAction("SlotAbility_11", throwIfNotFound: true);
+        m_GamePlay_SlotAbility_12 = m_GamePlay.FindAction("SlotAbility_12", throwIfNotFound: true);
+        m_GamePlay_SlotAbility_13 = m_GamePlay.FindAction("SlotAbility_13", throwIfNotFound: true);
+        m_GamePlay_SlotAbility_14 = m_GamePlay.FindAction("SlotAbility_14", throwIfNotFound: true);
+        m_GamePlay_SlotAbility_15 = m_GamePlay.FindAction("SlotAbility_15", throwIfNotFound: true);
+        m_GamePlay_SlotAbility_16 = m_GamePlay.FindAction("SlotAbility_16", throwIfNotFound: true);
+        m_GamePlay_SlotAbility_17 = m_GamePlay.FindAction("SlotAbility_17", throwIfNotFound: true);
         // UI
         m_UI = asset.FindActionMap("UI", throwIfNotFound: true);
         m_UI_Cancel = m_UI.FindAction("Cancel", throwIfNotFound: true);
@@ -1025,6 +1252,21 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
     private readonly InputAction m_GamePlay_PartySlot8;
     private readonly InputAction m_GamePlay_SlotAbility1;
     private readonly InputAction m_GamePlay_SlotUltimate;
+    private readonly InputAction m_GamePlay_Attack_0103;
+    private readonly InputAction m_GamePlay_SkillSlotSecondary_04;
+    private readonly InputAction m_GamePlay_SlotUltimate_05;
+    private readonly InputAction m_GamePlay_SlotAbility_06;
+    private readonly InputAction m_GamePlay_SlotAbility_07;
+    private readonly InputAction m_GamePlay_SlotAbility_08;
+    private readonly InputAction m_GamePlay_SlotAbility_09;
+    private readonly InputAction m_GamePlay_SlotAbility_10;
+    private readonly InputAction m_GamePlay_SlotAbility_11;
+    private readonly InputAction m_GamePlay_SlotAbility_12;
+    private readonly InputAction m_GamePlay_SlotAbility_13;
+    private readonly InputAction m_GamePlay_SlotAbility_14;
+    private readonly InputAction m_GamePlay_SlotAbility_15;
+    private readonly InputAction m_GamePlay_SlotAbility_16;
+    private readonly InputAction m_GamePlay_SlotAbility_17;
     /// <summary>
     /// Provides access to input actions defined in input action map "GamePlay".
     /// </summary>
@@ -1121,6 +1363,66 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
         /// </summary>
         public InputAction @SlotUltimate => m_Wrapper.m_GamePlay_SlotUltimate;
         /// <summary>
+        /// Provides access to the underlying input action "GamePlay/Attack_0103".
+        /// </summary>
+        public InputAction @Attack_0103 => m_Wrapper.m_GamePlay_Attack_0103;
+        /// <summary>
+        /// Provides access to the underlying input action "GamePlay/SkillSlotSecondary_04".
+        /// </summary>
+        public InputAction @SkillSlotSecondary_04 => m_Wrapper.m_GamePlay_SkillSlotSecondary_04;
+        /// <summary>
+        /// Provides access to the underlying input action "GamePlay/SlotUltimate_05".
+        /// </summary>
+        public InputAction @SlotUltimate_05 => m_Wrapper.m_GamePlay_SlotUltimate_05;
+        /// <summary>
+        /// Provides access to the underlying input action "GamePlay/SlotAbility_06".
+        /// </summary>
+        public InputAction @SlotAbility_06 => m_Wrapper.m_GamePlay_SlotAbility_06;
+        /// <summary>
+        /// Provides access to the underlying input action "GamePlay/SlotAbility_07".
+        /// </summary>
+        public InputAction @SlotAbility_07 => m_Wrapper.m_GamePlay_SlotAbility_07;
+        /// <summary>
+        /// Provides access to the underlying input action "GamePlay/SlotAbility_08".
+        /// </summary>
+        public InputAction @SlotAbility_08 => m_Wrapper.m_GamePlay_SlotAbility_08;
+        /// <summary>
+        /// Provides access to the underlying input action "GamePlay/SlotAbility_09".
+        /// </summary>
+        public InputAction @SlotAbility_09 => m_Wrapper.m_GamePlay_SlotAbility_09;
+        /// <summary>
+        /// Provides access to the underlying input action "GamePlay/SlotAbility_10".
+        /// </summary>
+        public InputAction @SlotAbility_10 => m_Wrapper.m_GamePlay_SlotAbility_10;
+        /// <summary>
+        /// Provides access to the underlying input action "GamePlay/SlotAbility_11".
+        /// </summary>
+        public InputAction @SlotAbility_11 => m_Wrapper.m_GamePlay_SlotAbility_11;
+        /// <summary>
+        /// Provides access to the underlying input action "GamePlay/SlotAbility_12".
+        /// </summary>
+        public InputAction @SlotAbility_12 => m_Wrapper.m_GamePlay_SlotAbility_12;
+        /// <summary>
+        /// Provides access to the underlying input action "GamePlay/SlotAbility_13".
+        /// </summary>
+        public InputAction @SlotAbility_13 => m_Wrapper.m_GamePlay_SlotAbility_13;
+        /// <summary>
+        /// Provides access to the underlying input action "GamePlay/SlotAbility_14".
+        /// </summary>
+        public InputAction @SlotAbility_14 => m_Wrapper.m_GamePlay_SlotAbility_14;
+        /// <summary>
+        /// Provides access to the underlying input action "GamePlay/SlotAbility_15".
+        /// </summary>
+        public InputAction @SlotAbility_15 => m_Wrapper.m_GamePlay_SlotAbility_15;
+        /// <summary>
+        /// Provides access to the underlying input action "GamePlay/SlotAbility_16".
+        /// </summary>
+        public InputAction @SlotAbility_16 => m_Wrapper.m_GamePlay_SlotAbility_16;
+        /// <summary>
+        /// Provides access to the underlying input action "GamePlay/SlotAbility_17".
+        /// </summary>
+        public InputAction @SlotAbility_17 => m_Wrapper.m_GamePlay_SlotAbility_17;
+        /// <summary>
         /// Provides access to the underlying input action map instance.
         /// </summary>
         public InputActionMap Get() { return m_Wrapper.m_GamePlay; }
@@ -1209,6 +1511,51 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
             @SlotUltimate.started += instance.OnSlotUltimate;
             @SlotUltimate.performed += instance.OnSlotUltimate;
             @SlotUltimate.canceled += instance.OnSlotUltimate;
+            @Attack_0103.started += instance.OnAttack_0103;
+            @Attack_0103.performed += instance.OnAttack_0103;
+            @Attack_0103.canceled += instance.OnAttack_0103;
+            @SkillSlotSecondary_04.started += instance.OnSkillSlotSecondary_04;
+            @SkillSlotSecondary_04.performed += instance.OnSkillSlotSecondary_04;
+            @SkillSlotSecondary_04.canceled += instance.OnSkillSlotSecondary_04;
+            @SlotUltimate_05.started += instance.OnSlotUltimate_05;
+            @SlotUltimate_05.performed += instance.OnSlotUltimate_05;
+            @SlotUltimate_05.canceled += instance.OnSlotUltimate_05;
+            @SlotAbility_06.started += instance.OnSlotAbility_06;
+            @SlotAbility_06.performed += instance.OnSlotAbility_06;
+            @SlotAbility_06.canceled += instance.OnSlotAbility_06;
+            @SlotAbility_07.started += instance.OnSlotAbility_07;
+            @SlotAbility_07.performed += instance.OnSlotAbility_07;
+            @SlotAbility_07.canceled += instance.OnSlotAbility_07;
+            @SlotAbility_08.started += instance.OnSlotAbility_08;
+            @SlotAbility_08.performed += instance.OnSlotAbility_08;
+            @SlotAbility_08.canceled += instance.OnSlotAbility_08;
+            @SlotAbility_09.started += instance.OnSlotAbility_09;
+            @SlotAbility_09.performed += instance.OnSlotAbility_09;
+            @SlotAbility_09.canceled += instance.OnSlotAbility_09;
+            @SlotAbility_10.started += instance.OnSlotAbility_10;
+            @SlotAbility_10.performed += instance.OnSlotAbility_10;
+            @SlotAbility_10.canceled += instance.OnSlotAbility_10;
+            @SlotAbility_11.started += instance.OnSlotAbility_11;
+            @SlotAbility_11.performed += instance.OnSlotAbility_11;
+            @SlotAbility_11.canceled += instance.OnSlotAbility_11;
+            @SlotAbility_12.started += instance.OnSlotAbility_12;
+            @SlotAbility_12.performed += instance.OnSlotAbility_12;
+            @SlotAbility_12.canceled += instance.OnSlotAbility_12;
+            @SlotAbility_13.started += instance.OnSlotAbility_13;
+            @SlotAbility_13.performed += instance.OnSlotAbility_13;
+            @SlotAbility_13.canceled += instance.OnSlotAbility_13;
+            @SlotAbility_14.started += instance.OnSlotAbility_14;
+            @SlotAbility_14.performed += instance.OnSlotAbility_14;
+            @SlotAbility_14.canceled += instance.OnSlotAbility_14;
+            @SlotAbility_15.started += instance.OnSlotAbility_15;
+            @SlotAbility_15.performed += instance.OnSlotAbility_15;
+            @SlotAbility_15.canceled += instance.OnSlotAbility_15;
+            @SlotAbility_16.started += instance.OnSlotAbility_16;
+            @SlotAbility_16.performed += instance.OnSlotAbility_16;
+            @SlotAbility_16.canceled += instance.OnSlotAbility_16;
+            @SlotAbility_17.started += instance.OnSlotAbility_17;
+            @SlotAbility_17.performed += instance.OnSlotAbility_17;
+            @SlotAbility_17.canceled += instance.OnSlotAbility_17;
         }
 
         /// <summary>
@@ -1283,6 +1630,51 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
             @SlotUltimate.started -= instance.OnSlotUltimate;
             @SlotUltimate.performed -= instance.OnSlotUltimate;
             @SlotUltimate.canceled -= instance.OnSlotUltimate;
+            @Attack_0103.started -= instance.OnAttack_0103;
+            @Attack_0103.performed -= instance.OnAttack_0103;
+            @Attack_0103.canceled -= instance.OnAttack_0103;
+            @SkillSlotSecondary_04.started -= instance.OnSkillSlotSecondary_04;
+            @SkillSlotSecondary_04.performed -= instance.OnSkillSlotSecondary_04;
+            @SkillSlotSecondary_04.canceled -= instance.OnSkillSlotSecondary_04;
+            @SlotUltimate_05.started -= instance.OnSlotUltimate_05;
+            @SlotUltimate_05.performed -= instance.OnSlotUltimate_05;
+            @SlotUltimate_05.canceled -= instance.OnSlotUltimate_05;
+            @SlotAbility_06.started -= instance.OnSlotAbility_06;
+            @SlotAbility_06.performed -= instance.OnSlotAbility_06;
+            @SlotAbility_06.canceled -= instance.OnSlotAbility_06;
+            @SlotAbility_07.started -= instance.OnSlotAbility_07;
+            @SlotAbility_07.performed -= instance.OnSlotAbility_07;
+            @SlotAbility_07.canceled -= instance.OnSlotAbility_07;
+            @SlotAbility_08.started -= instance.OnSlotAbility_08;
+            @SlotAbility_08.performed -= instance.OnSlotAbility_08;
+            @SlotAbility_08.canceled -= instance.OnSlotAbility_08;
+            @SlotAbility_09.started -= instance.OnSlotAbility_09;
+            @SlotAbility_09.performed -= instance.OnSlotAbility_09;
+            @SlotAbility_09.canceled -= instance.OnSlotAbility_09;
+            @SlotAbility_10.started -= instance.OnSlotAbility_10;
+            @SlotAbility_10.performed -= instance.OnSlotAbility_10;
+            @SlotAbility_10.canceled -= instance.OnSlotAbility_10;
+            @SlotAbility_11.started -= instance.OnSlotAbility_11;
+            @SlotAbility_11.performed -= instance.OnSlotAbility_11;
+            @SlotAbility_11.canceled -= instance.OnSlotAbility_11;
+            @SlotAbility_12.started -= instance.OnSlotAbility_12;
+            @SlotAbility_12.performed -= instance.OnSlotAbility_12;
+            @SlotAbility_12.canceled -= instance.OnSlotAbility_12;
+            @SlotAbility_13.started -= instance.OnSlotAbility_13;
+            @SlotAbility_13.performed -= instance.OnSlotAbility_13;
+            @SlotAbility_13.canceled -= instance.OnSlotAbility_13;
+            @SlotAbility_14.started -= instance.OnSlotAbility_14;
+            @SlotAbility_14.performed -= instance.OnSlotAbility_14;
+            @SlotAbility_14.canceled -= instance.OnSlotAbility_14;
+            @SlotAbility_15.started -= instance.OnSlotAbility_15;
+            @SlotAbility_15.performed -= instance.OnSlotAbility_15;
+            @SlotAbility_15.canceled -= instance.OnSlotAbility_15;
+            @SlotAbility_16.started -= instance.OnSlotAbility_16;
+            @SlotAbility_16.performed -= instance.OnSlotAbility_16;
+            @SlotAbility_16.canceled -= instance.OnSlotAbility_16;
+            @SlotAbility_17.started -= instance.OnSlotAbility_17;
+            @SlotAbility_17.performed -= instance.OnSlotAbility_17;
+            @SlotAbility_17.canceled -= instance.OnSlotAbility_17;
         }
 
         /// <summary>
@@ -1588,6 +1980,111 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
         /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
         /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
         void OnSlotUltimate(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "Attack_01-03" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnAttack_0103(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "SkillSlotSecondary_04" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnSkillSlotSecondary_04(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "SlotUltimate_05" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnSlotUltimate_05(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "SlotAbility_06" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnSlotAbility_06(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "SlotAbility_07" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnSlotAbility_07(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "SlotAbility_08" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnSlotAbility_08(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "SlotAbility_09" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnSlotAbility_09(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "SlotAbility_10" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnSlotAbility_10(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "SlotAbility_11" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnSlotAbility_11(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "SlotAbility_12" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnSlotAbility_12(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "SlotAbility_13" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnSlotAbility_13(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "SlotAbility_14" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnSlotAbility_14(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "SlotAbility_15" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnSlotAbility_15(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "SlotAbility_16" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnSlotAbility_16(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "SlotAbility_17" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnSlotAbility_17(InputAction.CallbackContext context);
     }
     /// <summary>
     /// Interface to implement callback methods for all input action callbacks associated with input actions defined by "UI" which allows adding and removing callbacks.

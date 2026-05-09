@@ -59,6 +59,11 @@ public sealed class EntityStatsSOEditor : Editor
                 issues.Add($"{e.Type} should be >= 1 (index {i}, value={e.BaseValue}).");
             }
 
+            if (e.Type == StatType.MaxMana && e.BaseValue < 0f)
+            {
+                issues.Add($"{e.Type} should be >= 0 (index {i}, value={e.BaseValue}).");
+            }
+
             if ((e.Type == StatType.WalkSpeed
                  || e.Type == StatType.RunSpeed
                  || e.Type == StatType.RotationSpeed
@@ -139,7 +144,8 @@ public sealed class EntityStatsSOEditor : Editor
             return Mathf.Max(1f, value);
         }
 
-        if (type == StatType.WalkSpeed
+        if (type == StatType.MaxMana
+            || type == StatType.WalkSpeed
             || type == StatType.RunSpeed
             || type == StatType.RotationSpeed
             || type == StatType.Poise)

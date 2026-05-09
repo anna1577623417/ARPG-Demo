@@ -19,16 +19,19 @@ public static class SkillChargeCommit
         }
 
         var threshold = Mathf.Max(0f, root.chargeThreshold);
-        return (slot == SkillSlotType.Primary
+        return (slot == SkillSlotType.Skill_Primary_01
                 && kind == GameplayIntentKind.LightAttack
                 && chargeHoldSeconds >= threshold)
-               || (slot == SkillSlotType.Secondary
+               || (slot == SkillSlotType.Skill_Primary_03
+                   && kind == GameplayIntentKind.ChargeAttack
+                   && chargeHoldSeconds >= threshold)
+               || (slot == SkillSlotType.Secondary_04
                    && kind == GameplayIntentKind.HeavyAttack
                    && chargeHoldSeconds >= threshold)
-               || (slot == SkillSlotType.Ability1
+               || (slot == SkillSlotType.Ability_06
                    && kind == GameplayIntentKind.CastAbility1
                    && chargeHoldSeconds >= threshold)
-               || (slot == SkillSlotType.Ultimate
+               || (slot == SkillSlotType.Ultimate_05
                    && kind == GameplayIntentKind.CastUltimate
                    && chargeHoldSeconds >= threshold);
     }
@@ -53,10 +56,12 @@ public static class SkillChargeCommit
         }
 
         var appliesToSlot =
-            (slot == SkillSlotType.Primary && kind == GameplayIntentKind.LightAttack)
-            || (slot == SkillSlotType.Secondary && kind == GameplayIntentKind.HeavyAttack)
-            || (slot == SkillSlotType.Ability1 && kind == GameplayIntentKind.CastAbility1)
-            || (slot == SkillSlotType.Ultimate && kind == GameplayIntentKind.CastUltimate);
+            (slot == SkillSlotType.Skill_Primary_01 && kind == GameplayIntentKind.LightAttack)
+            || (slot == SkillSlotType.Skill_Primary_02 && kind == GameplayIntentKind.ComboAttack)
+            || (slot == SkillSlotType.Skill_Primary_03 && kind == GameplayIntentKind.ChargeAttack)
+            || (slot == SkillSlotType.Secondary_04 && kind == GameplayIntentKind.HeavyAttack)
+            || (slot == SkillSlotType.Ability_06 && kind == GameplayIntentKind.CastAbility1)
+            || (slot == SkillSlotType.Ultimate_05 && kind == GameplayIntentKind.CastUltimate);
 
         if (!appliesToSlot
             || chargeHoldSeconds < Mathf.Max(0f, segment.chargeThreshold))

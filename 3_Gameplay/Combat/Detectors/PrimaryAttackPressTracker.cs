@@ -8,9 +8,13 @@ using UnityEngine;
 [Serializable]
 public struct PrimaryAttackSplitPolicy
 {
-    [Tooltip("阈值参考值；实际分档由 SkillData.chargeThreshold / chargeLevels 决定。")]
+    [Tooltip("长按阈值（秒）：超过后派发 ChargeAttack。")]
     [Min(0.04f)]
     public float HoldSecondsBeforeChargedIntent;
+
+    [Tooltip("连段判定窗口（秒）：短于该窗口的连续短按派发 ComboAttack。")]
+    [Min(0.05f)]
+    public float ComboTapWindowSeconds;
 }
 
 public sealed class PrimaryAttackPressTracker
@@ -18,10 +22,12 @@ public sealed class PrimaryAttackPressTracker
     bool _lastHeld;
     bool _sessionOpen;
     float _pressStartedAt;
+    float _lastReleaseAt;
+    PrimaryAttackSplitPolicy _policy;
 
     public void Configure(in PrimaryAttackSplitPolicy policy)
     {
-        _ = policy;
+        _policy = policy;
     }
 
     public void SyncInitialHeldState(bool attackHeld)
@@ -46,7 +52,9 @@ public sealed class PrimaryAttackPressTracker
 
         if (fell)
         {
-            player.TryNotifySkillCastInputReleasedForSlot(SkillSlotType.Primary);
+            player.TryNotifySkillCastInputReleasedForSlot(SkillSlotType.Skill_Primary_01);
+            player.TryNotifySkillCastInputReleasedForSlot(SkillSlotType.Skill_Primary_02);
+            player.TryNotifySkillCastInputReleasedForSlot(SkillSlotType.Skill_Primary_03);
         }
 
         if (rose)
@@ -58,7 +66,24 @@ public sealed class PrimaryAttackPressTracker
         if (_sessionOpen && fell)
         {
             var hold = Mathf.Max(0f, time - _pressStartedAt);
-            player.EnqueueGameplayIntent(PlayerIntentCatalog.LightAttack(time, null, hold));
+            var isCharge = hold >= Mathf.Max(0.04f, _policy.HoldSecondsBeforeChargedIntent);
+            var comboWindow = Mathf.Max(0.05f, _policy.ComboTapWindowSeconds);
+            var isCombo = !isCharge && _lastReleaseAt > 0.001f && time - _lastReleaseAt <= comboWindow;
+
+            if (isCharge)
+            {
+                player.EnqueueGameplayIntent(PlayerIntentCatalog.ChargeAttack(time, null, hold));
+            }
+            else if (isCombo)
+            {
+                player.EnqueueGameplayIntent(PlayerIntentCatalog.ComboAttack(time, null, hold));
+            }
+            else
+            {
+                player.EnqueueGameplayIntent(PlayerIntentCatalog.LightAttack(time, null, hold));
+            }
+
+            _lastReleaseAt = time;
             _sessionOpen = false;
         }
     }

@@ -68,7 +68,7 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver {
     [Tooltip("攻击或潜行时的移动速度衰减倍率。\n增大：攻击时仍能保持高速移动。\n减小：攻击时几乎原地站桩。")]
     [SerializeField, Range(0f, 1f)] private float walkSpeedMultiplier = 0.55f;
 
-    [Header("Debug")]
+    [Header("Skill Debug")]
     [Tooltip("在 Console 打印意图仲裁与 Action 打断窗口判定日志。")]
     [SerializeField] private bool debugInterruptFlow;
 
@@ -100,9 +100,6 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver {
     /// <summary>离散意图队列（输入经语义化后入队，由状态机与状态消费）。</summary>
     public readonly GameplayIntentBuffer IntentBuffer = new GameplayIntentBuffer(16);
 
-    [Header("Resources")]
-    [SerializeField] private float maxStamina = 100f;
-
     [Header("Combat Data")]
     [Tooltip("迁移期回退路：仅在未装配 SkillLoadout、或勾选「Loadout 下允许 Moveset 回退」时使用轻/重/翻滚/剑冲默认 Action。")]
     [SerializeField] private WeaponMovesetSO weaponMoveset;
@@ -118,6 +115,16 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver {
     [SerializeField] private bool skillGlobalCooldownEnabled = true;
 
     [SerializeField] private SkillIndicatorController skillIndicatorController;
+
+    [Tooltip("可选覆盖：IntentKind -> SkillSlotType。为空时使用代码内置映射。")]
+    [SerializeField] private IntentSkillSlotMapSO intentSkillSlotMap;
+
+    [Tooltip("勾选后：每次技能释放且资源扣除成功时打印日志（消耗明细 + HP/Stamina/MP 当前/最大）。")]
+    [SerializeField] private bool debugLogSkillCast;
+
+    [Header("Debug")]
+    [Tooltip("勾选后：输入意图映射到技能槽后，若该槽位未装配技能，会打印告警日志。")]
+    [SerializeField] private bool logMissingSkillOnIntent;
 
     private readonly SkillOverrideManager m_skillOverrides = new SkillOverrideManager();
     readonly System.Collections.Generic.Dictionary<SkillSlotType, SkillRuntime> m_skillRuntimes =
@@ -154,12 +161,17 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver {
 
     public float Stamina => Resources.GetCurrent(ResourceType.Stamina);
     public float StaminaMax => Resources.GetMax(ResourceType.Stamina);
+    public float Mana => Resources.GetCurrent(ResourceType.MP);
+    public float ManaMax => Resources.GetMax(ResourceType.MP);
     public bool CanDodge => m_dodgeCooldownTimer <= 0f;
     public bool CanSwordDash => m_swordDashCooldownTimer <= 0f;
     public WeaponMovesetSO WeaponMoveset => weaponMoveset;
     public SkillLoadoutSO SkillLoadout => skillLoadout;
     public SkillIndicatorController SkillIndicators => skillIndicatorController;
     public SkillContext ActiveSkillContext => m_activeSkillContext;
+    public bool LogMissingSkillOnIntent => logMissingSkillOnIntent;
+
+    public bool DebugLogSkillCast => debugLogSkillCast;
 
     /// <summary>
     /// 与当前释放技能同槽的「松开」语义：<see cref="CastType.HoldRelease"/> 收尾；
@@ -261,13 +273,27 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver {
 
     // ─── 生命周期 ───
 
-    protected override void Awake() {
+    protected override void Awake()
+    {
         base.Awake();
-        if (statsBlueprint is PlayerStatsSO ps) {
-            maxStamina = Mathf.Max(1f, ps.MaxStamina);
+        if (statsBlueprint is PlayerStatsSO ps)
+        {
+            ps.ApplyLegacyStandaloneMaxStaminaToStats(Stats);
         }
-        Stats.SetBase(StatType.MaxStamina, maxStamina);
+
+        EnsurePlayerDefaultResourceStats();
         Init();
+    }
+
+    /// <summary>
+    /// 体力/法力上限仅来自 Stats 蓝图 Base Stats；旧资产若缺少条目则补默认，避免 RegisterSlot 读到 0。
+    /// </summary>
+    void EnsurePlayerDefaultResourceStats()
+    {
+        if (Stats.Get(StatType.MaxStamina) < 1f)
+        {
+            Stats.SetBase(StatType.MaxStamina, 100f);
+        }
     }
 
     private void Init() {
@@ -288,6 +314,10 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver {
                 ResourceType.Stamina,
                 maxProvider: () => Stats.Get(StatType.MaxStamina),
                 initialCurrent: Stats.Get(StatType.MaxStamina));
+            pool.RegisterSlot(
+                ResourceType.MP,
+                maxProvider: () => Stats.Get(StatType.MaxMana),
+                initialCurrent: Stats.Get(StatType.MaxMana));
         }
 
         RebuildSkillRuntimes();
@@ -445,6 +475,17 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver {
         return true;
     }
 
+    public bool TryResolveIntentSlot(GameplayIntentKind kind, out SkillSlotType slot)
+    {
+        if (intentSkillSlotMap != null && intentSkillSlotMap.TryResolve(kind, out slot))
+        {
+            return true;
+        }
+
+        slot = default;
+        return false;
+    }
+
     /// <summary>由技能任务（如二段窗）打开窗口。</summary>
     public void SkillNotifySecondStageAvailable(float windowSeconds)
     {
@@ -491,12 +532,54 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver {
     /// <summary>Action 起手：扣除技能消耗（若有）。失败时不应起手。</summary>
     public bool TryBeginSkillCostsIfNeeded()
     {
-        if (!TryGetActiveSkillRuntime(out var rt, out _))
+        if (!TryGetActiveSkillRuntime(out var rt, out var slot))
         {
             return true;
         }
 
-        return TryDrainSkillCosts(rt);
+        if (!TryDrainSkillCosts(rt))
+        {
+            return false;
+        }
+
+        if (debugLogSkillCast)
+        {
+            LogSkillCastDebug(rt, slot);
+        }
+
+        return true;
+    }
+
+    void LogSkillCastDebug(SkillRuntime rt, SkillSlotType slot)
+    {
+        var data = rt?.Data;
+        var skillLabel = data != null ? $"{data.skillName} ({data.skillId})" : "(null)";
+
+        var costs = "(none)";
+        if (data?.costs != null && data.costs.Length > 0)
+        {
+            var parts = new string[data.costs.Length];
+            for (var i = 0; i < data.costs.Length; i++)
+            {
+                var c = data.costs[i];
+                var amt = rt.GetScaledCost(c);
+                parts[i] = $"{c.resourceType}={amt:0.##}";
+            }
+
+            costs = string.Join(", ", parts);
+        }
+
+        var hpCur = Resources.GetCurrent(ResourceType.HP);
+        var hpMax = Resources.GetMax(ResourceType.HP);
+        var staCur = Resources.GetCurrent(ResourceType.Stamina);
+        var staMax = Resources.GetMax(ResourceType.Stamina);
+        var mpCur = Resources.GetCurrent(ResourceType.MP);
+        var mpMax = Resources.GetMax(ResourceType.MP);
+
+        Debug.Log(
+            $"[Player Skill] Cast | slot={slot} | skill={skillLabel} | drained=[{costs}] | "
+            + $"HP={hpCur:0.##}/{hpMax:0.##} | Sta={staCur:0.##}/{staMax:0.##} | MP={mpCur:0.##}/{mpMax:0.##}",
+            this);
     }
 
     public void SkillNotifyCooldownOnCastEnter()

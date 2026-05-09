@@ -50,6 +50,9 @@ public class RebindManager : MonoSingleton<RebindManager>, IGameModule
     /// <summary>换绑开始回调。参数：(actionName)</summary>
     public event Action<string> OnRebindStarted;
 
+    /// <summary>任意绑定配置变化（换绑完成/重置/加载）后触发；HUD 可整体刷新。</summary>
+    public event Action OnBindingsChanged;
+
     // ─── 生命周期 ───
 
     protected override void Awake()
@@ -140,6 +143,7 @@ public class RebindManager : MonoSingleton<RebindManager>, IGameModule
         // 通知 UI 更新
         var displayString = action.GetBindingDisplayString(bindingIndex);
         OnRebindComplete?.Invoke(action, bindingIndex, displayString);
+        NotifyBindingsChanged();
     }
 
     /// <summary>
@@ -191,6 +195,8 @@ public class RebindManager : MonoSingleton<RebindManager>, IGameModule
             var json = PlayerPrefs.GetString(SAVE_KEY);
             inputReader.ActionAsset.LoadBindingOverridesFromJson(json);
         }
+
+        NotifyBindingsChanged();
     }
 
     /// <summary>恢复所有绑定为默认值。</summary>
@@ -201,6 +207,7 @@ public class RebindManager : MonoSingleton<RebindManager>, IGameModule
         inputReader.ActionAsset.RemoveAllBindingOverrides();
         PlayerPrefs.DeleteKey(SAVE_KEY);
         PlayerPrefs.Save();
+        NotifyBindingsChanged();
     }
 
     // ─── 工具方法 ───
@@ -216,5 +223,10 @@ public class RebindManager : MonoSingleton<RebindManager>, IGameModule
     {
         _currentOperation?.Dispose();
         _currentOperation = null;
+    }
+
+    private void NotifyBindingsChanged()
+    {
+        OnBindingsChanged?.Invoke();
     }
 }

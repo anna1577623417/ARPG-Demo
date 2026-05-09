@@ -10,12 +10,27 @@ public sealed class PlayerActionState : PlayerState
 {
     static bool IsMeleeStrikeIntent(GameplayIntentKind k) =>
         k == GameplayIntentKind.LightAttack
+        || k == GameplayIntentKind.ComboAttack
+        || k == GameplayIntentKind.ChargeAttack
         || k == GameplayIntentKind.HeavyAttack
         || k == GameplayIntentKind.CastAbility1
+        || k == GameplayIntentKind.CastAbility7
+        || k == GameplayIntentKind.CastAbility8
+        || k == GameplayIntentKind.Ability_09
+        || k == GameplayIntentKind.Ability_10
+        || k == GameplayIntentKind.Ability_11
+        || k == GameplayIntentKind.Ability_12
+        || k == GameplayIntentKind.Ability_13
+        || k == GameplayIntentKind.Ability_14
+        || k == GameplayIntentKind.Ability_15
+        || k == GameplayIntentKind.Ability_16
+        || k == GameplayIntentKind.Ability_17
         || k == GameplayIntentKind.CastUltimate;
 
     static bool IsAttackComboCleanExit(GameplayIntentKind k) =>
-        k == GameplayIntentKind.LightAttack || k == GameplayIntentKind.CastAbility1;
+        k == GameplayIntentKind.LightAttack
+        || k == GameplayIntentKind.ComboAttack
+        || k == GameplayIntentKind.CastAbility1;
 
     private GameplayIntentKind m_kind;
     private ActionDataSO m_action;
@@ -240,7 +255,7 @@ public sealed class PlayerActionState : PlayerState
             player.ForceEndAttackIfActive();
             if (m_lightAttackFinishedCleanly)
             {
-                if (m_kind == GameplayIntentKind.LightAttack)
+                if (m_kind == GameplayIntentKind.LightAttack || m_kind == GameplayIntentKind.ComboAttack)
                 {
                     if (m_usedSkillRouting && skillRt?.Data?.comboChain != null && skillRt.Data.comboChain.Length > 0)
                     {

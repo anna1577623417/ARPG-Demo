@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -11,7 +12,7 @@ using UnityEngine.InputSystem;
 ///   → 自动生成 PlayerInputSystem.cs 触发 IGamePlayActions 回调
 ///   → InputReader（本类）将物理信号翻译为两种输出：
 ///       ① 连续量属性（MoveInput / LookInput 等）— 供 PlayerController / CameraController 每帧轮询
-///       ② 离散脉冲（Jump/Dodge/SwordDash Pressed）— 由 PlayerController 直接消费
+///       ② 离散脉冲（Jump / 各 SkillSlot 按下脉冲）— 由 PlayerController 直接消费
 ///   → PlayerController 轮询 MoveInput/IsAttackHeld + 消费离散脉冲 → 入队 IntentBuffer
 ///   → PlayerStateManager.OnPreLogicUpdate：TransitionResolver 标签仲裁 + 当前状态 TryConsumeGameplayIntent
 ///
@@ -67,27 +68,27 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
         return true;
     }
 
-    /// <summary>离散脉冲：本帧是否收到 Dodge 按下边沿（由控制器消费并清零）。</summary>
+    /// <summary>离散脉冲：<see cref="SkillSlotType.Ability_08"/>（兼容旧名「Dodge」回调对应的槽）。</summary>
     public bool ConsumeDodgePressed()
     {
-        if (!_dodgePressedPulse)
+        if (!_ability08PressedPulse)
         {
             return false;
         }
 
-        _dodgePressedPulse = false;
+        _ability08PressedPulse = false;
         return true;
     }
 
-    /// <summary>离散脉冲：本帧是否收到 SwordDash 按下边沿（由控制器消费并清零）。</summary>
+    /// <summary>离散脉冲：<see cref="SkillSlotType.Ability_07"/>（兼容旧名「Sprint」回调对应的槽）。</summary>
     public bool ConsumeSwordDashPressed()
     {
-        if (!_swordDashPressedPulse)
+        if (!_ability07PressedPulse)
         {
             return false;
         }
 
-        _swordDashPressedPulse = false;
+        _ability07PressedPulse = false;
         return true;
     }
 
@@ -138,27 +139,46 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
         return true;
     }
 
-    /// <summary>离散脉冲：<see cref="SkillSlotType.Ability1"/>（默认键盘 Q）。</summary>
+    /// <summary>离散脉冲：<see cref="SkillSlotType.Ability_06"/>（InputAction：<c>SlotAbility_06</c>）。</summary>
     public bool ConsumeSlotAbility1Pressed()
     {
-        if (!_slotAbility1PressedPulse)
+        if (!_ability06PressedPulse)
         {
             return false;
         }
 
-        _slotAbility1PressedPulse = false;
+        _ability06PressedPulse = false;
         return true;
     }
 
-    /// <summary>离散脉冲：<see cref="SkillSlotType.Ultimate"/>（默认键盘 R）。</summary>
+    /// <summary>离散脉冲：<see cref="SkillSlotType.Ultimate_05"/>（InputAction：<c>SlotUltimate_05</c>）。</summary>
     public bool ConsumeSlotUltimatePressed()
     {
-        if (!_slotUltimatePressedPulse)
+        if (!_ultimate05PressedPulse)
         {
             return false;
         }
 
-        _slotUltimatePressedPulse = false;
+        _ultimate05PressedPulse = false;
+        return true;
+    }
+
+    /// <summary>离散脉冲：大键盘 1~9 对应 Ability_09 ~ Ability_17。</summary>
+    public bool ConsumeAbility09To17Pressed(int index0Based, out SkillSlotType slot)
+    {
+        slot = default;
+        if (index0Based < 0 || index0Based >= 9)
+        {
+            return false;
+        }
+
+        if (!_ability09To17PressedPulse[index0Based])
+        {
+            return false;
+        }
+
+        _ability09To17PressedPulse[index0Based] = false;
+        slot = (SkillSlotType)((int)SkillSlotType.Ability_09 + index0Based);
         return true;
     }
 
@@ -168,19 +188,156 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
     /// <summary>暴露底层 InputActionAsset，供 RebindManager 执行换绑。</summary>
     public InputActionAsset ActionAsset => _inputActions?.asset;
 
+    /// <summary>
+    /// 通过技能槽位获取当前物理键显示文案（如 Q / Mouse 4 / LMB）。
+    /// 这是 HUD 的只读查询入口：UI 不再硬编码字符串。
+    /// </summary>
+    public string GetSkillSlotBindingDisplayString(SkillSlotType slot, string fallback = "")
+    {
+        if (!TryGetSkillSlotAction(slot, out var action) || action == null)
+        {
+            return fallback ?? string.Empty;
+        }
+
+        var bindingIndex = FindPreferredKeyboardMouseBindingIndex(action);
+        if (bindingIndex < 0)
+        {
+            return fallback ?? string.Empty;
+        }
+
+        var display = action.GetBindingDisplayString(bindingIndex);
+        return string.IsNullOrEmpty(display) ? (fallback ?? string.Empty) : display;
+    }
+
+    /// <summary>槽位 -> InputAction 查询（优先新命名，自动兼容遗留命名）。</summary>
+    public bool TryGetSkillSlotAction(SkillSlotType slot, out InputAction action)
+    {
+        action = null;
+        var asset = ActionAsset;
+        if (asset == null)
+        {
+            return false;
+        }
+
+        var gameplayMap = asset.FindActionMap("GamePlay", throwIfNotFound: false);
+        if (gameplayMap == null)
+        {
+            return false;
+        }
+
+        if (!TryGetSkillSlotActionNames(slot, out var primaryName, out var legacyName))
+        {
+            return false;
+        }
+
+        action = gameplayMap.FindAction(primaryName, throwIfNotFound: false);
+        if (action == null && !string.IsNullOrEmpty(legacyName))
+        {
+            action = gameplayMap.FindAction(legacyName, throwIfNotFound: false);
+        }
+
+        return action != null;
+    }
+
+    static bool TryGetSkillSlotActionNames(SkillSlotType slot, out string primaryName, out string legacyName)
+    {
+        primaryName = null;
+        legacyName = null;
+
+        switch (slot)
+        {
+            case SkillSlotType.Skill_Primary_01:
+            case SkillSlotType.Skill_Primary_02:
+            case SkillSlotType.Skill_Primary_03:
+                primaryName = "Attack_01-03";
+                legacyName = "Attack";
+                return true;
+            case SkillSlotType.Secondary_04:
+                primaryName = "SkillSlotSecondary_04";
+                legacyName = "Interact";
+                return true;
+            case SkillSlotType.Ultimate_05:
+                primaryName = "SlotUltimate_05";
+                legacyName = "SlotUltimate";
+                return true;
+            case SkillSlotType.Ability_06:
+                primaryName = "SlotAbility_06";
+                legacyName = "SlotAbility1";
+                return true;
+            case SkillSlotType.Ability_07:
+                primaryName = "SlotAbility_07";
+                legacyName = "Sprint";
+                return true;
+            case SkillSlotType.Ability_08:
+                primaryName = "SlotAbility_08";
+                legacyName = "Dodge";
+                return true;
+            case SkillSlotType.Ability_09:
+                primaryName = "SlotAbility_09";
+                return true;
+            case SkillSlotType.Ability_10:
+                primaryName = "SlotAbility_10";
+                return true;
+            case SkillSlotType.Ability_11:
+                primaryName = "SlotAbility_11";
+                return true;
+            case SkillSlotType.Ability_12:
+                primaryName = "SlotAbility_12";
+                return true;
+            case SkillSlotType.Ability_13:
+                primaryName = "SlotAbility_13";
+                return true;
+            case SkillSlotType.Ability_14:
+                primaryName = "SlotAbility_14";
+                return true;
+            case SkillSlotType.Ability_15:
+                primaryName = "SlotAbility_15";
+                return true;
+            case SkillSlotType.Ability_16:
+                primaryName = "SlotAbility_16";
+                return true;
+            case SkillSlotType.Ability_17:
+                primaryName = "SlotAbility_17";
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    static int FindPreferredKeyboardMouseBindingIndex(InputAction action)
+    {
+        var fallbackIndex = -1;
+        for (var i = 0; i < action.bindings.Count; i++)
+        {
+            var binding = action.bindings[i];
+            if (binding.isComposite || binding.isPartOfComposite)
+            {
+                continue;
+            }
+
+            if (fallbackIndex < 0)
+            {
+                fallbackIndex = i;
+            }
+
+            if (string.IsNullOrEmpty(binding.groups)
+                || binding.groups.IndexOf("Keyboard", StringComparison.OrdinalIgnoreCase) >= 0
+                || binding.groups.IndexOf("Mouse", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return i;
+            }
+        }
+
+        return fallbackIndex;
+    }
+
     // ═══ 编辑器操作提示 ═══
     //
     // 以下功能需要在 Unity 编辑器中的 .inputactions 文件中手动添加：
     //
-    // 【GamePlay ActionMap】（默认键盘 — 见 PlayerInputSystem.inputactions，可用 RebindManager 改绑）
-    //   Attack → Primary（轻击）；Interact(+RMB) → Secondary（重击）
-    //   SlotAbility1（Ability1 槽）、SlotUltimate（Ultimate 槽）
-    //   Dodge → Shift；Sprint →「剑冲」Ability2 槽（键盘 X / 手柄 LB）；Jump → Space（兼 F）
-    //   PartyNext / PartyPrev → Z / C；Interact 对话拾取仍可用 E
-    //
-    // 添加后 Unity 会自动重新生成 PlayerInputSystem.cs，届时：
-    //   - IGamePlayActions 接口会新增 OnSprint / OnSwitchCamera 方法
-    //   - 在本文件中实现对应回调即可
+    // 【GamePlay ActionMap】命名与槽位表一致（见 SkillSlotType / PlayerInputSystem.inputactions）：
+    //   Attack_01-03、SkillSlotSecondary_04、SlotUltimate_05、SlotAbility_06 … SlotAbility_17
+    //   大键盘 1–9 → SlotAbility_09 … SlotAbility_17；Interact / Jump / Party 等旁路仍独立
     //
     // ═══ 重要原则：数据来源唯一性 ═══
     // 所有键位绑定必须且只能在 .inputactions 资产中定义。
@@ -189,30 +346,24 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
 
     // 离散输入脉冲（核心管线消费用）：不经全局事件总线推进控制流。
     private bool _jumpPressedPulse;
-    private bool _dodgePressedPulse;
-    private bool _swordDashPressedPulse;
+    private bool _ability07PressedPulse;
+    private bool _ability08PressedPulse;
 
     private bool _partyNextPulse;
     private bool _partyPrevPulse;
-    private bool _slotAbility1PressedPulse;
-    private bool _slotUltimatePressedPulse;
+    private bool _ability06PressedPulse;
+    private bool _ultimate05PressedPulse;
 
     // ═══ v4.4：Slot-Based 统一脉冲 + 持续按住状态 ═══════════════════════════════
-    // 设计：物理 InputAction 的回调"双写"——既保留旧 pulse（向后兼容），也写入按 SkillSlotType
-    // 索引的统一表，使 PlayerController 可按 slot 循环派发，不再硬编码 SwordDash/Dodge。
+    // 设计：表名 InputAction（Attack_01-03、SlotAbility_06…）回调写入 SkillSlotType 索引表；
+    // 部分槽位仍保留独立 pulse 字段供兼容 API（ConsumeSwordDashPressed 等）读取。
     //
-    // 槽位维度（与 SkillSlotType enum 严格对齐，0..6 共 7 槽）：
-    //   [0] Primary    ← LM (Attack action)        蓄力可读 PrimaryHoldDuration
-    //   [1] Secondary  ← RM (Interact-as-Secondary 或新增 InputAction)
-    //   [2] Ability1   ← Q  (SlotAbility1 action)
-    //   [3] Ability2   ← Shift (Sprint action)     ← 历史名"Sprint"，语义为 Ability2 槽
-    //   [4] Dodge      ← Dodge action              （可在 .inputactions 中拆出独立键，或并入其它槽）
-    //   [5] Ultimate   ← R  (SlotUltimate action)
-    //   [6] Jump       ← Space (Jump action)
-    private const int SkillSlotCount = 7;
+    // 槽位维度（与 SkillSlotType enum 严格对齐）。
+    private const int SkillSlotCount = (int)SkillSlotType.Ability_17 + 1;
     private readonly bool[] _slotPressedPulses = new bool[SkillSlotCount];
     private readonly bool[] _slotHeld = new bool[SkillSlotCount];
     private readonly float[] _slotHeldStartTime = new float[SkillSlotCount];
+    private readonly bool[] _ability09To17PressedPulse = new bool[9];
 
     /// <summary>消费指定槽位的"按下"脉冲（与既有 ConsumeXxxPressed 一致语义）。</summary>
     public bool ConsumeSkillSlotPressed(SkillSlotType slot)
@@ -428,13 +579,17 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
         IsInteractHeld = false;
         IsJumpHeld = false;
         _jumpPressedPulse = false;
-        _dodgePressedPulse = false;
-        _swordDashPressedPulse = false;
+        _ability07PressedPulse = false;
+        _ability08PressedPulse = false;
         _partyNextPulse = false;
         _partyPrevPulse = false;
         _partySlotPulseIndex = -1;
-        _slotAbility1PressedPulse = false;
-        _slotUltimatePressedPulse = false;
+        _ability06PressedPulse = false;
+        _ultimate05PressedPulse = false;
+        for (var i = 0; i < _ability09To17PressedPulse.Length; i++)
+        {
+            _ability09To17PressedPulse[i] = false;
+        }
         for (var i = 0; i < SkillSlotCount; i++)
         {
             _slotPressedPulses[i] = false;
@@ -485,46 +640,32 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
         {
             IsJumpHeld = true;
             _jumpPressedPulse = true;
-            WriteSlotEdge(SkillSlotType.Jump, pressed: true);   // ★ v4.4 双写
         }
         else if (context.canceled)
         {
             IsJumpHeld = false;
-            WriteSlotEdge(SkillSlotType.Jump, pressed: false);
         }
     }
 
-    /// <summary>
-    /// 攻击（离散）。使用 started 避免与「Hold」交互冲突导致鼠标左键无 performed。
-    /// </summary>
-    public void OnAttack(InputAction.CallbackContext context)
+    // ─── 槽位表：Attack_01-03 → SkillSlotSecondary_04 → SlotUltimate_05 → SlotAbility_06–17 ───
+
+    /// <summary>InputAction <c>Attack_01-03</c> / <see cref="SkillSlotType.Skill_Primary_01"/>。使用 started 避免与 Hold 冲突。</summary>
+    public void OnAttack_0103(InputAction.CallbackContext context) => ApplyAttack_01_03(context);
+
+    /// <summary>遗留 Action「Attack」（手柄等）；与 <see cref="OnAttack_0103"/> 同源。</summary>
+    public void OnAttack(InputAction.CallbackContext context) => ApplyAttack_01_03(context);
+
+    void ApplyAttack_01_03(InputAction.CallbackContext context)
     {
         if (context.started)
         {
             IsAttackHeld = true;
-            WriteSlotEdge(SkillSlotType.Primary, pressed: true);   // ★ v4.4 双写：LM = Primary 槽
+            WriteSlotEdge(SkillSlotType.Skill_Primary_01, pressed: true);
         }
         else if (context.canceled)
         {
             IsAttackHeld = false;
-            WriteSlotEdge(SkillSlotType.Primary, pressed: false);
-        }
-    }
-
-    /// <summary>
-    /// 闪避（离散型）。
-    /// 只关心 performed（按下瞬间），不需要持续状态。
-    /// </summary>
-    public void OnDodge(InputAction.CallbackContext context)
-    {
-        if (context.performed)
-        {
-            _dodgePressedPulse = true;
-            WriteSlotEdge(SkillSlotType.Dodge, pressed: true);   // ★ v4.4 双写：Dodge 槽（可由 Loadout 重定向）
-        }
-        else if (context.canceled)
-        {
-            WriteSlotEdge(SkillSlotType.Dodge, pressed: false);
+            WriteSlotEdge(SkillSlotType.Skill_Primary_01, pressed: false);
         }
     }
 
@@ -533,13 +674,19 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
     /// </summary>
     public void OnInteract(InputAction.CallbackContext context)
     {
+        var isSecondaryControl = context.control != null
+            && context.control.path == "<Mouse>/rightButton";
+
         if (context.started)
         {
-            IsInteractHeld = true;
+            IsInteractHeld = isSecondaryControl;
         }
         else if (context.canceled)
         {
-            IsInteractHeld = false;
+            if (isSecondaryControl || IsInteractHeld)
+            {
+                IsInteractHeld = false;
+            }
         }
 
         if (context.performed)
@@ -560,23 +707,6 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
         }
     }
 
-    /// <summary>
-    /// Sprint InputAction（默认 Shift）映射到 <see cref="SkillSlotType.Ability2"/> 槽位。
-    /// 语义由 Loadout 决定（默认绑剑冲，但可换成任意技能）；InputReader 不再写死"剑冲"。
-    /// 旧 ConsumeSwordDashPressed 仍保留为兼容期 API。
-    /// </summary>
-    public void OnSprint(InputAction.CallbackContext context)
-    {
-        if (context.performed)
-        {
-            _swordDashPressedPulse = true;
-            WriteSlotEdge(SkillSlotType.Ability2, pressed: true);   // ★ v4.4 双写：Shift = Ability2 槽
-        }
-        else if (context.canceled)
-        {
-            WriteSlotEdge(SkillSlotType.Ability2, pressed: false);
-        }
-    }
     public void OnSwitchCamera(InputAction.CallbackContext context)
     {
         if (context.performed)
@@ -641,29 +771,93 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
         if (context.performed) QueuePartySlot(7);
     }
 
-    public void OnSlotAbility1(InputAction.CallbackContext context)
+    /// <summary>InputAction <c>SkillSlotSecondary_04</c> / <see cref="SkillSlotType.Secondary_04"/>（默认 RMB）；与 <see cref="OnInteract"/> 并行。</summary>
+    public void OnSkillSlotSecondary_04(InputAction.CallbackContext context)
     {
-        if (context.performed)
+        if (context.started)
         {
-            _slotAbility1PressedPulse = true;
-            WriteSlotEdge(SkillSlotType.Ability1, pressed: true);   // ★ v4.4 双写
+            WriteSlotEdge(SkillSlotType.Secondary_04, pressed: true);
         }
         else if (context.canceled)
         {
-            WriteSlotEdge(SkillSlotType.Ability1, pressed: false);
+            WriteSlotEdge(SkillSlotType.Secondary_04, pressed: false);
         }
     }
 
-    public void OnSlotUltimate(InputAction.CallbackContext context)
+    /// <summary>InputAction <c>SlotUltimate_05</c> / <see cref="SkillSlotType.Ultimate_05"/>。</summary>
+    public void OnSlotUltimate_05(InputAction.CallbackContext context)
     {
         if (context.performed)
         {
-            _slotUltimatePressedPulse = true;
-            WriteSlotEdge(SkillSlotType.Ultimate, pressed: true);   // ★ v4.4 双写
+            _ultimate05PressedPulse = true;
+            WriteSlotEdge(SkillSlotType.Ultimate_05, pressed: true);
         }
         else if (context.canceled)
         {
-            WriteSlotEdge(SkillSlotType.Ultimate, pressed: false);
+            WriteSlotEdge(SkillSlotType.Ultimate_05, pressed: false);
+        }
+    }
+
+    /// <summary>InputAction <c>SlotAbility_06</c> / <see cref="SkillSlotType.Ability_06"/>。</summary>
+    public void OnSlotAbility_06(InputAction.CallbackContext context)
+    {
+        if (context.performed)
+        {
+            _ability06PressedPulse = true;
+            WriteSlotEdge(SkillSlotType.Ability_06, pressed: true);
+        }
+        else if (context.canceled)
+        {
+            WriteSlotEdge(SkillSlotType.Ability_06, pressed: false);
+        }
+    }
+
+    /// <summary>InputAction <c>SlotAbility_07</c> / <see cref="SkillSlotType.Ability_07"/>。</summary>
+    public void OnSlotAbility_07(InputAction.CallbackContext context)
+    {
+        if (context.performed)
+        {
+            _ability07PressedPulse = true;
+            WriteSlotEdge(SkillSlotType.Ability_07, pressed: true);
+        }
+        else if (context.canceled)
+        {
+            WriteSlotEdge(SkillSlotType.Ability_07, pressed: false);
+        }
+    }
+
+    /// <summary>InputAction <c>SlotAbility_08</c> / <see cref="SkillSlotType.Ability_08"/>。</summary>
+    public void OnSlotAbility_08(InputAction.CallbackContext context)
+    {
+        if (context.performed)
+        {
+            _ability08PressedPulse = true;
+            WriteSlotEdge(SkillSlotType.Ability_08, pressed: true);
+        }
+        else if (context.canceled)
+        {
+            WriteSlotEdge(SkillSlotType.Ability_08, pressed: false);
+        }
+    }
+
+    /// <summary>大键盘 1–9 → <c>SlotAbility_09</c>…<c>SlotAbility_17</c> / <see cref="SkillSlotType.Ability_09"/>…<see cref="SkillSlotType.Ability_17"/>。</summary>
+    void HandleSlotAbility09To17(int index0Based, InputAction.CallbackContext context)
+    {
+        if (index0Based < 0 || index0Based >= _ability09To17PressedPulse.Length)
+        {
+            return;
+        }
+
+        if (context.performed)
+        {
+            _ability09To17PressedPulse[index0Based] = true;
+            var slot = (SkillSlotType)((int)SkillSlotType.Ability_09 + index0Based);
+            WriteSlotEdge(slot, pressed: true);
+        }
+        else if (context.canceled)
+        {
+            var slot = (SkillSlotType)((int)SkillSlotType.Ability_09 + index0Based);
+            WriteSlotEdge(slot, pressed: false);
         }
     }
 
@@ -671,6 +865,38 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
     {
         _partySlotPulseIndex = slotIndex0Based;
     }
+
+    public void OnSlotAbility_09(InputAction.CallbackContext context) => HandleSlotAbility09To17(0, context);
+
+    public void OnSlotAbility_10(InputAction.CallbackContext context) => HandleSlotAbility09To17(1, context);
+
+    public void OnSlotAbility_11(InputAction.CallbackContext context) => HandleSlotAbility09To17(2, context);
+
+    public void OnSlotAbility_12(InputAction.CallbackContext context) => HandleSlotAbility09To17(3, context);
+
+    public void OnSlotAbility_13(InputAction.CallbackContext context) => HandleSlotAbility09To17(4, context);
+
+    public void OnSlotAbility_14(InputAction.CallbackContext context) => HandleSlotAbility09To17(5, context);
+
+    public void OnSlotAbility_15(InputAction.CallbackContext context) => HandleSlotAbility09To17(6, context);
+
+    public void OnSlotAbility_16(InputAction.CallbackContext context) => HandleSlotAbility09To17(7, context);
+
+    public void OnSlotAbility_17(InputAction.CallbackContext context) => HandleSlotAbility09To17(8, context);
+
+    // ─── 遗留 InputAction 名（与上表同源绑定并存时由生成代码调用）——仅转发到表名回调 ───
+
+    /// <summary>遗留「SlotUltimate」→ <see cref="OnSlotUltimate_05"/>。</summary>
+    public void OnSlotUltimate(InputAction.CallbackContext context) => OnSlotUltimate_05(context);
+
+    /// <summary>遗留「SlotAbility1」→ <see cref="OnSlotAbility_06"/>。</summary>
+    public void OnSlotAbility1(InputAction.CallbackContext context) => OnSlotAbility_06(context);
+
+    /// <summary>遗留「Sprint」→ <see cref="OnSlotAbility_07"/>。</summary>
+    public void OnSprint(InputAction.CallbackContext context) => OnSlotAbility_07(context);
+
+    /// <summary>遗留「Dodge」→ <see cref="OnSlotAbility_08"/>。</summary>
+    public void OnDodge(InputAction.CallbackContext context) => OnSlotAbility_08(context);
 
     //UI ActionMap 回调（当前先保留最小处理，后续可接 UI 事件总线）
     public void OnCancel(InputAction.CallbackContext context)

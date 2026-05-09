@@ -38,11 +38,24 @@ public sealed class SkillBarPresenter : MonoBehaviour
     [Header("Bindings (InspectorSlots only)")]
     [SerializeField] List<SlotBinding> slotBindings = new List<SlotBinding>();
 
+    [Header("Input Key Hint")]
+    [Tooltip("可选覆盖：不填则优先使用 Player 上的 InputReader。")]
+    [SerializeField] InputReader inputReaderOverride;
+
+    [Tooltip("可选覆盖：不填时运行期自动查找场景中的 RebindManager。")]
+    [SerializeField] RebindManager rebindManager;
+
+    [Tooltip("当未找到输入映射时，KeyHint 的最终兜底文案。")]
+    [SerializeField] string emptyKeyHintFallback = "";
+
     Player m_player;
+    InputReader m_inputReader;
+    RebindManager m_rebindManager;
     bool m_bound;
 
     readonly List<SlotBinding> _activeBindings = new List<SlotBinding>(8);
     readonly List<GameObject> _spawnedInstances = new List<GameObject>(8);
+    readonly Dictionary<SkillSlotType, string> _slotFallbackHints = new Dictionary<SkillSlotType, string>(8);
 
     public void Bind(Player player)
     {
@@ -57,9 +70,11 @@ public sealed class SkillBarPresenter : MonoBehaviour
         }
 
         m_player = player;
+        m_inputReader = inputReaderOverride != null ? inputReaderOverride : player.InputReader;
         m_bound = true;
 
         BuildActiveBindings(player);
+        BindRebindEvents();
 
         for (var i = 0; i < _activeBindings.Count; i++)
         {
@@ -97,8 +112,11 @@ public sealed class SkillBarPresenter : MonoBehaviour
 
         ClearSpawnedPrefabs();
         _activeBindings.Clear();
+        _slotFallbackHints.Clear();
+        UnbindRebindEvents();
 
         m_player = null;
+        m_inputReader = null;
         m_bound = false;
     }
 
@@ -108,6 +126,7 @@ public sealed class SkillBarPresenter : MonoBehaviour
     void BuildActiveBindings(Player player)
     {
         _activeBindings.Clear();
+        _slotFallbackHints.Clear();
 
         if (layoutMode == LayoutMode.InstantiateFromPlayerLoadout)
         {
@@ -152,7 +171,7 @@ public sealed class SkillBarPresenter : MonoBehaviour
 
             if (!string.IsNullOrEmpty(row.hudKeyLabel))
             {
-                view.SetKeyHint(row.hudKeyLabel);
+                _slotFallbackHints[row.slot] = row.hudKeyLabel;
             }
         }
     }
@@ -178,6 +197,8 @@ public sealed class SkillBarPresenter : MonoBehaviour
             return;
         }
 
+        RefreshKeyHint(binding);
+
         if (!m_player.TryGetSkillRuntime(binding.Slot, out var runtime) || runtime == null)
         {
             binding.View.SetIcon(null);
@@ -195,5 +216,71 @@ public sealed class SkillBarPresenter : MonoBehaviour
         }
 
         binding.View.SetLevel(runtime.Level);
+    }
+
+    void RefreshKeyHint(SlotBinding binding)
+    {
+        if (binding.View == null)
+        {
+            return;
+        }
+
+        var hint = string.Empty;
+        if (m_inputReader != null)
+        {
+            hint = m_inputReader.GetSkillSlotBindingDisplayString(binding.Slot);
+        }
+
+        if (string.IsNullOrEmpty(hint) && _slotFallbackHints.TryGetValue(binding.Slot, out var fallbackHint))
+        {
+            hint = fallbackHint;
+        }
+
+        if (string.IsNullOrEmpty(hint))
+        {
+            hint = emptyKeyHintFallback;
+        }
+
+        binding.View.SetKeyHint(hint);
+    }
+
+    void RefreshAllKeyHints()
+    {
+        for (var i = 0; i < _activeBindings.Count; i++)
+        {
+            RefreshKeyHint(_activeBindings[i]);
+        }
+    }
+
+    void BindRebindEvents()
+    {
+        m_rebindManager = rebindManager != null ? rebindManager : FindFirstObjectByType<RebindManager>();
+        if (m_rebindManager == null)
+        {
+            return;
+        }
+
+        m_rebindManager.OnBindingsChanged += HandleBindingsChanged;
+    }
+
+    void UnbindRebindEvents()
+    {
+        if (m_rebindManager == null)
+        {
+            return;
+        }
+
+        m_rebindManager.OnBindingsChanged -= HandleBindingsChanged;
+        m_rebindManager = null;
+    }
+
+    void HandleBindingsChanged()
+    {
+        if (!m_bound)
+        {
+            return;
+        }
+
+        RefreshAllKeyHints();
     }
 }

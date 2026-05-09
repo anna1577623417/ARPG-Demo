@@ -16,6 +16,8 @@ public class EntityStatsSO : ScriptableObject
         new StatBaseEntry { Type = StatType.RotationSpeed, BaseValue = 540f },
         new StatBaseEntry { Type = StatType.AttackPower, BaseValue = 10f },
         new StatBaseEntry { Type = StatType.Defense, BaseValue = 0f },
+        new StatBaseEntry { Type = StatType.MaxStamina, BaseValue = 100f },
+        new StatBaseEntry { Type = StatType.MaxMana, BaseValue = 0f },
     };
 
     public IReadOnlyList<StatBaseEntry> BaseStats => baseStats;

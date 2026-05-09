@@ -118,9 +118,13 @@ public abstract class Entity : MonoBehaviour
             {
                 var entry = statsBlueprint.BaseStats[i];
                 var value = entry.BaseValue;
-                if (entry.Type == StatType.MaxHealth)
+                if (entry.Type == StatType.MaxHealth || entry.Type == StatType.MaxStamina)
                 {
                     value = Mathf.Max(1f, value);
+                }
+                else if (entry.Type == StatType.MaxMana)
+                {
+                    value = Mathf.Max(0f, value);
                 }
                 else if (entry.Type == StatType.WalkSpeed
                          || entry.Type == StatType.RunSpeed
@@ -207,18 +211,18 @@ public abstract class Entity : MonoBehaviour
 
     public virtual void RestoreHealthToFull()
     {
-        var oldValue = Health;
+        var oldValue = m_resources.GetCurrent(ResourceType.HP);
         m_resources.SetCurrent(ResourceType.HP, m_resources.GetMax(ResourceType.HP));
-        PublishHealthChanged(oldValue, Health, "RestoreFull");
+        PublishHealthChanged(oldValue, m_resources.GetCurrent(ResourceType.HP), "RestoreFull");
     }
 
     public virtual void TakeDamage(float amount, UnityEngine.Object damageSource = null)
     {
         if (IsDead || amount <= 0f) return;
 
-        var oldValue = Health;
+        var oldValue = m_resources.GetCurrent(ResourceType.HP);
         m_resources.Drain(ResourceType.HP, amount, out _);
-        PublishHealthChanged(oldValue, Health, "Damage");
+        PublishHealthChanged(oldValue, m_resources.GetCurrent(ResourceType.HP), "Damage");
 
         if (IsDead)
         {
@@ -231,9 +235,9 @@ public abstract class Entity : MonoBehaviour
     {
         if (IsDead || amount <= 0f) return;
 
-        var oldValue = Health;
+        var oldValue = m_resources.GetCurrent(ResourceType.HP);
         m_resources.Refill(ResourceType.HP, amount, out _);
-        PublishHealthChanged(oldValue, Health, "Heal");
+        PublishHealthChanged(oldValue, m_resources.GetCurrent(ResourceType.HP), "Heal");
     }
 
     // ─── 事件发布 ───
@@ -276,11 +280,11 @@ public abstract class Entity : MonoBehaviour
         var resourceType = def.PeriodicResource;
         if (resourceType == ResourceType.HP)
         {
-            var oldHp = Health;
+            var oldHp = m_resources.GetCurrent(ResourceType.HP);
             if (amount > 0f)
             {
                 m_resources.Drain(ResourceType.HP, amount, out _);
-                PublishHealthChanged(oldHp, Health, "BuffPeriodicDrain");
+                PublishHealthChanged(oldHp, m_resources.GetCurrent(ResourceType.HP), "BuffPeriodicDrain");
                 if (IsDead)
                 {
                     PublishEvent(new EntityDiedEvent(GetInstanceID(), name, def.name));
@@ -289,7 +293,7 @@ public abstract class Entity : MonoBehaviour
             else if (amount < 0f)
             {
                 m_resources.Refill(ResourceType.HP, -amount, out _);
-                PublishHealthChanged(oldHp, Health, "BuffPeriodicRefill");
+                PublishHealthChanged(oldHp, m_resources.GetCurrent(ResourceType.HP), "BuffPeriodicRefill");
             }
             return;
         }

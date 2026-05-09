@@ -1,4 +1,5 @@
 using System;
+using UnityEngine;
 
 /// <summary>技能释放模型。</summary>
 public enum CastType : byte
@@ -91,11 +92,21 @@ public enum CooldownOp : byte
 /// <summary>输入槽位 → 技能绑定。</summary>
 public enum SkillSlotType : byte
 {
-    Primary = 0,
-    Secondary = 1,
-    Ability1 = 2,
-    Ability2 = 3,
-    Dodge = 4,
-    Ultimate = 5,
-    Jump = 6,
+    [InspectorName("Skill_Primary_01")] Skill_Primary_01 = 0,
+    [InspectorName("Skill_Primary_02")] Skill_Primary_02 = 1,
+    [InspectorName("Skill_Primary_03")] Skill_Primary_03 = 2,
+    [InspectorName("Secondary_04")] Secondary_04 = 3,
+    [InspectorName("Ultimate_05")] Ultimate_05 = 4,
+    [InspectorName("Ability_06")] Ability_06 = 5,
+    [InspectorName("Ability_07")] Ability_07 = 6,
+    [InspectorName("Ability_08")] Ability_08 = 7,
+    [InspectorName("Ability_09")] Ability_09 = 8,
+    [InspectorName("Ability_10")] Ability_10 = 9,
+    [InspectorName("Ability_11")] Ability_11 = 10,
+    [InspectorName("Ability_12")] Ability_12 = 11,
+    [InspectorName("Ability_13")] Ability_13 = 12,
+    [InspectorName("Ability_14")] Ability_14 = 13,
+    [InspectorName("Ability_15")] Ability_15 = 14,
+    [InspectorName("Ability_16")] Ability_16 = 15,
+    [InspectorName("Ability_17")] Ability_17 = 16,
 }
