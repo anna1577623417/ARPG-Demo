@@ -13,7 +13,7 @@ public static class SkillSystem
     /// </summary>
     public static bool TryPrepareIntentForSkills(Player player, ref GameplayIntent intent)
     {
-        if (!TryMapIntentToSlot(player, intent.Kind, out var slot))
+        if (!TryMapIntentToSlot(player, in intent, out var slot))
         {
             player.CancelDeferredSkillPlanning();
             player.ClearActiveSkillPlanning();
@@ -169,14 +169,20 @@ public static class SkillSystem
         }
     }
 
-    static bool TryMapIntentToSlot(Player player, GameplayIntentKind kind, out SkillSlotType slot)
+    static bool TryMapIntentToSlot(Player player, in GameplayIntent intent, out SkillSlotType slot)
     {
-        if (player != null && player.TryResolveIntentSlot(kind, out slot))
+        if (intent.HasSkillSlot)
+        {
+            slot = intent.SkillSlot;
+            return true;
+        }
+
+        if (player != null && player.TryResolveIntentSlot(intent.Kind, out slot))
         {
             return true;
         }
 
-        return TryMapIntentToSlotDefault(kind, out slot);
+        return TryMapIntentToSlotDefault(intent.Kind, out slot);
     }
 
     static bool TryMapIntentToSlotDefault(GameplayIntentKind kind, out SkillSlotType slot)

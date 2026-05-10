@@ -20,13 +20,16 @@ MonoBehaviour:
   channelDuration: 0
   chargeThreshold: 0
   chargeLevels: []
-  stages: []
+  stages:
+  - {fileID: 11400000, guid: 4384d701c958ec140bf04a15ccf5c26b, type: 2}
   cdPolicy: 1
   baseCooldown: 0
   maxCharges: 1
   rechargeTime: 0
   ignoreGlobalCooldown: 0
-  costs: []
+  costs:
+  - resourceType: 1
+    baseAmount: 10
   targetType: 0
   maxRange: 0
   traits: 0

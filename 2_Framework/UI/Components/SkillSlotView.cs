@@ -19,7 +19,7 @@ using UnityEngine.UI;
 ///     ├── Icon (Image)
 ///     ├── CooldownMask (Image, Filled / Radial360 / Origin top)
 ///     ├── CooldownText (TMP_Text)
-///     ├── HighlightFrame (Image, alpha 受控)
+///     ├── HighlightFrame (Image, Filled；语义=「可释放指示」。fillAmount=1 技能就绪，=0 刚进入冷却；alpha 仍由 SetHighlight 控制)
 ///     ├── LevelGroup (CanvasGroup)
 ///     │   └── Level_1..N (Image[])
 ///     └── CDBlocker (Image, raycast=true, alpha=0；CD 中阻挡点击)
@@ -37,8 +37,15 @@ public sealed class SkillSlotView : MonoBehaviour
 
     [SerializeField] TMP_Text cooldownText;
 
-    [Tooltip("高亮边框。用 alpha 控制可见性（不开关 GameObject，避免 Layout Rebuild）。")]
+    [Tooltip(
+        "高光 CD 框（Image Type 须设为 Filled）— 语义=「可释放指示」。\n" +
+        "fillAmount = 1 → 技能可释放（CD 走完）；\n" +
+        "fillAmount = 0 → 刚进入冷却；\n" +
+        "随 CD 走完线性回填到 1。alpha 由 SetHighlight 单独控制（与 fill 解耦）。")]
     [SerializeField] Image highlightFrame;
+
+    [Tooltip("关闭后不再驱动 highlightFrame.fillAmount（仅留 SetHighlight 控制的 alpha）。")]
+    [SerializeField] bool driveHighlightCooldownFill = true;
 
     [SerializeField] CanvasGroup levelGroup;
 
@@ -114,6 +121,12 @@ public sealed class SkillSlotView : MonoBehaviour
         {
             cooldownMask.fillAmount = 1f - p;
             cooldownMask.enabled = p < 1f;
+        }
+
+        if (highlightFrame != null && driveHighlightCooldownFill)
+        {
+            // 语义：fill=1 可释放，fill=0 刚冷却 → 直接等于 progress01
+            highlightFrame.fillAmount = p;
         }
 
         if (cdBlocker != null)

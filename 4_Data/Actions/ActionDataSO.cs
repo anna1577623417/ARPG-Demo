@@ -3,6 +3,20 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
+/// 动作抽象语义类别（用于打断判定）。
+/// 不再依赖“轻击/重击/翻滚”等动作名匹配。
+/// </summary>
+[Flags]
+public enum ActionCategory : ushort
+{
+    None = 0,
+    Movement = 1 << 0,
+    Offense = 1 << 1,
+    Defensive = 1 << 2,
+    Utility = 1 << 3,
+}
+
+/// <summary>
 /// 动作归一化时间轴上的离散瞬移触发点。
 /// Why: 瞬移属于单帧事件，不应塞进连续位移曲线。
 /// </summary>
@@ -37,6 +51,19 @@ public class ActionDataSO : ScriptableObject
 
     [Tooltip("逻辑时长（秒）。与动画长度可不同，用于先行手感调参。")]
     public float Duration = 0.4f;
+
+    [Header("Interrupt Semantics (abstract)")]
+    [Tooltip("Identity：该动作属于哪类语义（Movement / Offense / Defensive / Utility）。")]
+    public ActionCategory Category = ActionCategory.Offense;
+
+    [Tooltip("动作优先级（越大越高）。用于跨技能硬打断比较。")]
+    public int InterruptPriority = 10;
+
+    [Tooltip("动作强韧度（Stability）。当来袭优先级 > 本值时，可硬打断。")]
+    public int InterruptStability = 10;
+
+    [Tooltip("动作级别自打断开关。窗口未单独允许时，可用它统一放行同动作重入。")]
+    public bool AllowSelfInterrupt;
 
     [Header("Motion")]
     [Tooltip(

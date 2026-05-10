@@ -69,18 +69,28 @@ public sealed class PrimaryAttackPressTracker
             var isCharge = hold >= Mathf.Max(0.04f, _policy.HoldSecondsBeforeChargedIntent);
             var comboWindow = Mathf.Max(0.05f, _policy.ComboTapWindowSeconds);
             var isCombo = !isCharge && _lastReleaseAt > 0.001f && time - _lastReleaseAt <= comboWindow;
+            GameplayIntent intent;
 
             if (isCharge)
             {
-                player.EnqueueGameplayIntent(PlayerIntentCatalog.ChargeAttack(time, null, hold));
+                intent = PlayerIntentCatalog.ChargeAttack(time, null, hold);
             }
             else if (isCombo)
             {
-                player.EnqueueGameplayIntent(PlayerIntentCatalog.ComboAttack(time, null, hold));
+                intent = PlayerIntentCatalog.ComboAttack(time, null, hold);
             }
             else
             {
-                player.EnqueueGameplayIntent(PlayerIntentCatalog.LightAttack(time, null, hold));
+                intent = PlayerIntentCatalog.LightAttack(time, null, hold);
+            }
+
+            player.EnqueueGameplayIntent(intent);
+            if (player.DebugInterruptFlow)
+            {
+                var slotLabel = intent.HasSkillSlot ? intent.SkillSlot.ToString() : "(none)";
+                Debug.Log(
+                    $"[IntentInput] source=PrimaryRelease slot={slotLabel} kind={intent.Kind} hasSlot={intent.HasSkillSlot} hold={hold:F3}s",
+                    player);
             }
 
             _lastReleaseAt = time;

@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5440406343a43504e8c86a0979aceaa0, type: 3}
   m_Name: SkillData_07_Stage_01
   m_EditorClassIdentifier: 
-  action: {fileID: 11400000, guid: 9f6e9385934813541a38ee69cfd3fe5f, type: 2}
+  action: {fileID: 11400000, guid: ec2d79717d4f0a145b5fbfc16966bb5a, type: 2}
   tasks: []
   transitionType: 1
   transitionWindow: 0

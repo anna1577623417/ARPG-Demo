@@ -248,7 +248,10 @@ public class PlayerController : EntityController
 
         if (player.DebugInterruptFlow)
         {
-            Debug.Log($"[IntentInput] enqueue slot={slot} kind={intent.Kind} hold={holdSeconds:F3}s", this);
+            var slotLabel = intent.HasSkillSlot ? intent.SkillSlot.ToString() : "(none)";
+            Debug.Log(
+                $"[IntentInput] source=SlotPulse slot={slotLabel} kind={intent.Kind} hasSlot={intent.HasSkillSlot} hold={holdSeconds:F3}s",
+                this);
         }
     }
 

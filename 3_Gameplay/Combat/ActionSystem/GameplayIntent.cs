@@ -88,6 +88,12 @@ public struct GameplayIntent
     /// <summary>交互/副攻键抬起时的按住时长（秒）；供 Secondary 槽 Charge 等扩展。</summary>
     public float SecondaryHoldDurationSeconds;
 
+    /// <summary>是否携带明确槽位（Phase B：槽位优先，Kind 兼容回退）。</summary>
+    public bool HasSkillSlot;
+
+    /// <summary>明确的技能槽位语义（当 <see cref="HasSkillSlot"/> 为真时优先使用）。</summary>
+    public SkillSlotType SkillSlot;
+
     public static GameplayIntent Create(
         GameplayIntentKind kind,
         float time,
@@ -99,7 +105,9 @@ public struct GameplayIntent
         ulong requiredAllAbility = 0UL,
         ulong forbiddenAbility = 0UL,
         float primaryHoldDurationSeconds = 0f,
-        float secondaryHoldDurationSeconds = 0f)
+        float secondaryHoldDurationSeconds = 0f,
+        bool hasSkillSlot = false,
+        SkillSlotType skillSlot = default)
     {
         return new GameplayIntent
         {
@@ -114,6 +122,8 @@ public struct GameplayIntent
             Action = action,
             PrimaryHoldDurationSeconds = primaryHoldDurationSeconds,
             SecondaryHoldDurationSeconds = secondaryHoldDurationSeconds,
+            HasSkillSlot = hasSkillSlot,
+            SkillSlot = skillSlot,
         };
     }
 }

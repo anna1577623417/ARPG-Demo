@@ -1,8 +1,11 @@
+using System;
 using UnityEngine;
 
 /// <summary>
 /// 运行时队伍与在场角色：从 <see cref="TeamDefinitionSO"/> 取预制体，开局生成全部有预制体的槽位（未上场者隐藏），场上仅激活当前一人；
 /// Q/R、数字键经 <see cref="InputReader"/> 脉冲驱动切换；默认在「上一在场角色」位置交接（可改为固定刷新点）。
+///
+/// HUD/AI 等"需要知道当前在场角色"的系统应订阅 <see cref="ActivePlayerChanged"/>，避免轮询或 FindObjectOfType。
 /// </summary>
 [DefaultExecutionOrder(-80)]
 [AddComponentMenu("GameMain/Party/Player Manager")]
@@ -60,8 +63,18 @@ public sealed class PlayerManager : MonoBehaviour
     /// <summary>当前在场角色根物体。</summary>
     public GameObject ActivePlayerRoot { get; private set; }
 
+    /// <summary>当前在场角色的 <see cref="Player"/> 组件（根或子节点）。无则 null。</summary>
+    public Player ActivePlayer { get; private set; }
+
     /// <summary>当前在场队伍槽（0～7）。无则 -1。</summary>
     public int ActiveSlotIndex => _activeSlotIndex;
+
+    /// <summary>
+    /// 当前在场角色发生变化（首次生成或队伍切换）后触发。
+    /// 参数为新的 <see cref="Player"/> 引用，可能为 null（角色被销毁时）。
+    /// 订阅者可在回调里完成 HUD Bind / Unbind 等场景依赖装配。
+    /// </summary>
+    public event Action<Player> ActivePlayerChanged;
 
     /// <summary>调试：当前用于队伍切换脉冲消费的 InputReader（优先在场 Player，与 gameplay 同源）。</summary>
     public InputReader DebugEffectiveInputReader => ResolveEffectiveInputReader();
@@ -222,7 +235,7 @@ public sealed class PlayerManager : MonoBehaviour
             root.SetActive(i == slot);
         }
 
-        ActivePlayerRoot = _rootsBySlot[slot];
+        SetActivePlayerRoot(_rootsBySlot[slot]);
         _activeSlotIndex = slot;
 
         RegisterActiveWithRouter(ActivePlayerRoot);
@@ -296,7 +309,7 @@ public sealed class PlayerManager : MonoBehaviour
             _stubBySlot[targetSlotIndex].HasSpawnedInstance = true;
         }
 
-        ActivePlayerRoot = root;
+        SetActivePlayerRoot(root);
         _activeSlotIndex = targetSlotIndex;
 
         RegisterActiveWithRouter(root);
@@ -306,6 +319,25 @@ public sealed class PlayerManager : MonoBehaviour
         reader?.RestoreGameplayControlsWhileFocused();
 
         return true;
+    }
+
+    /// <summary>
+    /// 统一更新 <see cref="ActivePlayerRoot"/> / <see cref="ActivePlayer"/> 并广播
+    /// <see cref="ActivePlayerChanged"/>；同一引用不重复触发。
+    /// </summary>
+    private void SetActivePlayerRoot(GameObject root)
+    {
+        if (ActivePlayerRoot == root)
+        {
+            return;
+        }
+
+        ActivePlayerRoot = root;
+        ActivePlayer = root != null
+            ? (root.GetComponent<Player>() ?? root.GetComponentInChildren<Player>(true))
+            : null;
+
+        ActivePlayerChanged?.Invoke(ActivePlayer);
     }
 
     private void RegisterActiveWithRouter(GameObject root)

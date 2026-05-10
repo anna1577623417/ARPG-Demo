@@ -23,6 +23,16 @@ public struct ActionWindow
     /// <summary>本时间段内触发的事件（HitFrame / SFX / VFX）；运行时见 <see cref="ActionWindowTimelineEvents"/>。</summary>
     public List<ActionWindowEvent> RuntimeEvents;
 
+    [Header("Interrupt Semantics (new)")]
+    [Tooltip("谁能断我：抽象类别掩码（Movement / Offense / Defensive / Utility）。留空表示该窗口不放行打断。")]
+    public ActionCategory InterruptibleByCategories;
+
+    [Tooltip("该窗口要求的最小来袭优先级（来袭动作优先级 >= 该值才可打断）。")]
+    public int MinIncomingPriority;
+
+    [Tooltip("该窗口是否允许同动作自打断（同动作重入）。")]
+    public bool AllowSelfInterrupt;
+
     [SerializeField, HideInInspector]
     [FormerlySerializedAs("Tags")]
     ulong _legacyDirectStateTagMask;

@@ -12,21 +12,29 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1c417c93d6b4297428d16aac24a7611a, type: 3}
   m_Name: SkillData_03
   m_EditorClassIdentifier: 
-  skillName: 
-  skillId: 
-  icon: {fileID: 0}
-  castType: 0
-  castTime: 0
+  skillName: SkillData_03
+  skillId: 03
+  icon: {fileID: 21300000, guid: 80d88e2b84c984047a0b6b5751a05cd6, type: 3}
+  castType: 3
+  castTime: 0.5
   channelDuration: 0
-  chargeThreshold: 0
-  chargeLevels: []
-  stages: []
+  chargeThreshold: 0.5
+  chargeLevels:
+  - minHoldTime: 0.5
+    action: {fileID: 11400000, guid: a3eda64ff2b298546bc27d34fe5d23d0, type: 2}
+    stageOverride: {fileID: 11400000, guid: 9321864a4ae2e6142a73592782a27fef, type: 2}
+    damageMultiplier: 0
+    motionOverride: {fileID: 0}
+  stages:
+  - {fileID: 11400000, guid: 9321864a4ae2e6142a73592782a27fef, type: 2}
   cdPolicy: 1
-  baseCooldown: 0
+  baseCooldown: 1
   maxCharges: 1
   rechargeTime: 0
   ignoreGlobalCooldown: 0
-  costs: []
+  costs:
+  - resourceType: 0
+    baseAmount: 10
   targetType: 0
   maxRange: 0
   traits: 0

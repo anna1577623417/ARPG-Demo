@@ -13,8 +13,19 @@ public sealed class SkillRuntime
     public bool IsActive;
 
     public float CdRemaining;
+
+    /// <summary>
+    /// 本次冷却启动时记录的"实际总 CD"（已含 CooldownReduction）。
+    /// 仅供 UI 进度条作分母：<c>progress01 = 1 - CdRemaining / CdScaledCooldown</c>，确保每次都从 0 → 1。
+    /// 由 <see cref="StartCooldown"/> / <see cref="ModifyCooldown"/> 维护，外部只读。
+    /// </summary>
+    public float CdScaledCooldown;
+
     public int CurrentCharges;
     public float RechargeTimer;
+
+    /// <summary>同 <see cref="CdScaledCooldown"/>，但用于多充能技能的回充进度。</summary>
+    public float RechargeTimerMax;
 
     public int ComboIndex;
     public float LastInputTime = -999f;
@@ -190,12 +201,15 @@ public sealed class SkillRuntime
             CurrentCharges = Mathf.Max(0, CurrentCharges - 1);
             if (RechargeTimer <= 0f && CurrentCharges < Data.maxCharges)
             {
-                RechargeTimer = ApplyCooldownReduction(stats, Data.rechargeTime);
+                var recharge = ApplyCooldownReduction(stats, Data.rechargeTime);
+                RechargeTimer = recharge;
+                RechargeTimerMax = recharge;
             }
         }
         else
         {
             CdRemaining = cd;
+            CdScaledCooldown = cd;
         }
     }
 
@@ -219,11 +233,14 @@ public sealed class SkillRuntime
                 CurrentCharges++;
                 if (CurrentCharges < Data.maxCharges)
                 {
-                    RechargeTimer = ApplyCooldownReduction(stats, Data.rechargeTime);
+                    var recharge = ApplyCooldownReduction(stats, Data.rechargeTime);
+                    RechargeTimer = recharge;
+                    RechargeTimerMax = recharge;
                 }
                 else
                 {
                     RechargeTimer = 0f;
+                    RechargeTimerMax = 0f;
                 }
             }
         }
@@ -235,10 +252,12 @@ public sealed class SkillRuntime
         {
             case CooldownOp.Reset:
                 CdRemaining = 0f;
+                CdScaledCooldown = 0f;
                 if (Data != null && Data.maxCharges > 1)
                 {
                     CurrentCharges = Data.maxCharges;
                     RechargeTimer = 0f;
+                    RechargeTimerMax = 0f;
                 }
 
                 break;
@@ -250,6 +269,11 @@ public sealed class SkillRuntime
                 break;
             case CooldownOp.Set:
                 CdRemaining = value;
+                // 外部强制设定剩余 CD 比当前 Max 还大时，扩展 Max；否则保持原 Max 不变（保证进度仍然单调 0→1）
+                if (value > CdScaledCooldown)
+                {
+                    CdScaledCooldown = value;
+                }
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(op), op, null);

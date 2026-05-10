@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: SkillData_01
   m_EditorClassIdentifier: 
   skillName: SkillData_01
-  skillId: 1
+  skillId: 01
   icon: {fileID: 21300000, guid: a6ebf3b3b338ed442a8da8887fb61c95, type: 3}
   castType: 0
   castTime: 0

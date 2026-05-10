@@ -19,6 +19,16 @@ using UnityEngine.UI;
 [AddComponentMenu("GameMain/UI/Resource Bar View")]
 public sealed class ResourceBarView : MonoBehaviour, IUIThemeable
 {
+    [Header("Data Binding (Presenter auto-discovery)")]
+    [Tooltip("开启后，PlayerHUDPresenter 可自动识别此资源条并建立事件驱动数据链接。")]
+    [SerializeField] bool autoBindInHud = true;
+
+    [Tooltip("此条对应的资源类型（HP / Stamina / MP / Energy）。")]
+    [SerializeField] ResourceType resourceType = ResourceType.HP;
+
+    [Tooltip("默认文本模板。留空则由 Presenter 使用其全局默认模板。")]
+    [SerializeField] string defaultTextFormat = "{cur} / {max}";
+
     [Header("Visuals")]
     [Tooltip("当前值 fill。Image 须为 Filled / Horizontal。")]
     [SerializeField] Image fillImage;
@@ -52,6 +62,15 @@ public sealed class ResourceBarView : MonoBehaviour, IUIThemeable
     float m_normalized;        // Fill 当前值 (0..1)
     float m_bufferNormalized;  // Buffer 当前值 (0..1)
     float m_bufferDelayTimer;  // Drain 后的延迟计时
+
+    /// <summary>供 Presenter 自动扫描：是否参与自动绑定。</summary>
+    public bool AutoBindInHud => autoBindInHud;
+
+    /// <summary>供 Presenter 自动扫描：该条对应的资源类型。</summary>
+    public ResourceType BoundResourceType => resourceType;
+
+    /// <summary>供 Presenter 自动扫描：默认文本模板。</summary>
+    public string DefaultTextFormat => defaultTextFormat;
 
     void OnEnable()
     {

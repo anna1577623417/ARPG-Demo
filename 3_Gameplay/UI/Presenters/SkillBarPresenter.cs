@@ -32,7 +32,9 @@ public sealed class SkillBarPresenter : MonoBehaviour
     [Tooltip("动态模式：槽位实例化的父节点（一般为 SkillSlotGroup）。")]
     [SerializeField] Transform slotsRoot;
 
-    [Tooltip("动态模式：技能槽预制体根节点须挂 SkillSlotView（建议同物体挂 SkillCooldownTicker）。")]
+    [Tooltip("动态模式：技能槽预制体根节点须挂 SkillSlotView（建议同物体挂 SkillCooldownTicker）。\n" +
+             "支持把 \"场景内隐藏模板\"（GameObject SetActive=false）拖入：副本 Instantiate 后会被强制激活，\n" +
+             "模板自身保持隐藏、不参与布局。")]
     [SerializeField] SkillSlotView slotPrefab;
 
     [Header("Bindings (InspectorSlots only)")]
@@ -120,6 +122,35 @@ public sealed class SkillBarPresenter : MonoBehaviour
         m_bound = false;
     }
 
+    /// <summary>
+    /// 外部在运行时替换了 Loadout/Override 后可主动调用：按当前 player 重建槽位并重绑 ticker。
+    /// </summary>
+    public void RebuildFromCurrentPlayerLoadout()
+    {
+        if (m_player == null)
+        {
+            return;
+        }
+
+        Bind(m_player);
+    }
+
+    /// <summary>
+    /// 不重建槽位，只把当前 Runtime 数据（图标/等级/按键）推送到已有 View。
+    /// </summary>
+    public void RefreshAllSlotVisuals()
+    {
+        if (!m_bound || m_player == null)
+        {
+            return;
+        }
+
+        for (var i = 0; i < _activeBindings.Count; i++)
+        {
+            ApplyFixedDataToSlot(_activeBindings[i]);
+        }
+    }
+
     void OnDisable() => Unbind();
     void OnDestroy() => Unbind();
 
@@ -159,6 +190,13 @@ public sealed class SkillBarPresenter : MonoBehaviour
             }
 
             var instance = Instantiate(slotPrefab, slotsRoot);
+            // 模板若是场景内隐藏物体（SetActive=false 以避免参与布局/绘制），副本会继承未激活状态；
+            // 这里显式激活，让动态生成的槽位真正显示出来。模板自身不受影响。
+            if (!instance.gameObject.activeSelf)
+            {
+                instance.gameObject.SetActive(true);
+            }
+
             _spawnedInstances.Add(instance.gameObject);
 
             var view = instance.GetComponent<SkillSlotView>();

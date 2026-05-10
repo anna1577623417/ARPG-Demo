@@ -53,7 +53,7 @@ public sealed class PlayerActionState : PlayerState
 
     public override bool TryConsumeGameplayIntent(Player player, in FrameContext ctx, in GameplayIntent intent)
     {
-        if (!IntentRouter.IsRoutable(intent.Kind))
+        if (!IntentRouter.IsRoutable(in intent))
         {
             return false;
         }
@@ -69,12 +69,13 @@ public sealed class PlayerActionState : PlayerState
         }
 
         var normalized = ResolveCurrentActionNormalized(player);
-        if (!ActionInterruptResolver.CanInterrupt(m_action, normalized, intent.Kind))
+        var incomingAction = IntentRouter.PeekActionDataForRouting(player, in intent);
+        if (!ActionInterruptResolver.CanInterrupt(m_action, normalized, in intent, incomingAction))
         {
             if (player.DebugInterruptFlow)
             {
                 Debug.Log(
-                    $"[ActionInterrupt] REJECT | action={m_action.name} | incoming={intent.Kind} | t={normalized:F3} | reason=window disallow",
+                    $"[ActionInterrupt] REJECT | action={m_action.name} | incoming={intent.Kind} | slot={(intent.HasSkillSlot ? intent.SkillSlot.ToString() : "(none)")} | t={normalized:F3} | reason=window disallow",
                     player);
             }
 
@@ -84,7 +85,7 @@ public sealed class PlayerActionState : PlayerState
         if (player.DebugInterruptFlow)
         {
             Debug.Log(
-                $"[ActionInterrupt] PASS | action={m_action.name} | incoming={intent.Kind} | t={normalized:F3}",
+                $"[ActionInterrupt] PASS | action={m_action.name} | incoming={intent.Kind} | slot={(intent.HasSkillSlot ? intent.SkillSlot.ToString() : "(none)")} | t={normalized:F3}",
                 player);
         }
 

@@ -40,10 +40,34 @@ public sealed class PlayerHUDPresenter : MonoBehaviour
     [Header("Bindings")]
     [SerializeField] List<ResourceBinding> resourceBindings = new List<ResourceBinding>();
 
+    [Header("Auto Discovery (optional)")]
+    [Tooltip("开启后：自动扫描 ResourceBarView 并建立事件驱动数据链接。")]
+    [SerializeField] bool autoCollectResourceBars = true;
+
+    [Tooltip("自动扫描时是否包含 inactive 资源条。")]
+    [SerializeField] bool includeInactiveBars = true;
+
+    [Tooltip("可选：显式指定资源组控制器，优先从其 bars 列表收集。")]
+    [SerializeField] ResourceGroupController resourceGroupController;
+
+    [Tooltip("全局默认文本模板。条目与 View 都未提供时使用。")]
+    [SerializeField] string defaultTextFormat = "{cur} / {max}";
+
+    struct RuntimeBinding
+    {
+        public ResourceType Type;
+        public ResourceBarView View;
+        public bool TrackMaxByStat;
+        public StatType MaxStat;
+        public string TextFormat;
+    }
+
     Player m_player;
     IResourcePool m_resources;
     IStatSet m_stats;
     bool m_bound;
+    readonly List<RuntimeBinding> m_runtimeBindings = new List<RuntimeBinding>(8);
+    readonly HashSet<ResourceBarView> m_seenViews = new HashSet<ResourceBarView>();
 
     // ─── 生命周期 ─────────────────────────────────────────────────────────────
 
@@ -65,6 +89,7 @@ public sealed class PlayerHUDPresenter : MonoBehaviour
         m_player = player;
         m_resources = player.Resources;
         m_stats = player.Stats;
+        BuildRuntimeBindings();
 
         if (m_resources != null)
         {
@@ -79,9 +104,9 @@ public sealed class PlayerHUDPresenter : MonoBehaviour
         m_bound = true;
 
         // 首帧推送：避免 HUD 启动时一片空白
-        for (var i = 0; i < resourceBindings.Count; i++)
+        for (var i = 0; i < m_runtimeBindings.Count; i++)
         {
-            PushBindingToView(resourceBindings[i], forceSync: true);
+            PushBindingToView(m_runtimeBindings[i], forceSync: true);
         }
     }
 
@@ -95,6 +120,8 @@ public sealed class PlayerHUDPresenter : MonoBehaviour
         m_resources = null;
         m_stats = null;
         m_player = null;
+        m_runtimeBindings.Clear();
+        m_seenViews.Clear();
         m_bound = false;
     }
 
@@ -105,11 +132,12 @@ public sealed class PlayerHUDPresenter : MonoBehaviour
 
     void OnResourceCurrentChanged(ResourceType type, float oldValue, float newValue)
     {
-        for (var i = 0; i < resourceBindings.Count; i++)
+        for (var i = 0; i < m_runtimeBindings.Count; i++)
         {
-            if (resourceBindings[i].Type == type)
+            var binding = m_runtimeBindings[i];
+            if (binding.Type == type)
             {
-                PushBindingToView(resourceBindings[i], forceSync: false);
+                PushBindingToView(binding, forceSync: false);
             }
         }
     }
@@ -117,18 +145,19 @@ public sealed class PlayerHUDPresenter : MonoBehaviour
     void OnStatFinalChanged(StatType type, float value)
     {
         // Stat 变化只影响那些通过 MaxStatLink 关联的资源（如 MaxHealth → HP 条）
-        for (var i = 0; i < resourceBindings.Count; i++)
+        for (var i = 0; i < m_runtimeBindings.Count; i++)
         {
-            if (resourceBindings[i].MaxStatLink == type)
+            var binding = m_runtimeBindings[i];
+            if (binding.TrackMaxByStat && binding.MaxStat == type)
             {
-                PushBindingToView(resourceBindings[i], forceSync: false);
+                PushBindingToView(binding, forceSync: false);
             }
         }
     }
 
     // ─── 推送到 View ──────────────────────────────────────────────────────────
 
-    void PushBindingToView(ResourceBinding binding, bool forceSync)
+    void PushBindingToView(RuntimeBinding binding, bool forceSync)
     {
         if (binding.View == null || m_resources == null) return;
 
@@ -145,9 +174,94 @@ public sealed class PlayerHUDPresenter : MonoBehaviour
             binding.View.SetNormalized(norm);
         }
 
-        if (!string.IsNullOrEmpty(binding.TextFormat))
+        var format = !string.IsNullOrEmpty(binding.TextFormat) ? binding.TextFormat : defaultTextFormat;
+        if (!string.IsNullOrEmpty(format))
         {
-            binding.View.SetText(FormatText(binding.TextFormat, current, max));
+            binding.View.SetText(FormatText(format, current, max));
+        }
+    }
+
+    void BuildRuntimeBindings()
+    {
+        m_runtimeBindings.Clear();
+        m_seenViews.Clear();
+
+        for (var i = 0; i < resourceBindings.Count; i++)
+        {
+            var b = resourceBindings[i];
+            if (b.View == null)
+            {
+                continue;
+            }
+
+            m_runtimeBindings.Add(new RuntimeBinding
+            {
+                Type = b.Type,
+                View = b.View,
+                TrackMaxByStat = true,
+                MaxStat = b.MaxStatLink,
+                TextFormat = b.TextFormat,
+            });
+            m_seenViews.Add(b.View);
+        }
+
+        if (!autoCollectResourceBars)
+        {
+            return;
+        }
+
+        if (resourceGroupController != null)
+        {
+            foreach (var view in resourceGroupController.EnumerateBars())
+            {
+                TryAppendAutoBinding(view);
+            }
+
+            return;
+        }
+
+        var views = GetComponentsInChildren<ResourceBarView>(includeInactiveBars);
+        for (var i = 0; i < views.Length; i++)
+        {
+            TryAppendAutoBinding(views[i]);
+        }
+    }
+
+    void TryAppendAutoBinding(ResourceBarView view)
+    {
+        if (view == null || !view.AutoBindInHud || m_seenViews.Contains(view))
+        {
+            return;
+        }
+
+        var canTrackMax = TryMapDefaultMaxStat(view.BoundResourceType, out var statType);
+        m_runtimeBindings.Add(new RuntimeBinding
+        {
+            Type = view.BoundResourceType,
+            View = view,
+            TrackMaxByStat = canTrackMax,
+            MaxStat = statType,
+            TextFormat = view.DefaultTextFormat,
+        });
+        m_seenViews.Add(view);
+    }
+
+    static bool TryMapDefaultMaxStat(ResourceType resourceType, out StatType statType)
+    {
+        switch (resourceType)
+        {
+            case ResourceType.HP:
+                statType = StatType.MaxHealth;
+                return true;
+            case ResourceType.Stamina:
+                statType = StatType.MaxStamina;
+                return true;
+            case ResourceType.MP:
+                statType = StatType.MaxMana;
+                return true;
+            default:
+                statType = default;
+                return false;
         }
     }
 

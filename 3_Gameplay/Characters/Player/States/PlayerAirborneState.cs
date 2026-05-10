@@ -9,49 +9,47 @@ using UnityEngine;
 /// 3. 着地检测 → 回 Locomotion
 /// 4. 发布跳跃阶段事件（JumpEvent → JumpAirPhase → Landed），供动画层响应
 ///
-/// 打断模型：连续状态没有归一化时间窗口，所以引入"两段相位掩码"——
-///   · 上升期（VerticalSpeed > 0）：通常希望保留起跳动量，掩码默认空
-///   · 下落期（VerticalSpeed ≤ 0）：通常允许空中攻击 / 空中冲刺
-/// 二段跳：在下落期掩码勾上 AllowInterruptByJump 即可，无需改代码。
+/// 打断模型：连续状态没有归一化时间窗口，用上升/下降两份 <see cref="ActionCategory"/> 掩码；
+/// 上升期默认不允许类别（与旧版一致）；下降期默认四类全开。二段跳需在下降相掩码包含 Movement。
 /// </summary>
 public sealed class PlayerAirborneState : PlayerState
 {
     private bool _hasPublishedAirPhase;
 
-    private readonly ulong m_ascendingAllowedInterrupts;
-    private readonly ulong m_descendingAllowedInterrupts;
+    private readonly ActionCategory m_ascendingAllowedCategories;
+    private readonly ActionCategory m_descendingAllowedCategories;
 
-    public PlayerAirborneState(ulong ascendingAllowedInterrupts, ulong descendingAllowedInterrupts)
+    public PlayerAirborneState(ActionCategory ascendingAllowed, ActionCategory descendingAllowed)
     {
-        m_ascendingAllowedInterrupts = ascendingAllowedInterrupts;
-        m_descendingAllowedInterrupts = descendingAllowedInterrupts;
+        m_ascendingAllowedCategories = ascendingAllowed;
+        m_descendingAllowedCategories = descendingAllowed;
     }
 
-    /// <summary>按 Y 速度切换"上升相位"或"下落相位"的打断许可掩码。</summary>
-    private ulong GetCurrentPhasePermissions(Player player)
+    /// <summary>按 Y 速度切换上升/下降相位的允许类别掩码。</summary>
+    private ActionCategory GetCurrentPhaseAllowedCategories(Player player)
     {
         return player.VerticalSpeed > 0f
-            ? m_ascendingAllowedInterrupts
-            : m_descendingAllowedInterrupts;
+            ? m_ascendingAllowedCategories
+            : m_descendingAllowedCategories;
     }
 
     public override bool TryConsumeGameplayIntent(Player player, in FrameContext ctx, in GameplayIntent intent)
     {
-        if (!IntentRouter.IsRoutable(intent.Kind))
+        if (!IntentRouter.IsRoutable(in intent))
         {
             return false;
         }
 
-        // 状态级闸门：与 Locomotion 同构，但掩码按物理相位切换
-        var requiredTag = ActionInterruptResolver.MapIntentToInterruptTag(intent.Kind);
-        var permissions = GetCurrentPhasePermissions(player);
-        if (requiredTag != 0UL && (permissions & requiredTag) == 0UL)
+        var incomingAction = IntentRouter.PeekActionDataForRouting(player, in intent);
+        var incomingCategory = ActionInterruptResolver.ResolveIncomingCategory(in intent, incomingAction);
+        var allowed = GetCurrentPhaseAllowedCategories(player);
+        if (incomingCategory != ActionCategory.None && (allowed & incomingCategory) == 0)
         {
             if (player.DebugInterruptFlow)
             {
                 var phase = player.VerticalSpeed > 0f ? "Ascending" : "Descending";
                 Debug.Log(
-                    $"[Airborne/{phase}] REJECT | intent={intent.Kind} | reason=not allowed in current phase mask",
+                    $"[Airborne/{phase}] REJECT | intent={intent.Kind} | category={incomingCategory} | reason=not allowed in phase categories",
                     player);
             }
             return false;

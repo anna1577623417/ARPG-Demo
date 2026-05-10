@@ -25,43 +25,29 @@ public class PlayerStateManager : EntityStateManager<Player>
     [SerializeField] private bool debugIntentArbitration;
 
     // ───────────────────────────────────────────────────────────────────────────
-    //   连续状态的"打断许可掩码"
-    //   设计动机：Action 状态用归一化时间窗口（ActionWindow）描述打断；
-    //   而 Locomotion / Airborne 是无总时长的连续物理状态，没有 t ∈ [0,1] 概念。
-    //   这里改用"按物理相位切换的整段掩码"——
-    //     · Locomotion：单一掩码（地面相位单一）
-    //     · Airborne  ：上升 / 下落两份掩码（按 VerticalSpeed 切换）
-    //   每个掩码勾选 StateTag.AllowInterruptBy* 位，由各状态的 TryConsume 与
-    //   ActionInterruptResolver.MapIntentToInterruptTag 做位与判定。
+    //   连续状态的「来袭类别」闸门（ActionCategory 掩码）
+    //   Action 用 ActionWindow 的时间切片；Locomotion / Airborne 无归一化时间，
+    //   用整段允许的语义类别与 ActionDataSO.Category / 槽位默认映射对齐。
+    //   · Locomotion：单份掩码
+    //   · Airborne：上升 / 下降两份（按 VerticalSpeed 切换），与旧版上升空掩码、下落全开一致。
     // ───────────────────────────────────────────────────────────────────────────
 
-    [Header("Locomotion — interruption mechanism")]
-    [Tooltip("Ground: AllowInterrupt* + time_WindowBehavior (invuln, combo buffer, hitbox, root motion slots).")]
-    [StateTagMask(StateTagMaskUsage.WindowTimeline)]
-    [SerializeField, InspectorName("locomotion_interruption_mask")]
-    private ulong locomotionAllowedInterrupts =
-        (ulong)(StateTag.AllowInterruptByDodge
-              | StateTag.AllowInterruptBySwordDash
-              | StateTag.AllowInterruptByLight
-              | StateTag.AllowInterruptByHeavy
-              | StateTag.AllowInterruptByCharged
-              | StateTag.AllowInterruptByJump);
+    const ActionCategory AllPillarCategories =
+        ActionCategory.Movement | ActionCategory.Offense | ActionCategory.Defensive | ActionCategory.Utility;
+
+    [Header("Locomotion — interruption (categories)")]
+    [Tooltip("地面连续状态下允许的来袭动作类别（与 ActionDataSO.Category 一致；可多选）。")]
+    [SerializeField, InspectorName("locomotion_allowed_categories")]
+    private ActionCategory locomotionAllowedCategories = AllPillarCategories;
 
     [Header("Airborne — interruption (ascending)")]
-    [Tooltip("Ascending: same rows as ActionWindow mask (no combat_phase bits used).")]
-    [StateTagMask(StateTagMaskUsage.WindowTimeline)]
-    [SerializeField, InspectorName("airborne_ascending_interruption_mask")]
-    private ulong airborneAscendingAllowedInterrupts;
+    [Tooltip("上升相（VerticalSpeed > 0）：允许的来袭类别。默认无（对应旧版上升期不打断常见输入）。")]
+    [SerializeField, InspectorName("airborne_ascending_allowed_categories")]
+    private ActionCategory airborneAscendingAllowedCategories;
 
-    [Tooltip("Descending: interrupt + time behavior rows (combo_input_Window, invulnerable, …).")]
-    [StateTagMask(StateTagMaskUsage.WindowTimeline)]
-    [SerializeField, InspectorName("airborne_descending_interruption_mask")]
-    private ulong airborneDescendingAllowedInterrupts =
-        (ulong)(StateTag.AllowInterruptByDodge
-              | StateTag.AllowInterruptBySwordDash
-              | StateTag.AllowInterruptByLight
-              | StateTag.AllowInterruptByHeavy
-              | StateTag.AllowInterruptByCharged);
+    [Tooltip("下降相（VerticalSpeed ≤ 0）：允许的来袭类别。")]
+    [SerializeField, InspectorName("airborne_descending_allowed_categories")]
+    private ActionCategory airborneDescendingAllowedCategories = AllPillarCategories;
 
     [Header("Turn-In-Place (locomotion presentation augmentation)")]
     [Tooltip("原地转身的触发/解锁/分类阈值。详见 TurnSettings 字段 Tooltip。")]
@@ -74,8 +60,8 @@ public class PlayerStateManager : EntityStateManager<Player>
     {
         return new List<EntityState<Player>>
         {
-            new PlayerLocomotionState(locomotionAllowedInterrupts, turnSettings),
-            new PlayerAirborneState(airborneAscendingAllowedInterrupts, airborneDescendingAllowedInterrupts),
+            new PlayerLocomotionState(locomotionAllowedCategories, turnSettings),
+            new PlayerAirborneState(airborneAscendingAllowedCategories, airborneDescendingAllowedCategories),
             new PlayerActionState(),
             new PlayerDeadState(),
         };

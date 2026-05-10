@@ -5,6 +5,13 @@ public static class PlayerIntentCatalog
 {
     private const float DefaultBufferSeconds = 0.18f;
 
+    static GameplayIntent TagSlot(GameplayIntent intent, SkillSlotType slot)
+    {
+        intent.HasSkillSlot = true;
+        intent.SkillSlot = slot;
+        return intent;
+    }
+
     public static GameplayIntent Jump(float time)
     {
         return GameplayIntent.Create(
@@ -21,7 +28,7 @@ public static class PlayerIntentCatalog
     /// <summary>左键松开派发；蓄力阈值由按住时长传给 <see cref="SkillChargeCommit"/>。</summary>
     public static GameplayIntent LightAttack(float time, ActionDataSO overrideAction = null, float primaryHoldDurationSeconds = 0f)
     {
-        return GameplayIntent.Create(
+        return TagSlot(GameplayIntent.Create(
             GameplayIntentKind.LightAttack,
             time,
             DefaultBufferSeconds,
@@ -31,12 +38,13 @@ public static class PlayerIntentCatalog
             action: overrideAction,
             requiredAllAbility: (ulong)EntityCapabilityTag.CanLightAttack,
             forbiddenAbility: 0UL,
-            primaryHoldDurationSeconds: primaryHoldDurationSeconds);
+            primaryHoldDurationSeconds: primaryHoldDurationSeconds),
+            SkillSlotType.Skill_Primary_01);
     }
 
     public static GameplayIntent HeavyAttack(float time, ActionDataSO overrideAction = null, float secondaryHoldDurationSeconds = 0f)
     {
-        return GameplayIntent.Create(
+        return TagSlot(GameplayIntent.Create(
             GameplayIntentKind.HeavyAttack,
             time,
             DefaultBufferSeconds,
@@ -47,12 +55,13 @@ public static class PlayerIntentCatalog
             requiredAllAbility: (ulong)EntityCapabilityTag.CanHeavyAttack,
             forbiddenAbility: 0UL,
             primaryHoldDurationSeconds: 0f,
-            secondaryHoldDurationSeconds: secondaryHoldDurationSeconds);
+            secondaryHoldDurationSeconds: secondaryHoldDurationSeconds),
+            SkillSlotType.Secondary_04);
     }
 
     public static GameplayIntent Dodge(float time, ActionDataSO overrideAction = null)
     {
-        return GameplayIntent.Create(
+        return TagSlot(GameplayIntent.Create(
             GameplayIntentKind.Dodge,
             time,
             DefaultBufferSeconds,
@@ -60,12 +69,13 @@ public static class PlayerIntentCatalog
             requiredAny: 0UL,
             forbidden: (ulong)(StateTag.Dead | StateTag.Stunned),
             action: overrideAction,
-            requiredAllAbility: (ulong)EntityCapabilityTag.CanDodge);
+            requiredAllAbility: (ulong)EntityCapabilityTag.CanDodge),
+            SkillSlotType.Ability_08);
     }
 
     public static GameplayIntent SwordDash(float time, ActionDataSO overrideAction = null)
     {
-        return GameplayIntent.Create(
+        return TagSlot(GameplayIntent.Create(
             GameplayIntentKind.SwordDash,
             time,
             DefaultBufferSeconds,
@@ -73,12 +83,13 @@ public static class PlayerIntentCatalog
             requiredAny: 0UL,
             forbidden: (ulong)(StateTag.Dead | StateTag.Stunned),
             action: overrideAction,
-            requiredAllAbility: (ulong)EntityCapabilityTag.CanSwordDash);
+            requiredAllAbility: (ulong)EntityCapabilityTag.CanSwordDash),
+            SkillSlotType.Ability_07);
     }
 
     public static GameplayIntent CastAbility1(float time, ActionDataSO overrideAction = null, float primaryHoldDurationSeconds = 0f)
     {
-        return GameplayIntent.Create(
+        return TagSlot(GameplayIntent.Create(
             GameplayIntentKind.CastAbility1,
             time,
             DefaultBufferSeconds,
@@ -88,12 +99,13 @@ public static class PlayerIntentCatalog
             action: overrideAction,
             requiredAllAbility: (ulong)EntityCapabilityTag.CanCastAbility1,
             forbiddenAbility: 0UL,
-            primaryHoldDurationSeconds: primaryHoldDurationSeconds);
+            primaryHoldDurationSeconds: primaryHoldDurationSeconds),
+            SkillSlotType.Ability_06);
     }
 
     public static GameplayIntent CastUltimate(float time, ActionDataSO overrideAction = null, float secondaryHoldDurationSeconds = 0f)
     {
-        return GameplayIntent.Create(
+        return TagSlot(GameplayIntent.Create(
             GameplayIntentKind.CastUltimate,
             time,
             DefaultBufferSeconds,
@@ -104,12 +116,13 @@ public static class PlayerIntentCatalog
             requiredAllAbility: (ulong)EntityCapabilityTag.CanCastUltimate,
             forbiddenAbility: 0UL,
             primaryHoldDurationSeconds: 0f,
-            secondaryHoldDurationSeconds: secondaryHoldDurationSeconds);
+            secondaryHoldDurationSeconds: secondaryHoldDurationSeconds),
+            SkillSlotType.Ultimate_05);
     }
 
     public static GameplayIntent Ability_09(float time, ActionDataSO overrideAction = null)
     {
-        return GameplayIntent.Create(
+        return TagSlot(GameplayIntent.Create(
             GameplayIntentKind.Ability_09,
             time,
             DefaultBufferSeconds,
@@ -118,7 +131,8 @@ public static class PlayerIntentCatalog
             forbidden: (ulong)(StateTag.Dead | StateTag.Stunned),
             action: overrideAction,
             requiredAllAbility: (ulong)EntityCapabilityTag.CanCastAbility1,
-            forbiddenAbility: 0UL);
+            forbiddenAbility: 0UL),
+            SkillSlotType.Ability_09);
     }
 
     public static GameplayIntent Ability_10(float time, ActionDataSO overrideAction = null) => CreateIndexedAbilityIntent(GameplayIntentKind.Ability_10, time, overrideAction);
@@ -132,7 +146,7 @@ public static class PlayerIntentCatalog
 
     static GameplayIntent CreateIndexedAbilityIntent(GameplayIntentKind kind, float time, ActionDataSO overrideAction)
     {
-        return GameplayIntent.Create(
+        return TagSlot(GameplayIntent.Create(
             kind,
             time,
             DefaultBufferSeconds,
@@ -141,12 +155,13 @@ public static class PlayerIntentCatalog
             forbidden: (ulong)(StateTag.Dead | StateTag.Stunned),
             action: overrideAction,
             requiredAllAbility: (ulong)EntityCapabilityTag.CanCastAbility1,
-            forbiddenAbility: 0UL);
+            forbiddenAbility: 0UL),
+            (SkillSlotType)((int)SkillSlotType.Ability_09 + ((int)kind - (int)GameplayIntentKind.Ability_09)));
     }
 
     public static GameplayIntent ComboAttack(float time, ActionDataSO overrideAction = null, float primaryHoldDurationSeconds = 0f)
     {
-        return GameplayIntent.Create(
+        return TagSlot(GameplayIntent.Create(
             GameplayIntentKind.ComboAttack,
             time,
             DefaultBufferSeconds,
@@ -156,12 +171,13 @@ public static class PlayerIntentCatalog
             action: overrideAction,
             requiredAllAbility: (ulong)EntityCapabilityTag.CanLightAttack,
             forbiddenAbility: 0UL,
-            primaryHoldDurationSeconds: primaryHoldDurationSeconds);
+            primaryHoldDurationSeconds: primaryHoldDurationSeconds),
+            SkillSlotType.Skill_Primary_02);
     }
 
     public static GameplayIntent ChargeAttack(float time, ActionDataSO overrideAction = null, float primaryHoldDurationSeconds = 0f)
     {
-        return GameplayIntent.Create(
+        return TagSlot(GameplayIntent.Create(
             GameplayIntentKind.ChargeAttack,
             time,
             DefaultBufferSeconds,
@@ -171,12 +187,13 @@ public static class PlayerIntentCatalog
             action: overrideAction,
             requiredAllAbility: (ulong)EntityCapabilityTag.CanLightAttack,
             forbiddenAbility: 0UL,
-            primaryHoldDurationSeconds: primaryHoldDurationSeconds);
+            primaryHoldDurationSeconds: primaryHoldDurationSeconds),
+            SkillSlotType.Skill_Primary_03);
     }
 
     public static GameplayIntent CastAbility7(float time, ActionDataSO overrideAction = null)
     {
-        return GameplayIntent.Create(
+        return TagSlot(GameplayIntent.Create(
             GameplayIntentKind.CastAbility7,
             time,
             DefaultBufferSeconds,
@@ -185,12 +202,13 @@ public static class PlayerIntentCatalog
             forbidden: (ulong)(StateTag.Dead | StateTag.Stunned),
             action: overrideAction,
             requiredAllAbility: (ulong)EntityCapabilityTag.CanSwordDash,
-            forbiddenAbility: 0UL);
+            forbiddenAbility: 0UL),
+            SkillSlotType.Ability_07);
     }
 
     public static GameplayIntent CastAbility8(float time, ActionDataSO overrideAction = null)
     {
-        return GameplayIntent.Create(
+        return TagSlot(GameplayIntent.Create(
             GameplayIntentKind.CastAbility8,
             time,
             DefaultBufferSeconds,
@@ -199,7 +217,8 @@ public static class PlayerIntentCatalog
             forbidden: (ulong)(StateTag.Dead | StateTag.Stunned),
             action: overrideAction,
             requiredAllAbility: (ulong)EntityCapabilityTag.CanDodge,
-            forbiddenAbility: 0UL);
+            forbiddenAbility: 0UL),
+            SkillSlotType.Ability_08);
     }
 
     /// <summary>

@@ -14,19 +14,22 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   skillName: 
   skillId: 
-  icon: {fileID: 21300000, guid: 12c151ebe8a59984fbab977b984e3d53, type: 3}
+  icon: {fileID: 21300000, guid: d73faddfc2dcc594f83c9041a83bedfa, type: 3}
   castType: 0
   castTime: 0
   channelDuration: 0
   chargeThreshold: 0
   chargeLevels: []
-  stages: []
+  stages:
+  - {fileID: 11400000, guid: 104446ee0cb5c084d9dd0cc3d27d6ec3, type: 2}
   cdPolicy: 1
-  baseCooldown: 0
+  baseCooldown: 2
   maxCharges: 1
   rechargeTime: 0
   ignoreGlobalCooldown: 0
-  costs: []
+  costs:
+  - resourceType: 1
+    baseAmount: 35
   targetType: 0
   maxRange: 0
   traits: 0

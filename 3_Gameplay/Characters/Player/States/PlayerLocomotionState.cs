@@ -11,37 +11,35 @@ using UnityEngine;
 public sealed class PlayerLocomotionState : PlayerState
 {
     /// <summary>
-    /// 由 PlayerStateManager 注入的"打断许可掩码"（StateTag.AllowInterruptBy* 位）。
-    /// 设计：Locomotion 是无总时长的连续物理状态，没有 t∈[0,1] 概念，因此使用
-    /// 整段掩码做闸门，而非 ActionWindow 的时间切片。
+    /// 由 <see cref="PlayerStateManager"/> 注入的允许的来袭 <see cref="ActionCategory"/> 掩码。
+    /// Locomotion 无归一化时间轴，用类别闸门代替 ActionWindow。
     /// </summary>
-    private readonly ulong m_allowedInterrupts;
+    private readonly ActionCategory m_allowedCategories;
 
     /// <summary>原地转身解析器（仅在本状态生命周期内活跃；离开时 ClearLock）。</summary>
     private readonly TurnResolver m_turnResolver;
 
-    public PlayerLocomotionState(ulong allowedInterrupts, in TurnSettings turnSettings)
+    public PlayerLocomotionState(ActionCategory allowedCategories, in TurnSettings turnSettings)
     {
-        m_allowedInterrupts = allowedInterrupts;
+        m_allowedCategories = allowedCategories;
         m_turnResolver = new TurnResolver(in turnSettings);
     }
 
     public override bool TryConsumeGameplayIntent(Player player, in FrameContext ctx, in GameplayIntent intent)
     {
-        if (!IntentRouter.IsRoutable(intent.Kind))
+        if (!IntentRouter.IsRoutable(in intent))
         {
             return false;
         }
 
-        // 状态级闸门：用 AllowInterruptBy* 位与 m_allowedInterrupts 做交集。
-        // 与 ActionInterruptResolver 共用同一套 Intent → 标签映射，保持单一真相源。
-        var requiredTag = ActionInterruptResolver.MapIntentToInterruptTag(intent.Kind);
-        if (requiredTag != 0UL && (m_allowedInterrupts & requiredTag) == 0UL)
+        var incomingAction = IntentRouter.PeekActionDataForRouting(player, in intent);
+        var incomingCategory = ActionInterruptResolver.ResolveIncomingCategory(in intent, incomingAction);
+        if (incomingCategory != ActionCategory.None && (m_allowedCategories & incomingCategory) == 0)
         {
             if (player.DebugInterruptFlow)
             {
                 Debug.Log(
-                    $"[Locomotion] REJECT | intent={intent.Kind} | reason=not in locomotionAllowedInterrupts",
+                    $"[Locomotion] REJECT | intent={intent.Kind} | category={incomingCategory} | reason=not in locomotionAllowedCategories",
                     player);
             }
             return false;

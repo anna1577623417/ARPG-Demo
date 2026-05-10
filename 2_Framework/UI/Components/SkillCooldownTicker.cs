@@ -58,18 +58,31 @@ public sealed class SkillCooldownTicker : MonoBehaviour
         }
 
         // ── 高频：CD ──
-        var totalCd = runtime.GetScaledCooldown();
+        // 分母用 SkillRuntime.CdScaledCooldown（实际启动时记录的 CD 总长，含 CDR），
+        // 而不是 GetScaledCooldown()（基础 CD），否则 CDR 介入后 progress 会从 0.4 起跳。
+        // RechargeTimerMax 同理，给多充能技能用。
         float progress01;
         float remaining;
-        if (totalCd <= 0.001f)
+        float maxCd;
+        if (runtime.Data != null && runtime.Data.maxCharges > 1)
+        {
+            remaining = Mathf.Max(0f, runtime.RechargeTimer);
+            maxCd = runtime.RechargeTimerMax;
+        }
+        else
+        {
+            remaining = Mathf.Max(0f, runtime.CdRemaining);
+            maxCd = runtime.CdScaledCooldown;
+        }
+
+        if (remaining <= 0.0001f || maxCd <= 0.0001f)
         {
             progress01 = 1f;
             remaining = 0f;
         }
         else
         {
-            remaining = Mathf.Max(0f, runtime.CdRemaining);
-            progress01 = Mathf.Clamp01(1f - remaining / totalCd);
+            progress01 = Mathf.Clamp01(1f - remaining / maxCd);
         }
 
         if (Mathf.Abs(_lastCdProgress - progress01) > 1e-4f)

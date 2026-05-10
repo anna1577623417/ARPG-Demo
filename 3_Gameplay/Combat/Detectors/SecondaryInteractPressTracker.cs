@@ -46,7 +46,16 @@ public sealed class SecondaryInteractPressTracker
         if (_sessionOpen && fell)
         {
             var hold = Mathf.Max(0f, time - _pressStartedAt);
-            player.EnqueueGameplayIntent(PlayerIntentCatalog.HeavyAttack(time, null, hold));
+            var intent = PlayerIntentCatalog.HeavyAttack(time, null, hold);
+            player.EnqueueGameplayIntent(intent);
+            if (player.DebugInterruptFlow)
+            {
+                var slotLabel = intent.HasSkillSlot ? intent.SkillSlot.ToString() : "(none)";
+                Debug.Log(
+                    $"[IntentInput] source=SecondaryRelease slot={slotLabel} kind={intent.Kind} hasSlot={intent.HasSkillSlot} hold={hold:F3}s",
+                    player);
+            }
+
             _sessionOpen = false;
         }
     }

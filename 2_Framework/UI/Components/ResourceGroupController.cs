@@ -24,4 +24,16 @@ public sealed class ResourceGroupController : MonoBehaviour
     }
 
     public int BarCount => bars.Count;
+
+    /// <summary>按当前列表顺序返回全部资源条（含 null 过滤）。</summary>
+    public IEnumerable<ResourceBarView> EnumerateBars()
+    {
+        for (var i = 0; i < bars.Count; i++)
+        {
+            if (bars[i] != null)
+            {
+                yield return bars[i];
+            }
+        }
+    }
 }
