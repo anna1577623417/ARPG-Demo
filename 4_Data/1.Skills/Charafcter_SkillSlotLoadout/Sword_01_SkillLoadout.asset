@@ -1,0 +1,36 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2753173ca79dd6e44b15746d527bf22d, type: 3}
+  m_Name: Sword_01_SkillLoadout
+  m_EditorClassIdentifier: 
+  bindings:
+  - slot: 0
+    skill: {fileID: 11400000, guid: dfe9f48d7f4f3474aa3846ea703b4712, type: 2}
+    hudKeyLabel: LM
+  - slot: 2
+    skill: {fileID: 11400000, guid: 4ddec821ed92cc743bdec39d7658ea46, type: 2}
+    hudKeyLabel: LM+Charge
+  - slot: 3
+    skill: {fileID: 11400000, guid: 429e3340317bd4d438e8795551b20581, type: 2}
+    hudKeyLabel: RM
+  - slot: 4
+    skill: {fileID: 11400000, guid: 4ecef0445e3b79d458d496fc498f6ab9, type: 2}
+    hudKeyLabel: R
+  - slot: 5
+    skill: {fileID: 11400000, guid: af1f38fea32498c4e9455b0659301eee, type: 2}
+    hudKeyLabel: Q
+  - slot: 6
+    skill: {fileID: 11400000, guid: 34b3efd125859c647b141ee3d31ccf9d, type: 2}
+    hudKeyLabel: Shift
+  - slot: 7
+    skill: {fileID: 11400000, guid: 7d863b200a6d3ea4cbab4bb7f9adb25b, type: 2}
+    hudKeyLabel: Space

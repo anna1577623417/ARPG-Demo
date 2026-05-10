@@ -1,0 +1,62 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1c417c93d6b4297428d16aac24a7611a, type: 3}
+  m_Name: Sword_Charge_SkillData_03
+  m_EditorClassIdentifier: 
+  skillName: SkillData_03
+  skillId: 03
+  icon: {fileID: 21300000, guid: 80d88e2b84c984047a0b6b5751a05cd6, type: 3}
+  castType: 3
+  castTime: 0.5
+  channelDuration: 0
+  chargeThreshold: 1
+  chargeLevels:
+  - minHoldTime: 0.5
+    action: {fileID: 11400000, guid: a3eda64ff2b298546bc27d34fe5d23d0, type: 2}
+    stageOverride: {fileID: 11400000, guid: 9321864a4ae2e6142a73592782a27fef, type: 2}
+    damageMultiplier: 0
+    motionOverride: {fileID: 0}
+  stages:
+  - {fileID: 11400000, guid: 9321864a4ae2e6142a73592782a27fef, type: 2}
+  cdPolicy: 1
+  baseCooldown: 1
+  maxCharges: 1
+  rechargeTime: 0
+  ignoreGlobalCooldown: 0
+  costs:
+  - resourceType: 0
+    baseAmount: 10
+  targetType: 0
+  maxRange: 0
+  traits: 0
+  traitUnlocks: []
+  comboChain: []
+  comboResetTime: 1.2
+  maxLevel: 1
+  damageByLevel:
+    serializedVersion: 2
+    m_Curve: []
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  cooldownByLevel:
+    serializedVersion: 2
+    m_Curve: []
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  costByLevel:
+    serializedVersion: 2
+    m_Curve: []
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4

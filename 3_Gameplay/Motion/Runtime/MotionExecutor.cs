@@ -24,6 +24,12 @@ public sealed class MotionExecutor
     private float _smoothedAnimSpeed = 1f;
     private bool _active;
 
+    /// <summary>
+    /// ActionData.AnimSpeed 作为整段动作的基础倍率（v4.5）：finalClipSpeed = baseAnimSpeed × profileFactor。
+    /// 由 PlayerActionState.OnEnter 在 Begin 时传入；profileFactor 来自 MotionProfile 的 AnimSpeedMode。
+    /// </summary>
+    private float _baseAnimSpeed = 1f;
+
     public MotionExecutor(IMotorAdapter motor, IAnimSpeedControl animSpeed, IStatsProvider stats)
     {
         _motor = motor;
@@ -35,7 +41,7 @@ public sealed class MotionExecutor
 
     public float NormalizedTime => _baseDuration > 0.0001f ? Mathf.Clamp01(_elapsed / _baseDuration) : 0f;
 
-    public void Begin(MotionProfileSO profile, float baseDuration, Vector3 direction, Vector3 startPos)
+    public void Begin(MotionProfileSO profile, float baseDuration, Vector3 direction, Vector3 startPos, float baseAnimSpeed = 1f)
     {
         _profile = profile;
         _baseDuration = Mathf.Max(0.0001f, baseDuration);
@@ -43,7 +49,9 @@ public sealed class MotionExecutor
         _elapsed = 0f;
         _startPos = startPos;
         _lastPos = startPos;
-        _smoothedAnimSpeed = 1f;
+        // 步幅匹配的"平滑起点"用 baseAnimSpeed，而非 1.0；防止第一帧从 1.0 → ratio 跳变。
+        _smoothedAnimSpeed = Mathf.Max(0.01f, baseAnimSpeed);
+        _baseAnimSpeed = Mathf.Max(0.01f, baseAnimSpeed);
         _active = profile != null;
         _motionScale = _active && _stats != null ? Mathf.Max(0f, _stats.GetMotionScale(profile.ScaleType)) : 1f;
     }
@@ -84,18 +92,49 @@ public sealed class MotionExecutor
         var desiredVelocity = delta / deltaTime;
         _motor?.SetDesiredVelocity(desiredVelocity);
 
-        if (_profile.MatchAnimationSpeed && _profile.ReferenceSpeed > 0.001f)
+        // ═══ v4.5 三层组合公式 ═══════════════════════════════════════════════
+        //   finalClipSpeed = ActionData.AnimSpeed (=_baseAnimSpeed)
+        //                  × profileFactor (来自 MotionProfile.AnimSpeedMode)
+        //
+        //   Constant     → factor = 1.0          （ActionData.AnimSpeed 单独生效）
+        //   Curve        → factor = SpeedOverTime.Evaluate(t)
+        //   StrideMatch  → factor = clamp(actualSpeed / ReferenceSpeed, 0.7, 1.3)
+        //                                         （平滑后；防滑步）
+        // ────────────────────────────────────────────────────────────────────
+        float profileFactor;
+        switch (_profile.AnimSpeedMode)
         {
-            var actualSpeed = _motor != null ? _motor.GetActualSpeed() : 0f;
-            var targetAnimSpeed = actualSpeed / _profile.ReferenceSpeed;
-            _smoothedAnimSpeed = Mathf.Lerp(_smoothedAnimSpeed, targetAnimSpeed, AnimSpeedLerp);
-            _smoothedAnimSpeed = Mathf.Clamp(_smoothedAnimSpeed, AnimSpeedMin, AnimSpeedMax);
-            _animSpeed?.SetSpeed(_smoothedAnimSpeed);
+            case AnimSpeedMode.StrideMatch:
+                if (_profile.ReferenceSpeed > 0.001f)
+                {
+                    var actualSpeed = _motor != null ? _motor.GetActualSpeed() : 0f;
+                    var raw = actualSpeed / _profile.ReferenceSpeed;
+                    // 注意：钳位 / 平滑作用在"profileFactor"上，而不是 final speed，
+                    // 这样 ActionData.AnimSpeed 的基础倍率不会被 0.7~1.3 上下限误吃。
+                    var smoothedFactor = Mathf.Lerp(_smoothedAnimSpeed / Mathf.Max(0.01f, _baseAnimSpeed),
+                                                    raw, AnimSpeedLerp);
+                    smoothedFactor = Mathf.Clamp(smoothedFactor, AnimSpeedMin, AnimSpeedMax);
+                    profileFactor = smoothedFactor;
+                }
+                else
+                {
+                    profileFactor = 1f;   // ReferenceSpeed=0 视作"未配置"，退化为 Constant
+                }
+                break;
+
+            case AnimSpeedMode.Curve:
+                profileFactor = _profile.SampleAnimSpeed(t);
+                break;
+
+            case AnimSpeedMode.Constant:
+            default:
+                profileFactor = 1f;
+                break;
         }
-        else
-        {
-            _animSpeed?.SetSpeed(_profile.SampleAnimSpeed(t));
-        }
+
+        var finalSpeed = _baseAnimSpeed * Mathf.Max(0f, profileFactor);
+        _smoothedAnimSpeed = finalSpeed;   // 留给下一帧平滑参考
+        _animSpeed?.SetSpeed(finalSpeed);
 
         // 注意：_lastPos 必须由外部在马达执行后回写真实位置；
         // 这里不能直接写 currentPosition（它是本帧物理前位置）。
@@ -130,6 +169,9 @@ public sealed class MotionExecutor
     {
         _active = false;
         _motor?.SetDesiredVelocity(Vector3.zero);
+        // 复位到 1.0：动作结束后下一段动画（Locomotion / 下一动作）会自行 SetSpeed，本步只确保不残留 profile 倍率。
         _animSpeed?.SetSpeed(1f);
+        _baseAnimSpeed = 1f;
+        _smoothedAnimSpeed = 1f;
     }
 }

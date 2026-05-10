@@ -131,7 +131,9 @@ public sealed class PlayerActionState : PlayerState
             EnsureMotionRuntime(player);
             var motionDir = ResolveMotionDirection(player);
             var duration = m_action.ResolveMotionDurationSeconds();
-            m_motionExecutor.Begin(m_action.MotionProfile, duration, motionDir, player.Position);
+            // ★ v4.5：把 ActionData.AnimSpeed 作为基础倍率传入；MotionExecutor 内 finalSpeed = base × profileFactor。
+            m_motionExecutor.Begin(m_action.MotionProfile, duration, motionDir, player.Position,
+                baseAnimSpeed: Mathf.Max(0.01f, m_action.AnimSpeed));
 
             if (m_isBurst)
             {

@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   baseStats:
   - Type: 0
-    BaseValue: 990
+    BaseValue: 3450
   - Type: 4
     BaseValue: 2.4
   - Type: 5
@@ -30,9 +30,9 @@ MonoBehaviour:
   - Type: 7
     BaseValue: 12
   - Type: 1
-    BaseValue: 888
+    BaseValue: 2550
   - Type: 9
-    BaseValue: 773
+    BaseValue: 2450
   maxHealthLegacy: 100
   baseWalkSpeedLegacy: 2.5
   baseRunSpeedLegacy: 5.5
@@ -41,11 +41,11 @@ MonoBehaviour:
   baseDefenseLegacy: 0
   _migrateStandaloneMaxStamina: 0
   usePlayerBaseStatsPreset: 1
-  presetMaxHealth: 990
+  presetMaxHealth: 3450
   presetWalkSpeed: 2.4
   presetRunSpeed: 5.5
   presetRotationSpeed: 540
   presetAttackPower: 13
   presetDefense: 11
-  presetMaxStamina: 888
-  presetMaxMana: 773
+  presetMaxStamina: 2550
+  presetMaxMana: 2450
