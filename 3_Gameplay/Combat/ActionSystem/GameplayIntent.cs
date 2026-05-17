@@ -1,58 +1,38 @@
 /// <summary>
-/// 离散输入经“语义化”后的意图种类（不要用字符串状态名做分支）。
+/// 语义意图种类 — 仅描述「玩家想做哪一件抽象事」，不携带技能 / Combo / Charge 等具体语义。
+///
+/// ═══ 设计契约（Ver4.3.6+）═══
+///   · 入口语义全部用 Skill_Entry_NN（NN 对应 <see cref="SkillEntrySlot"/>）；
+///     旧的 LightAttack/ChargeAttack/ComboAttack 等"自带技能语义"枚举已彻底删除。
+///   · Jump 仍保留为独立 Kind — 它跨支柱（→ Airborne），不属于 Skill 路由。
+///   · 任何"方向 / 修饰键 / 蓄力时长"信息一律由 <see cref="GameplayIntent"/> 数据字段携带，不污染本枚举。
 /// </summary>
 public enum GameplayIntentKind : byte
 {
     None = 0,
     Jump = 1,
-    LightAttack = 2,
-    HeavyAttack = 3,
-    Dodge = 4,
-    /// <summary>直线爆发位移（原 Shift「冲刺」语义，走 ActionDataSO，非连续 Run）。</summary>
-    SwordDash = 5,
 
-    /// <summary>序列化占位（历史值为旧蓄力枚举）；禁止入队。</summary>
-    UnusedLegacy6 = 6,
-
-    /// <summary>技能槽 Ability_06（对应 <see cref="SkillSlotType.Ability_06"/>）。</summary>
-    CastAbility1 = 7,
-
-    /// <summary>技能槽 Ultimate_05（对应 <see cref="SkillSlotType.Ultimate_05"/>）。</summary>
-    CastUltimate = 8,
-
-    /// <summary>左键连段（对应 <see cref="SkillSlotType.Skill_Primary_02"/>）。</summary>
-    ComboAttack = 9,
-
-    /// <summary>左键蓄力（对应 <see cref="SkillSlotType.Skill_Primary_03"/>）。</summary>
-    ChargeAttack = 10,
-
-    /// <summary>Shift 技能槽（对应 <see cref="SkillSlotType.Ability_07"/>）。</summary>
-    CastAbility7 = 11,
-
-    /// <summary>Space 技能槽（对应 <see cref="SkillSlotType.Ability_08"/>）。</summary>
-    CastAbility8 = 12,
-
-    Secondary_Combat = HeavyAttack,
-    Ultimate_05 = CastUltimate,
-    Ability_06 = CastAbility1,
-    Ability_07 = CastAbility7,
-    Ability_08 = CastAbility8,
-    Ability_09 = 13,
-    Ability_10 = 14,
-    Ability_11 = 15,
-    Ability_12 = 16,
-    Ability_13 = 17,
-    Ability_14 = 18,
-    Ability_15 = 19,
-    Ability_16 = 20,
-    Ability_17 = 21,
+    Skill_Entry_01 = 10,
+    Skill_Entry_02 = 11,
+    Skill_Entry_03 = 12,
+    Skill_Entry_04 = 13,
+    Skill_Entry_05 = 14,
+    Skill_Entry_06 = 15,
+    Skill_Entry_07 = 16,
+    Skill_Entry_08 = 17,
+    Skill_Entry_09 = 18,
+    Skill_Entry_10 = 19,
+    Skill_Entry_11 = 20,
+    Skill_Entry_12 = 21,
+    Skill_Entry_13 = 22,
+    Skill_Entry_14 = 23,
+    Skill_Entry_15 = 24,
+    Skill_Entry_16 = 25,
+    Skill_Entry_17 = 26,
 }
 
 /// <summary>
-/// 一条带时间戳的语义意图。
-/// - <see cref="TimeStamp"/>：入队时间，用于调试与优先级扩展。
-/// - <see cref="ExpireTime"/>：过期时间；过期后由缓冲队列丢弃，实现输入缓冲窗口。
-/// - 标签字段：由工厂在入队时填好，供 <see cref="TransitionResolver"/> 做“只查标签”的过滤。
+/// 一条带时间戳的语义意图（缓冲队列单元）。
 /// </summary>
 public struct GameplayIntent
 {
@@ -64,54 +44,70 @@ public struct GameplayIntent
     /// <summary>超过该 Time.time 后意图作废。</summary>
     public float ExpireTime;
 
-    /// <summary>上下文中必须全部具备的标签（ulong 位）。</summary>
+    /// <summary>上下文 State 轨：必须全部具备的标签（ulong 位）。</summary>
     public ulong RequiredAllTags;
 
-    /// <summary>若非 0：上下文中至少命中其中一位。</summary>
+    /// <summary>State 轨：至少命中其中一位。0 表示不检查。</summary>
     public ulong RequiredAnyTags;
 
-    /// <summary>若上下文中命中任意禁止位，则意图非法。</summary>
+    /// <summary>State 轨：禁止位 — 任一命中即非法。</summary>
     public ulong ForbiddenTags;
 
-    /// <summary>Ability 轨（<see cref="EntityCapabilityTag"/>）须全部具备；0 表示不检查。</summary>
+    /// <summary>Ability 轨须全部具备的位（沉默/封技检测）；0 表示不检查。</summary>
     public ulong RequiredAllAbilityTags;
 
-    /// <summary>Ability 轨禁止位（如未来沉默技能）。</summary>
+    /// <summary>Ability 轨禁止位。</summary>
     public ulong ForbiddenAbilityTags;
 
-    /// <summary>可选：注入到 Action 支柱的动作资产（可为 null，走代码内默认动作）。</summary>
-    public ActionDataSO Action;
+    /// <summary>本意图绑定的入口槽位 — Skill_Entry_NN 必填，Jump 等可保持 default。</summary>
+    public SkillEntrySlot EntrySlot;
 
-    /// <summary>主攻击抬起时的累计按住时长（秒）；其它意图保持 0。</summary>
-    public float PrimaryHoldDurationSeconds;
+    /// <summary>触发按键按住时长（秒，松开瞬间写入）。Charge / HoldRelease 路由依据本字段决定释放档位。</summary>
+    public float HoldDurationSeconds;
 
-    /// <summary>交互/副攻键抬起时的按住时长（秒）；供 Secondary 槽 Charge 等扩展。</summary>
-    public float SecondaryHoldDurationSeconds;
+    /// <summary>WASD 缓冲方向（单位向量；中性时为 zero）。</summary>
+    public UnityEngine.Vector2 MoveBuffered;
 
-    /// <summary>是否携带明确槽位（Phase B：槽位优先，Kind 兼容回退）。</summary>
-    public bool HasSkillSlot;
+    /// <summary>缓冲方向是否在 InputModifierBuffer 有效窗口内。</summary>
+    public bool MoveBufferValid;
 
-    /// <summary>明确的技能槽位语义（当 <see cref="HasSkillSlot"/> 为真时优先使用）。</summary>
-    public SkillSlotType SkillSlot;
+    // ═══ Ver4.3.7+ Input Semantic Layer 字段（由 InputSemanticResolver 单点写入） ═══
 
-    public static GameplayIntent Create(
-        GameplayIntentKind kind,
+    /// <summary>
+    /// 输入语义类型 — 替代下游"再次解析 hold 时间"。
+    /// 默认 <see cref="InputSemanticType.None"/> 表示沿用旧路径（向后兼容）。
+    /// Phase C 之后 SkillEntryService 改读本字段决策；当前与 <see cref="HoldDurationSeconds"/> 双轨平行。
+    /// </summary>
+    public InputSemanticType Semantic;
+
+    /// <summary>
+    /// 方向轴（仅 <see cref="InputSemanticType.Directional"/> 时有意义；与 <see cref="MoveBuffered"/> 互补：
+    /// MoveBuffered 是 raw 缓冲向量；DirectionAxis 是 Resolver 解析后离散化的 4/8 方向单位向量）。
+    /// </summary>
+    public UnityEngine.Vector2 DirectionAxis;
+
+    /// <summary>
+    /// Combo 段位序号（仅 <see cref="InputSemanticType.Combo"/> 时有意义） — 由 Resolver 维护，
+    /// 让 SkillEntryService 直接拿到段位无需自行维护窗口。
+    /// </summary>
+    public int ComboIndex;
+
+    public static GameplayIntent ForEntry(
+        SkillEntrySlot slot,
         float time,
         float bufferSeconds,
         ulong requiredAll,
         ulong requiredAny,
         ulong forbidden,
-        ActionDataSO action = null,
         ulong requiredAllAbility = 0UL,
         ulong forbiddenAbility = 0UL,
-        float primaryHoldDurationSeconds = 0f,
-        float secondaryHoldDurationSeconds = 0f,
-        bool hasSkillSlot = false,
-        SkillSlotType skillSlot = default)
+        float holdSeconds = 0f,
+        UnityEngine.Vector2 moveBuffered = default,
+        bool moveBufferValid = false)
     {
         return new GameplayIntent
         {
-            Kind = kind,
+            Kind = SkillEntrySlotToIntentKind(slot),
             TimeStamp = time,
             ExpireTime = time + bufferSeconds,
             RequiredAllTags = requiredAll,
@@ -119,11 +115,54 @@ public struct GameplayIntent
             ForbiddenTags = forbidden,
             RequiredAllAbilityTags = requiredAllAbility,
             ForbiddenAbilityTags = forbiddenAbility,
-            Action = action,
-            PrimaryHoldDurationSeconds = primaryHoldDurationSeconds,
-            SecondaryHoldDurationSeconds = secondaryHoldDurationSeconds,
-            HasSkillSlot = hasSkillSlot,
-            SkillSlot = skillSlot,
+            EntrySlot = slot,
+            HoldDurationSeconds = holdSeconds,
+            MoveBuffered = moveBuffered,
+            MoveBufferValid = moveBufferValid,
         };
+    }
+
+    public static GameplayIntent ForJump(float time, float bufferSeconds, ulong requiredAll, ulong forbidden)
+    {
+        return new GameplayIntent
+        {
+            Kind = GameplayIntentKind.Jump,
+            TimeStamp = time,
+            ExpireTime = time + bufferSeconds,
+            RequiredAllTags = requiredAll,
+            RequiredAnyTags = 0UL,
+            ForbiddenTags = forbidden,
+            RequiredAllAbilityTags = 0UL,
+            ForbiddenAbilityTags = 0UL,
+            EntrySlot = default,
+        };
+    }
+
+    /// <summary>槽位 ↔ Kind 一对一映射（SoA 友好；越界返回 None）。</summary>
+    public static GameplayIntentKind SkillEntrySlotToIntentKind(SkillEntrySlot slot)
+    {
+        var idx = (int)slot;
+        if (idx < 0 || idx >= SkillEntrySlots.TableSize)
+        {
+            return GameplayIntentKind.None;
+        }
+
+        return (GameplayIntentKind)((int)GameplayIntentKind.Skill_Entry_01 + idx);
+    }
+
+    /// <summary>Kind → 槽位反查；非 Skill_Entry_NN 返回 false。</summary>
+    public static bool TryIntentKindToSlot(GameplayIntentKind kind, out SkillEntrySlot slot)
+    {
+        var lo = (int)GameplayIntentKind.Skill_Entry_01;
+        var hi = lo + SkillEntrySlots.TableSize - 1;
+        var raw = (int)kind;
+        if (raw < lo || raw > hi)
+        {
+            slot = default;
+            return false;
+        }
+
+        slot = (SkillEntrySlot)(raw - lo);
+        return true;
     }
 }

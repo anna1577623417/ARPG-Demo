@@ -23,7 +23,7 @@ public enum EntityCapabilityTag : ulong
 
     CanSwordDash = 1UL << 5,
 
-    /// <summary>Ability_06 槽技能（与 Loadout <see cref="SkillSlotType.Ability_06"/> 对齐）。</summary>
+    /// <summary>Ability_06 槽技能（与 Loadout SkillEntrySlot.Q 对齐）。</summary>
     CanCastAbility1 = 1UL << 6,
 
     /// <summary>Ultimate 槽技能。</summary>

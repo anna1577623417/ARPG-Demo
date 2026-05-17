@@ -19,4 +19,7 @@ public enum MechanicTag : ulong
 
     /// <summary>Mechanic.WeakPoint.Head</summary>
     WeakPointHead = 1UL << 3,
+
+    /// <summary>Mechanic.SkillAnchor.Ready — 区域锚点（拉克丝 E）已落地，可引爆。</summary>
+    SkillAnchorReady = 1UL << 4,
 }

@@ -29,15 +29,8 @@ public static class EntityAbilitySystem
             bits |= (ulong)EntityCapabilityTag.CanJump;
         }
 
-        if (player.CanDodge)
-        {
-            bits |= (ulong)EntityCapabilityTag.CanDodge;
-        }
-
-        if (player.CanSwordDash)
-        {
-            bits |= (ulong)EntityCapabilityTag.CanSwordDash;
-        }
+        // Ver4.6 路由化：能力轨按入口可用性统一放开，具体是否可释放由 RouteResolver + Cost/CD/Tags 决定。
+        bits |= (ulong)(EntityCapabilityTag.CanDodge | EntityCapabilityTag.CanSwordDash);
 
         // TODO: bits |= equipmentMask | buffMask; bits &= ~blockedMask;
 

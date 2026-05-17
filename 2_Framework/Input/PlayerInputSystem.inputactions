@@ -250,6 +250,15 @@
                     "initialStateCheck": false
                 },
                 {
+                    "name": "SlotAbility_18",
+                    "type": "Button",
+                    "id": "c0a1b2d3-e4f5-6789-abcd-ef0123456700",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
                     "name": "SlotAbility_09",
                     "type": "Button",
                     "id": "be2f67a0-f830-4052-86d6-191acf4b2f2c",
@@ -857,6 +866,17 @@
                     "processors": "",
                     "groups": "",
                     "action": "SlotAbility_14",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "d0e1f2a3-b4c5-6789-abcd-ef0123456701",
+                    "path": "<Keyboard>/0",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "SlotAbility_18",
                     "isComposite": false,
                     "isPartOfComposite": false
                 },

@@ -110,7 +110,6 @@ public sealed class PlayerLocomotionState : PlayerState
         }
 
         player.ApplyMotor(MotorSolveContext.Locomotion);
-        player.TickMobilityCooldowns();
     }
 
     private static void RefreshLocomotionTags(Player player)

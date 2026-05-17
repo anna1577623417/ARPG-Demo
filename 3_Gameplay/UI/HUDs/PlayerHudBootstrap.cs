@@ -30,16 +30,24 @@ public sealed class PlayerHudBootstrap : MonoBehaviour
     [Tooltip("HP / Stamina / MP 等资源条 Presenter。")]
     [SerializeField] PlayerHUDPresenter resourcePresenter;
 
-    [Tooltip("技能栏 Presenter。")]
-    [SerializeField] SkillBarPresenter skillBarPresenter;
+    [Tooltip("Ver4.6+ Route 技能栏：绑定 IRouteRuntimeHandle。")]
+    [SerializeField] SkillEntryBarPresenter skillBarRoutePresenter;
 
     [Tooltip("Buff 条 Presenter。")]
     [SerializeField] BuffStripPresenter buffStripPresenter;
+
+    [Tooltip("可选：Route 运行时叠层（需 Player.DebugSkillRoute）。")]
+    [SerializeField] RouteHudDebugOverlay routeDebugOverlay;
 
     Player m_currentPlayer;
 
     void OnEnable()
     {
+        if (skillBarRoutePresenter == null)
+        {
+            skillBarRoutePresenter = GetComponentInChildren<SkillEntryBarPresenter>(true);
+        }
+
         if (playerManager == null)
         {
             Debug.LogWarning(
@@ -84,15 +92,24 @@ public sealed class PlayerHudBootstrap : MonoBehaviour
             return;
         }
 
+        if (skillBarRoutePresenter == null && player.DebugSkillRoute)
+        {
+            Debug.LogWarning(
+                "[PlayerHudBootstrap] skillBarRoutePresenter 未指派 → RouteWidget 不会在运行时生成。",
+                this);
+        }
+
         if (resourcePresenter != null) resourcePresenter.Bind(player);
-        if (skillBarPresenter != null) skillBarPresenter.Bind(player);
+        if (skillBarRoutePresenter != null) skillBarRoutePresenter.Bind(player);
         if (buffStripPresenter != null) buffStripPresenter.Bind(player);
+        if (routeDebugOverlay != null) routeDebugOverlay.Bind(player);
     }
 
     void UnbindAll()
     {
         if (resourcePresenter != null) resourcePresenter.Unbind();
-        if (skillBarPresenter != null) skillBarPresenter.Unbind();
+        if (skillBarRoutePresenter != null) skillBarRoutePresenter.Unbind();
         if (buffStripPresenter != null) buffStripPresenter.Unbind();
+        if (routeDebugOverlay != null) routeDebugOverlay.Unbind();
     }
 }

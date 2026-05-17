@@ -1,100 +1,49 @@
-using System;
 using UnityEngine;
 
 /// <summary>
-/// 主攻击键：<b>松开</b>时派发唯一 <see cref="GameplayIntentKind.LightAttack"/>，并以累计按住时长供
-/// <see cref="SkillSystem"/> / CastType.<see cref="CastType.Charge"/> 决策。
+/// 主攻击键边沿（Ver4.3.7+ Semantic Resolver 接入）：
+///
+/// ═══ 与 Ver4.3.6 的差异 ═══
+///   旧实现自己计算 hold 并直接 enqueue raw Intent；
+///   新实现将"按下/松开/持续按住"三类原始边沿全部转发给 <see cref="InputSemanticResolver"/>，
+///   由 Resolver 单点决定派发什么语义（Charge 在按下 ≥ TapThreshold 瞬间派发；
+///   Tap / Combo 在松手时根据窗口分流）。
+///
+/// 本类**不再决策**输入语义；只是 raw edge 的搬运工。
 /// </summary>
-[Serializable]
-public struct PrimaryAttackSplitPolicy
-{
-    [Tooltip("长按阈值（秒）：超过后派发 ChargeAttack。")]
-    [Min(0.04f)]
-    public float HoldSecondsBeforeChargedIntent;
-
-    [Tooltip("连段判定窗口（秒）：短于该窗口的连续短按派发 ComboAttack。")]
-    [Min(0.05f)]
-    public float ComboTapWindowSeconds;
-}
-
 public sealed class PrimaryAttackPressTracker
 {
-    bool _lastHeld;
-    bool _sessionOpen;
-    float _pressStartedAt;
-    float _lastReleaseAt;
-    PrimaryAttackSplitPolicy _policy;
+    const SkillEntrySlot Slot = SkillEntrySlot.LM;
 
-    public void Configure(in PrimaryAttackSplitPolicy policy)
-    {
-        _policy = policy;
-    }
+    bool _lastHeld;
 
     public void SyncInitialHeldState(bool attackHeld)
     {
         _lastHeld = attackHeld;
-        if (!attackHeld)
-        {
-            _sessionOpen = false;
-        }
     }
 
     public void Tick(float time, bool attackHeld, Player player)
     {
-        if (player == null)
-        {
-            return;
-        }
+        if (player?.InputSemantic == null) return;
 
         var rose = attackHeld && !_lastHeld;
         var fell = !attackHeld && _lastHeld;
         _lastHeld = attackHeld;
 
-        if (fell)
-        {
-            player.TryNotifySkillCastInputReleasedForSlot(SkillSlotType.Skill_Primary_01);
-            player.TryNotifySkillCastInputReleasedForSlot(SkillSlotType.Skill_Primary_02);
-            player.TryNotifySkillCastInputReleasedForSlot(SkillSlotType.Skill_Primary_03);
-        }
-
         if (rose)
         {
-            _sessionOpen = true;
-            _pressStartedAt = time;
+            player.InputSemantic.OnPressEdge(Slot, time);
         }
 
-        if (_sessionOpen && fell)
+        // 持续按住期间每帧 Tick，让 Resolver 检测是否越过 TapThreshold 即派发 Charge intent。
+        if (attackHeld)
         {
-            var hold = Mathf.Max(0f, time - _pressStartedAt);
-            var isCharge = hold >= Mathf.Max(0.04f, _policy.HoldSecondsBeforeChargedIntent);
-            var comboWindow = Mathf.Max(0.05f, _policy.ComboTapWindowSeconds);
-            var isCombo = !isCharge && _lastReleaseAt > 0.001f && time - _lastReleaseAt <= comboWindow;
-            GameplayIntent intent;
+            player.InputSemantic.OnHoldTick(Slot, time);
+        }
 
-            if (isCharge)
-            {
-                intent = PlayerIntentCatalog.ChargeAttack(time, null, hold);
-            }
-            else if (isCombo)
-            {
-                intent = PlayerIntentCatalog.ComboAttack(time, null, hold);
-            }
-            else
-            {
-                intent = PlayerIntentCatalog.LightAttack(time, null, hold);
-            }
-
-            player.EnqueueGameplayIntent(intent);
-            if (player.DebugInterruptFlow)
-            {
-                var slotLabel = intent.HasSkillSlot ? intent.SkillSlot.ToString() : "(none)";
-                Debug.Log(
-                    $"[IntentInput] source=PrimaryRelease slot={slotLabel} kind={intent.Kind} hasSlot={intent.HasSkillSlot} hold={hold:F3}s",
-                    player);
-            }
-
-            _lastReleaseAt = time;
-            _sessionOpen = false;
+        if (fell)
+        {
+            player.InputSemantic.OnReleaseEdge(Slot, time);
         }
     }
 }

@@ -107,7 +107,6 @@ public sealed class PlayerAirborneState : PlayerState
 
         player.MoveByLocomotionIntent(player.AirMoveMultiplier, player.WantsRun);
         player.ApplyMotor(MotorSolveContext.Airborne);
-        player.TickMobilityCooldowns();
     }
 
     private static void RefreshAirborneTags(Player player)

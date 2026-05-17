@@ -3,7 +3,7 @@ using UnityEngine;
 
 /// <summary>
 /// 玩家状态 HUD（v4.3 升级）：
-/// · 优先走 Presenter 模式（Props.Player 非 null 时）：PlayerHUDPresenter / SkillBarPresenter / BuffStripPresenter
+/// · 优先走 Presenter 模式（Props.Player 非 null 时）：PlayerHUDPresenter / SkillEntryBarPresenter / BuffStripPresenter
 ///   资源与 Buff 用事件；技能 CD 由槽位上 SkillCooldownTicker 自驱动。
 /// · 兼容旧路径（Props.Player 为 null 时）：仅刷新 healthText（旧轮询模式）。
 ///
@@ -14,11 +14,11 @@ using UnityEngine;
 ///   │     ├── HP_Bar      (ResourceBarView, Type=HP, MaxStatLink=MaxHealth)
 ///   │     └── Stamina_Bar (ResourceBarView, Type=Stamina, MaxStatLink=MaxStamina)
 ///   └── SkillBar
-///         ├── Slot_Primary   (SkillSlotView)   ← 拖到 SkillBarPresenter.slotBindings
+///         ├── Slot_Primary   (SkillSlotView)   ← 拖到 SkillEntryBarPresenter.slotBindings
 ///         ├── Slot_Secondary (SkillSlotView)
 ///         └── ...
 ///
-/// 把 PlayerHUDPresenter、SkillBarPresenter、BuffStripPresenter 拖到本组件对应字段；技能槽预制体须挂 SkillCooldownTicker。
+/// 把 PlayerHUDPresenter、SkillEntryBarPresenter、BuffStripPresenter 拖到本组件对应字段；技能槽预制体须挂 SkillCooldownTicker。
 /// </summary>
 public sealed class PlayerStatusHud : UIHUD<PlayerStatusHudProps>
 {
@@ -30,7 +30,7 @@ public sealed class PlayerStatusHud : UIHUD<PlayerStatusHudProps>
     [SerializeField] PlayerHUDPresenter resourcePresenter;
 
     [Tooltip("玩家技能栏 Presenter（CD 由 SkillCooldownTicker 在槽位上刷新）。")]
-    [SerializeField] SkillBarPresenter skillBarPresenter;
+    [SerializeField] SkillEntryBarPresenter skillBarPresenter;
 
     [Tooltip("玩家 Buff 条 Presenter（订阅 BuffStack 增删 + 刷新剩余时间）。")]
     [SerializeField] BuffStripPresenter buffStripPresenter;

@@ -25,6 +25,15 @@ public enum ActionWindowRuntimeEventKind : byte
 
     PlaySfx = 2,
     SpawnVfx = 3,
+
+    /// <summary>
+    /// 蓄力挂起进入：Action 时间线告诉 Skill 层「现在到了蓄势姿势的关键帧」。
+    /// 仅当 <see cref="ChargeConfig.holdAnchorMode"/> = ByActionWindow 时生效。
+    /// </summary>
+    ChargeHoldEnter = 4,
+
+    /// <summary>蓄力挂起离开：Action 时间线告诉 Skill 层「蓄势姿势结束」。</summary>
+    ChargeHoldExit = 5,
 }
 
 /// <summary>

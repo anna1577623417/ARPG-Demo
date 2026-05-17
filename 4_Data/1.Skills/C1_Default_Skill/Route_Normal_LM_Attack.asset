@@ -1,0 +1,43 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 50409d845c0919445a2e067fee88b2aa, type: 3}
+  m_Name: Route_Normal_LM_Attack
+  m_EditorClassIdentifier: 
+  routeId: Route_Normal_LM_Attack
+  icon: {fileID: 21300000, guid: a6ebf3b3b338ed442a8da8887fb61c95, type: 3}
+  displayName: Route_Normal_LM_Attack
+  showOnHud: 1
+  priority: 5
+  cooldownPolicy: 1
+  baseCooldownSeconds: 3
+  cooldownGroup: 
+  ignoreGlobalCooldown: 0
+  costs:
+  - resourceType: 2
+    baseAmount: 30
+    consumeOnlyOnHit: 0
+  damage:
+    baseDamage: 0
+    attackScale: 1
+    damageByLevel:
+      serializedVersion: 2
+      m_Curve: []
+      m_PreInfinity: 2
+      m_PostInfinity: 2
+      m_RotationOrder: 4
+    multiplyByChargeProgress: 0
+    critChanceOverride: -1
+    critMultiplierOverride: 1
+  stages:
+  - {fileID: 11400000, guid: 00d4e6a117a09c44cadd98531a2f0ed8, type: 2}
+  grantedStateTags: 0
+  grantedAbilityTags: 0

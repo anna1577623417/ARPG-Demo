@@ -1,0 +1,53 @@
+---
+description: Project-wide single-track migration — no runtime dual paths for any system
+alwaysApply: true
+---
+
+# Single-Track Migration（全系统）
+
+> **项目级决议**：任何子系统重构一律单轨，禁止运行时双轨。双轨会长期背负 `if (legacy)`、重复 API、两套测试与「到底走哪条路」的隐性 bug，成本远高于一次切干净 + git 回滚。
+
+## 必须遵守
+
+1. **运行时只有一条真路径**
+   - 新模型接入后，旧管线从战斗帧/主循环中**删除**，不在代码里并行保留。
+   - 禁止：`if (useLegacy) / if (useNew)`、`UseRouteRuntime`、`allowXxxFallback`、Feature Flag 切换两套实现。
+
+2. **旧形态仅作迁移输入**
+   - 旧 SO / 旧 API / 旧枚举：只出现在 **Editor 迁移菜单**、一次性导入脚本、只读校验工具中。
+   - **禁止**在 `Update` / `FixedUpdate` / 状态机主路径里读取旧数据做「兼容兜底」。
+
+3. **回滚靠版本控制，不靠开关**
+   - 大改前打 git tag / branch；出问题回滚提交，不在工程里堆 `Obsolete` + 运行时开关当「保险」。
+
+4. **迁移 = 切终态 + 搬资产**
+   - 先定终态 API 与数据模型 → 改调用方一次性接线 → Editor 工具批量生成/重绑资产。
+   - 不接受「先双轨跑几个 Phase 再删旧轨」作为默认策略（除非用户**书面**要求灰度/A/B）。
+
+5. **AI / 人工写码时**
+   - 方案里若出现「新旧并行」「灰度开关」「兼容层长期保留」→ 默认改为单轨方案并说明如何用 git 降风险。
+   - 新增代码只引用**当前**权威类型；不 import 已废弃命名空间「以防万一」。
+
+## 允许（不算双轨）
+
+- **编辑器**：`Tools/*` 从旧资产生成新资产（一次性）。
+- **测试**：EditMode 测新管线；旧测试随旧类型删除或改写，不维护两套。
+- **文档**：对照表说明「旧名 → 新名」仅供迁移人读，不进运行时。
+
+## 技能子系统（示例）
+
+技能域具体落点见 `06-skill-route-single-track.mdc`：`SkillRoute` 为最小单位，`SkillEntry*` 仅键位语义。
+
+## 反面教材（SkillRoute 2026-05 迭代 — 禁止重演）
+
+| 错误做法 | 后果 |
+|----------|------|
+| Phase 很多但 LM 单链路从未可玩 | 注意力丢失，蓝图功能未闭环 |
+| 运行时新逻辑 + Inspector 旧枚举/Tooltip | 配表不可信，人类与 AI 同猜 |
+| `禁止 Normal fallback` 无 CD/Session 分流 | 连段与填充技互杀 |
+| 窗口按松手/Enter 计时 | 动画未播完即 gap 超时，`SESSION END` |
+| Resolver 与 Service 各写 Combo 状态 | AAABC、idx 漂移 |
+
+**正确替代**：见 `09-refactor-delivery-protocol.mdc`（**设施+握手分 N 次落位**、通电 Log 通路修复、切片闭环验收）。
+
+> Done 不是一次可玩：是蓝图拆 **Landing 1…N**，设施先就位，再逐站通电验证；禁止用双轨/fallback 代替未接线的握手点。

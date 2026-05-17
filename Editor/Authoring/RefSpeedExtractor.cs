@@ -8,7 +8,6 @@ using UnityEngine;
 /// </summary>
 public static class RefSpeedExtractor
 {
-    [MenuItem("Tools/Motion/Extract RefSpeed from Selected Clip")]
     public static void Extract()
     {
         var clip = Selection.activeObject as AnimationClip;

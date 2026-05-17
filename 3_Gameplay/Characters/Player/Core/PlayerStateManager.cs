@@ -2,58 +2,36 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// 玩家状态机管理器 — 4 支柱拓扑的驱动核心。
+/// 玩家状态机管理器（Ver4.3.6+） — 4 支柱拓扑驱动核心。
 ///
-/// ═══ 帧序（每帧 Update）═══
-///
-/// 1. FlushExpired：清理过期意图
-/// 2. TryPeek → BuildFrameContext → TransitionResolver.CanOfferIntent（标签仲裁）
-/// 3. Current.TryConsumeGameplayIntent（当前状态决定是否消费并切换）
-/// 4. LogicUpdate（当前状态执行逻辑 — 移动/物理/时间轴推进）
-///
-/// ═══ 支柱拓扑 ═══
-///
-/// [0] PlayerLocomotionState（默认）
-/// [1] PlayerAirborneState
-/// [2] PlayerActionState（万能动作）
-/// [3] PlayerDeadState（终态）
+/// ═══ 帧序（每帧 Update） ═══
+///   1. SkillEntries.TickCooldowns(dt)：所有 RouteRuntime CD 减秒
+///   2. IntentBuffer.FlushExpired(now)
+///   3. TryPeek → BuildFrameContext → TransitionResolver.CanOfferIntent
+///   4. SkillEntries.TryResolveForIntent → RouteRuntime.CanCast
+///   5. Current.TryConsumeGameplayIntent（IntentRouter.Route 切支柱）
+///   6. SkillEntries.NotifyRouteEntered（提交 Active Route）
+///   7. LogicUpdate（当前支柱推进 — Action.Tick 内会 SkillEntries.TickActive）
 /// </summary>
 [AddComponentMenu("GameMain/Player/Player State Manager")]
 public class PlayerStateManager : EntityStateManager<Player>
 {
-    [SerializeField] private int maxIntentConsumptionsPerFrame = 1;
-    [SerializeField] private bool debugIntentArbitration;
-
-    // ───────────────────────────────────────────────────────────────────────────
-    //   连续状态的「来袭类别」闸门（ActionCategory 掩码）
-    //   Action 用 ActionWindow 的时间切片；Locomotion / Airborne 无归一化时间，
-    //   用整段允许的语义类别与 ActionDataSO.Category / 槽位默认映射对齐。
-    //   · Locomotion：单份掩码
-    //   · Airborne：上升 / 下降两份（按 VerticalSpeed 切换），与旧版上升空掩码、下落全开一致。
-    // ───────────────────────────────────────────────────────────────────────────
+    [SerializeField] int maxIntentConsumptionsPerFrame = 1;
+    [SerializeField] bool debugIntentArbitration;
 
     const ActionCategory AllPillarCategories =
         ActionCategory.Movement | ActionCategory.Offense | ActionCategory.Defensive | ActionCategory.Utility;
 
     [Header("Locomotion — interruption (categories)")]
-    [Tooltip("地面连续状态下允许的来袭动作类别（与 ActionDataSO.Category 一致；可多选）。")]
-    [SerializeField, InspectorName("locomotion_allowed_categories")]
-    private ActionCategory locomotionAllowedCategories = AllPillarCategories;
+    [SerializeField] ActionCategory locomotionAllowedCategories = AllPillarCategories;
 
-    [Header("Airborne — interruption (ascending)")]
-    [Tooltip("上升相（VerticalSpeed > 0）：允许的来袭类别。默认无（对应旧版上升期不打断常见输入）。")]
-    [SerializeField, InspectorName("airborne_ascending_allowed_categories")]
-    private ActionCategory airborneAscendingAllowedCategories;
+    [Header("Airborne — interruption (ascending / descending)")]
+    [SerializeField] ActionCategory airborneAscendingAllowedCategories;
+    [SerializeField] ActionCategory airborneDescendingAllowedCategories = AllPillarCategories;
 
-    [Tooltip("下降相（VerticalSpeed ≤ 0）：允许的来袭类别。")]
-    [SerializeField, InspectorName("airborne_descending_allowed_categories")]
-    private ActionCategory airborneDescendingAllowedCategories = AllPillarCategories;
+    [Header("Turn-In-Place")]
+    [SerializeField] TurnSettings turnSettings = TurnSettings.Default;
 
-    [Header("Turn-In-Place (locomotion presentation augmentation)")]
-    [Tooltip("原地转身的触发/解锁/分类阈值。详见 TurnSettings 字段 Tooltip。")]
-    [SerializeField] private TurnSettings turnSettings = TurnSettings.Default;
-
-    /// <summary>供 Locomotion 每帧传入 <see cref="TurnResolver"/>，使 Inspector 调试开关与阈值即时生效。</summary>
     public TurnSettings LocomotionTurnSettings => turnSettings;
 
     protected override List<EntityState<Player>> BuildStateList()
@@ -69,69 +47,129 @@ public class PlayerStateManager : EntityStateManager<Player>
 
     protected override void OnPreLogicUpdate(float deltaTime)
     {
-        if (Entity == null || Current == null)
-        {
-            return;
-        }
+        if (Entity == null || Current == null) return;
 
-        Entity.TickSkillRuntimes(deltaTime);
+        Entity.SkillEntries?.TickCooldowns(deltaTime);
         Entity.IntentBuffer.FlushExpired(Time.time);
 
         for (var i = 0; i < maxIntentConsumptionsPerFrame; i++)
         {
-            if (!Entity.IntentBuffer.TryPeek(out var intent))
-            {
-                break;
-            }
+            if (!Entity.IntentBuffer.TryPeek(out var intent)) break;
 
-            if (!SkillSystem.TryPrepareIntentForSkills(Entity, ref intent))
+            // ─── 1) 资格闸门：TransitionResolver 标签 + 过期 ───
+            var ctx = Entity.BuildFrameContext(deltaTime);
+            if (!TransitionResolver.CanOfferIntent(in ctx, in intent, out var reason))
             {
                 if (debugIntentArbitration || Entity.DebugInterruptFlow)
                 {
-                    Debug.Log("[IntentArb] BLOCK SkillSystem.CanCast/CD | intent remains queued", this);
+                    Debug.Log($"[IntentArb] BLOCK by TransitionResolver | state={Current.StateId} | intent={intent.Kind} | reason={reason}", this);
                 }
                 break;
             }
 
-            Entity.IntentBuffer.ReplaceFront(in intent);
-
-            var ctx = Entity.BuildFrameContext(deltaTime);
-            var canOffer = TransitionResolver.CanOfferIntent(in ctx, in intent, out var rejectReason);
-            if (!canOffer)
+            // ─── 2) Skill 解析：SkillEntryService.TryResolveForIntent ───
+            SkillRouteRuntime resolvedRoute = null;
+            if (intent.Kind != GameplayIntentKind.Jump)
             {
-                Entity.CancelDeferredSkillPlanning();
-                if (debugIntentArbitration || Entity.DebugInterruptFlow)
+                var inputSnap = BuildInputSnapshot(in intent);
+                var discardIntent = false;
+                resolvedRoute = Entity.SkillEntries?.TryResolveForIntent(
+                    in intent, in inputSnap, Time.time, out discardIntent);
+                if (resolvedRoute == null)
+                {
+                    Entity.ClearPendingAction();
+                    if (discardIntent)
+                    {
+                        Entity.IntentBuffer.Pop();
+                        continue;
+                    }
+
+                    if (debugIntentArbitration || Entity.DebugInterruptFlow)
+                    {
+                        Debug.Log($"[IntentArb] BLOCK by SkillEntry resolve | intent={intent.Kind}", this);
+                    }
+                    break;
+                }
+
+                // 把首段 Action 注入 PendingAction（MultiStage 跨次直进 Stage1 等）
+                var firstStage = Entity.SkillEntries.ResolveStartStage(resolvedRoute, Time.time);
+                if (firstStage?.Action != null)
+                {
+                    Entity.ArmPendingAction(intent.Kind, firstStage.Action);
+                }
+
+                if (Entity.DebugSkillRoute)
                 {
                     Debug.Log(
-                        $"[IntentArb] BLOCK by TransitionResolver | state={Current.StateId} | intent={intent.Kind} | reason={rejectReason} | stateTags=0x{ctx.CurrentTags.Value:X} | abilityTags=0x{ctx.CurrentAbilityTags.Value:X}",
+                        $"[Arbiter] RESOLVED intent={intent.Kind} → route={resolvedRoute?.Definition?.name} " +
+                        $"kind={resolvedRoute?.Kind} firstStage={firstStage?.name} action={firstStage?.Action?.name}",
                         this);
                 }
-                break;
             }
 
-            Entity.FinalizeDeferredSkillPlanning();
-
+            // ─── 3) 当前支柱本地闸门 ───
             if (!Current.TryConsumeGameplayIntent(Entity, in ctx, in intent))
             {
-                Entity.RevertCommittedSkillPlanningAfterFailedConsume();
-                if (debugIntentArbitration || Entity.DebugInterruptFlow)
+                Entity.ClearPendingAction();
+                if (debugIntentArbitration || Entity.DebugInterruptFlow || Entity.DebugSkillRoute)
                 {
-                    Debug.Log(
-                        $"[IntentArb] BLOCK by State gate | state={Current.StateId} | intent={intent.Kind}",
-                        this);
+                    Debug.Log($"[IntentArb] BLOCK by State gate | state={Current.StateId} | intent={intent.Kind} hold={intent.HoldDurationSeconds:F3} (intent stays queued)", this);
                 }
                 break;
             }
 
-            Entity.AcknowledgeCommittedSkillConsumed();
+            // ─── 4) 提交：SkillEntries 进入 RouteRuntime ───
+            if (resolvedRoute != null && Entity.SkillEntries != null
+                && GameplayIntent.TryIntentKindToSlot(intent.Kind, out var slot))
+            {
+                Entity.SkillEntries.NotifyRouteEntered(resolvedRoute, slot);
+            }
+
+            if (Entity.DebugSkillRoute && resolvedRoute == null && intent.Kind != GameplayIntentKind.Jump)
+            {
+                SkillRouteDebug.Log(Entity, SkillRouteDebug.CatIntent, $"CONSUMED (no route) intent={intent.Kind}");
+            }
 
             if (debugIntentArbitration || Entity.DebugInterruptFlow)
             {
-                Debug.Log(
-                    $"[IntentArb] CONSUMED | state={Current.StateId} | intent={intent.Kind}",
-                    this);
+                Debug.Log($"[IntentArb] CONSUMED | state={Current.StateId} | intent={intent.Kind}", this);
             }
+
             Entity.IntentBuffer.Pop();
         }
+    }
+
+    InputSnapshot BuildInputSnapshot(in GameplayIntent intent)
+    {
+        var reader = Entity?.InputReader;
+        InputSnapshot snap = default;
+        if (!GameplayIntent.TryIntentKindToSlot(intent.Kind, out snap.TriggerSlot))
+        {
+            return snap;
+        }
+
+        snap.TriggerSlot = CanonicalEntry(snap.TriggerSlot);
+        snap.TriggerHoldSeconds = intent.HoldDurationSeconds;
+        snap.MoveBuffered = intent.MoveBuffered;
+        snap.MoveBufferValid = intent.MoveBufferValid;
+
+        if (reader != null)
+        {
+            snap.TriggerHolding = reader.IsSkillEntryHeld(snap.TriggerSlot);
+            // 本函数由"当前待消费 intent"驱动，边沿严格依意图语义判定：
+            // - PressedEdge: 无 hold（按下帧入队）
+            // - ReleasedEdge: 带 hold 且当前已不按住（松开帧入队）
+            // 这样与 PlayerActionState 内部 TriggerReleasedEdge 语义一致，不再出现两套标准。
+            var hasHoldPayload = snap.TriggerHoldSeconds > 0.0001f;
+            snap.TriggerPressedEdge = true;
+            snap.TriggerReleasedEdge = hasHoldPayload && !snap.TriggerHolding;
+        }
+
+        return snap;
+    }
+
+    static SkillEntrySlot CanonicalEntry(SkillEntrySlot slot)
+    {
+        return (int)slot == 2 ? SkillEntrySlot.LM : slot;
     }
 }

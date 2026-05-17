@@ -8,7 +8,6 @@ using UnityEngine;
 /// </summary>
 public static class MotionMigrationTool
 {
-    [MenuItem("Tools/Motion/Migrate ActionData → Motion Profile (missing profile only)")]
     public static void CreateMissingProfiles()
     {
         var guids = AssetDatabase.FindAssets("t:ActionDataSO");
@@ -26,7 +25,7 @@ public static class MotionMigrationTool
             var profile = ScriptableObject.CreateInstance<MotionProfileSO>();
             ApplyBaselineFromActionTiming(action, profile);
             profile.SpeedOverTime = AnimationCurve.Constant(0f, 1f, 1f);
-            profile.MatchAnimationSpeed = true;
+            profile.AnimSpeedMode = AnimSpeedMode.Constant;
 
             var profilePath = actionPath.Replace(".asset", "_MotionProfile.asset");
             AssetDatabase.CreateAsset(profile, profilePath);
@@ -40,7 +39,6 @@ public static class MotionMigrationTool
         Debug.Log($"[Motion Migration] created MotionProfile assets count={migrated}");
     }
 
-    [MenuItem("Tools/Motion/Refresh MotionProfile baseline timing from Action clip")]
     public static void RefreshExistingProfileBaselinesFromAction()
     {
         var guids = AssetDatabase.FindAssets("t:ActionDataSO");

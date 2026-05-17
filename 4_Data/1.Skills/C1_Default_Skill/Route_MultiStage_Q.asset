@@ -1,0 +1,51 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fd8ba7ac8f321c94b95b89ac5fec9da0, type: 3}
+  m_Name: Route_MultiStage_Q
+  m_EditorClassIdentifier: 
+  routeId: Route_MultiStage_Q
+  icon: {fileID: 21300000, guid: d73faddfc2dcc594f83c9041a83bedfa, type: 3}
+  displayName: Route_MultiStage_Q
+  showOnHud: 1
+  priority: 4
+  cooldownPolicy: 2
+  baseCooldownSeconds: 3
+  cooldownGroup: 3
+  ignoreGlobalCooldown: 0
+  costs:
+  - resourceType: 2
+    baseAmount: 100
+    consumeOnlyOnHit: 0
+  damage:
+    baseDamage: 0
+    attackScale: 1
+    damageByLevel:
+      serializedVersion: 2
+      m_Curve: []
+      m_PreInfinity: 2
+      m_PostInfinity: 2
+      m_RotationOrder: 4
+    multiplyByChargeProgress: 0
+    critChanceOverride: -1
+    critMultiplierOverride: 1
+  stages:
+  - {fileID: 11400000, guid: c8275ae25f2204543a862eace99e79a9, type: 2}
+  - {fileID: 11400000, guid: 92762592a9e870744832969b2fa7bd18, type: 2}
+  - {fileID: 11400000, guid: f71ac6d02ba11294290df71bd9ca39f5, type: 2}
+  grantedStateTags: 0
+  grantedAbilityTags: 0
+  overallTimeoutSeconds: 0
+  chargeCdOnExternalInterrupt: 1
+  chainMode: 0
+  stageChainArmSeconds: 5
+  armNextStageTrigger: 0
+  startCooldownOnArmTimeout: 1

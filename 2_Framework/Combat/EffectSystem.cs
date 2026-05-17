@@ -70,6 +70,32 @@ public static class EffectSystem
 
         var result = DamagePipeline.Compute(in ctx, in hit);
         damageable.ReceiveDamage(in result, in ctx);
+
+        if (source != null)
+        {
+            var player = source.GetComponentInParent<Player>();
+            player?.SkillEntries?.NotifyHit(ClassifyHitTarget(target));
+        }
+    }
+
+    static TransitionTargetRule ClassifyHitTarget(IEffectReceiver target)
+    {
+        if (target is not IEntity ent)
+        {
+            return TransitionTargetRule.Any;
+        }
+
+        if (ent.Tags.HasAny(TagCategory.Faction, (ulong)FactionTag.EnemyBoss))
+        {
+            return TransitionTargetRule.Boss;
+        }
+
+        if (ent.Tags.HasAny(TagCategory.Faction, (ulong)FactionTag.Enemy))
+        {
+            return TransitionTargetRule.HeroOnly;
+        }
+
+        return TransitionTargetRule.Any;
     }
 
     static void ApplyDot(IEffectReceiver target, EffectDataSO data)

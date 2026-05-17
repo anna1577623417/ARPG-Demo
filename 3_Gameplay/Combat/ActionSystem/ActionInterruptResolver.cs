@@ -1,23 +1,11 @@
 using UnityEngine;
 
 /// <summary>
-/// Action 状态内的窗口仲裁器。
+/// Action 状态内的窗口仲裁器（Ver4.3.6+）。
 ///
 /// ═══ 设计意图 ═══
-///
-/// <see cref="TransitionResolver"/> 检查「实体资格」：<see cref="EntityCapabilityTag"/>（Ability 轨）+ State/禁止位。
-/// 进入 Action 后，是否允许某意图<strong>打断当前动作</strong>由归一化时间窗口 + 抽象语义（Category/Priority）决定。
-///
-/// ═══ 双层闸门 ═══
-///
-/// 1. 全局闸门（TransitionResolver）：Ability + State（例：<see cref="EntityCapabilityTag.CanSwordDash"/>、未死亡）
-/// 2. 局部闸门（本仲裁器）       ：当前 <see cref="ActionWindow"/> 是否允许 incoming Category/Priority
-///
-/// ═══ 工作流（例：翻滚后半段被剑冲打断）═══
-///
-/// 1. Dodge_ActionData 窗口 [0.5–1.0] 配置 InterruptibleByCategories + MinIncomingPriority
-/// 2. SwordDash 意图入队 → TransitionResolver：Ability 轨含 CanSwordDash → 通过
-/// 3. t=0.6 → ActionInterruptResolver：命中语义窗口且条件满足 → 通过 → 切招
+///   TransitionResolver 做"实体资格"（Ability/State 标签）；ActionInterruptResolver 做"局部窗口闸门"。
+///   两者均 ActionWindow.InterruptibleByCategories + MinIncomingPriority 协同。
 /// </summary>
 public static class ActionInterruptResolver
 {
@@ -41,7 +29,7 @@ public static class ActionInterruptResolver
         var incomingPriority = ResolveIncomingPriority(in incomingIntent, incomingAction);
         var isSelf = incomingAction != null && ReferenceEquals(incomingAction, action);
 
-        // 高优先级硬打断：外来动作优先级 > 当前动作稳定度时，强制可打断（不走窗口）。
+        // 硬打断：外来优先级 > 当前 Stability。
         if (!isSelf && incomingPriority > action.InterruptStability)
         {
             return true;
@@ -51,31 +39,15 @@ public static class ActionInterruptResolver
         for (var i = 0; i < action.Windows.Count; i++)
         {
             var w = action.Windows[i];
-            if (t < w.NormalizedStart || t > w.NormalizedEnd)
-            {
-                continue;
-            }
-
-            if (w.InterruptibleByCategories == ActionCategory.None)
-            {
-                continue;
-            }
-
-            if (!IsCategoryWindowPass(incomingCategory, incomingPriority, isSelf, action, in w))
-            {
-                continue;
-            }
-
+            if (t < w.NormalizedStart || t > w.NormalizedEnd) continue;
+            if (w.InterruptibleByCategories == ActionCategory.None) continue;
+            if (!IsCategoryWindowPass(incomingCategory, incomingPriority, isSelf, action, in w)) continue;
             return true;
         }
 
         return false;
     }
 
-    /// <summary>
-    /// 解析来袭意图的 <see cref="ActionCategory"/>（与 Action 内打断、连续状态闸门共用）。
-    /// 若提供 <paramref name="incomingAction"/> 则以其 <see cref="ActionDataSO.Category"/> 为准。
-    /// </summary>
     public static ActionCategory ResolveIncomingCategory(in GameplayIntent intent, ActionDataSO incomingAction)
     {
         if (incomingAction != null)
@@ -83,12 +55,12 @@ public static class ActionInterruptResolver
             return incomingAction.Category;
         }
 
-        if (intent.HasSkillSlot)
+        if (GameplayIntent.TryIntentKindToSlot(intent.Kind, out var slot))
         {
-            return MapSkillSlotToCategory(intent.SkillSlot);
+            return MapEntrySlotToCategory(slot);
         }
 
-        return MapIntentKindToCategory(intent.Kind);
+        return intent.Kind == GameplayIntentKind.Jump ? ActionCategory.Movement : ActionCategory.None;
     }
 
     static bool IsCategoryWindowPass(
@@ -98,21 +70,9 @@ public static class ActionInterruptResolver
         ActionDataSO currentAction,
         in ActionWindow window)
     {
-        if (incomingCategory == ActionCategory.None)
-        {
-            return false;
-        }
-
-        if ((window.InterruptibleByCategories & incomingCategory) == 0)
-        {
-            return false;
-        }
-
-        if (incomingPriority < window.MinIncomingPriority)
-        {
-            return false;
-        }
-
+        if (incomingCategory == ActionCategory.None) return false;
+        if ((window.InterruptibleByCategories & incomingCategory) == 0) return false;
+        if (incomingPriority < window.MinIncomingPriority) return false;
         if (isSelf && !window.AllowSelfInterrupt && (currentAction == null || !currentAction.AllowSelfInterrupt))
         {
             return false;
@@ -123,104 +83,40 @@ public static class ActionInterruptResolver
 
     static int ResolveIncomingPriority(in GameplayIntent intent, ActionDataSO incomingAction)
     {
-        if (incomingAction != null)
+        if (incomingAction != null) return incomingAction.InterruptPriority;
+        if (GameplayIntent.TryIntentKindToSlot(intent.Kind, out var slot))
         {
-            return incomingAction.InterruptPriority;
+            return MapCategoryToDefaultPriority(MapEntrySlotToCategory(slot));
         }
-
-        if (intent.HasSkillSlot)
-        {
-            return MapSkillSlotToDefaultPriority(intent.SkillSlot);
-        }
-
-        return MapIntentKindToDefaultPriority(intent.Kind);
+        if (intent.Kind == GameplayIntentKind.Jump) return MapCategoryToDefaultPriority(ActionCategory.Movement);
+        return 0;
     }
 
-    static ActionCategory MapIntentKindToCategory(GameplayIntentKind kind)
-    {
-        switch (kind)
-        {
-            case GameplayIntentKind.Dodge:
-            case GameplayIntentKind.SwordDash:
-            case GameplayIntentKind.Jump:
-                return ActionCategory.Movement;
-
-            case GameplayIntentKind.LightAttack:
-            case GameplayIntentKind.ComboAttack:
-            case GameplayIntentKind.ChargeAttack:
-            case GameplayIntentKind.HeavyAttack:
-            case GameplayIntentKind.CastAbility1:
-            case GameplayIntentKind.CastAbility7:
-            case GameplayIntentKind.CastAbility8:
-            case GameplayIntentKind.CastUltimate:
-            case GameplayIntentKind.Ability_09:
-            case GameplayIntentKind.Ability_10:
-            case GameplayIntentKind.Ability_11:
-            case GameplayIntentKind.Ability_12:
-            case GameplayIntentKind.Ability_13:
-            case GameplayIntentKind.Ability_14:
-            case GameplayIntentKind.Ability_15:
-            case GameplayIntentKind.Ability_16:
-            case GameplayIntentKind.Ability_17:
-                return ActionCategory.Offense;
-            default:
-                return ActionCategory.None;
-        }
-    }
-
-    static int MapIntentKindToDefaultPriority(GameplayIntentKind kind)
-    {
-        var category = MapIntentKindToCategory(kind);
-        return MapCategoryToDefaultPriority(category);
-    }
-
-    static ActionCategory MapSkillSlotToCategory(SkillSlotType slot)
+    /// <summary>
+    /// SkillEntrySlot → ActionCategory（默认映射；ActionDataSO.Category 优先级更高）。
+    /// 仅 Shift/Space 默认为 Movement；其它视作 Offense。
+    /// </summary>
+    static ActionCategory MapEntrySlotToCategory(SkillEntrySlot slot)
     {
         switch (slot)
         {
-            case SkillSlotType.Ability_07:
-            case SkillSlotType.Ability_08:
+            case SkillEntrySlot.Shift:
+            case SkillEntrySlot.Space:
                 return ActionCategory.Movement;
-            case SkillSlotType.Secondary_04:
-            case SkillSlotType.Ultimate_05:
-            case SkillSlotType.Ability_06:
-            case SkillSlotType.Ability_09:
-            case SkillSlotType.Ability_10:
-            case SkillSlotType.Ability_11:
-            case SkillSlotType.Ability_12:
-            case SkillSlotType.Ability_13:
-            case SkillSlotType.Ability_14:
-            case SkillSlotType.Ability_15:
-            case SkillSlotType.Ability_16:
-            case SkillSlotType.Ability_17:
-            case SkillSlotType.Skill_Primary_01:
-            case SkillSlotType.Skill_Primary_02:
-            case SkillSlotType.Skill_Primary_03:
-                return ActionCategory.Offense;
             default:
-                return ActionCategory.None;
+                return ActionCategory.Offense;
         }
-    }
-
-    static int MapSkillSlotToDefaultPriority(SkillSlotType slot)
-    {
-        return MapCategoryToDefaultPriority(MapSkillSlotToCategory(slot));
     }
 
     static int MapCategoryToDefaultPriority(ActionCategory category)
     {
         switch (category)
         {
-            case ActionCategory.Defensive:
-                return 40;
-            case ActionCategory.Movement:
-                return 30;
-            case ActionCategory.Offense:
-                return 20;
-            case ActionCategory.Utility:
-                return 10;
-            default:
-                return 0;
+            case ActionCategory.Defensive: return 40;
+            case ActionCategory.Movement:  return 30;
+            case ActionCategory.Offense:   return 20;
+            case ActionCategory.Utility:   return 10;
+            default:                        return 0;
         }
     }
 }

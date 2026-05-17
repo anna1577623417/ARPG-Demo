@@ -55,14 +55,6 @@ public class PlayerController : EntityController
     [Tooltip("箭头起点相对 transform.position 的抬高（模拟贴在脚底上方）。")]
     [SerializeField] private float debugArrowHeightOffset = 0.08f;
 
-    [Header("Primary + secondary (Interact) — hold duration on release")]
-    [Tooltip("Attack 松手 → LightAttack + PrimaryHoldDuration。Interact 松手 → HeavyAttack + SecondaryHoldDuration。两者在施法中均会通知同槽 Cast（读条取消 / 引导早停 / HoldRelease 收尾）。")]
-    [SerializeField] private PrimaryAttackSplitPolicy primaryAttackSplit = new PrimaryAttackSplitPolicy
-    {
-        HoldSecondsBeforeChargedIntent = 0.18f,
-        ComboTapWindowSeconds = 0.28f,
-    };
-
     private readonly PrimaryAttackPressTracker _primaryAttackPress = new PrimaryAttackPressTracker();
 
     private readonly SecondaryInteractPressTracker _secondaryInteractPress = new SecondaryInteractPressTracker();
@@ -105,7 +97,7 @@ public class PlayerController : EntityController
             inputReader = player.InputReader;
         }
 
-        _primaryAttackPress.Configure(in primaryAttackSplit);
+
     }
 
     /// <summary>
@@ -179,79 +171,86 @@ public class PlayerController : EntityController
     }
 
     /// <summary>
-    /// v4.4 重构：按 SkillSlotType 循环派发；物理键与 InputAction 名见输入表（Attack_01-03、SlotAbility_06…）。
+    /// 按 SkillEntrySlot 循环派发（Ver4.3.6+）。
     ///
     /// ═══ 数据流 ═══
-    ///
-    ///   物理键 (.inputactions)  →  InputReader.WriteSlotEdge(SkillSlotType, pressed)
-    ///                          →  本方法 ConsumeSkillSlotPressed(slot)
-    ///                          →  PlayerIntentCatalog.ForSlot(slot, time) 反向解析为对应 IntentKind
-    ///                          →  IntentBuffer.Enqueue
-    ///                          →  TransitionResolver / ActionInterruptResolver 仲裁
-    ///                          →  SkillSystem.TryPrepareIntentForSkills (TryMapIntentToSlot)
-    ///                          →  SkillLoadout.Resolve(slot) 拿到具体 SkillData
-    ///                          →  执行
-    ///
-    /// 槽位 → 物理键的实际绑定由 .inputactions 资产 + RebindManager 决定。
-    /// 默认配置（用户可自由换绑；Action 名与槽位表一致）：
-    ///   LMB → Attack_01-03（PrimaryAttackPressTracker 细分 Light / Combo / Charge）
-    ///   RMB → SkillSlotSecondary_04（Interact 右键并行；E 仅交互）
-    ///   Q   → SlotAbility_06 / Ability_06
-    ///   R   → SlotUltimate_05 / Ultimate_05
-    ///   Shift → SlotAbility_07 / Ability_07
-    ///   Space → SlotAbility_08 / Ability_08
-    ///   1–9 → SlotAbility_09 … SlotAbility_17
-    ///   F   → Jump（非技能）
+    ///   物理键 → InputReader.WriteSlotEdge(SkillEntrySlot, pressed)
+    ///         → ConsumeSkillEntryPressed → SkillEntryIntentFactory.ForEntry → IntentBuffer
+    ///         → PlayerStateManager (TransitionResolver + SkillEntryService.TryResolveForIntent)
+    ///         → RouteRuntime
     /// </summary>
     private void ConsumeDiscreteIntents()
     {
         if (inputReader.ConsumeJumpPressed())
         {
-            player.EnqueueGameplayIntent(PlayerIntentCatalog.Jump(Time.time));
+            player.EnqueueGameplayIntent(SkillEntryIntentFactory.ForJump(Time.time));
+            if (player.DebugSkillRoute || player.DebugInterruptFlow)
+            {
+                Debug.Log($"[Input] JumpPressed → Jump intent enqueued | currentState={player.States?.Current?.StateId}", this);
+            }
         }
 
-        TryDispatchSlot(SkillSlotType.Secondary_04);
-        TryDispatchSlot(SkillSlotType.Ability_06);
-        TryDispatchSlot(SkillSlotType.Ability_07);
-        TryDispatchSlot(SkillSlotType.Ability_08);
-        TryDispatchSlot(SkillSlotType.Ultimate_05);
-        TryDispatchSlot(SkillSlotType.Ability_09);
-        TryDispatchSlot(SkillSlotType.Ability_10);
-        TryDispatchSlot(SkillSlotType.Ability_11);
-        TryDispatchSlot(SkillSlotType.Ability_12);
-        TryDispatchSlot(SkillSlotType.Ability_13);
-        TryDispatchSlot(SkillSlotType.Ability_14);
-        TryDispatchSlot(SkillSlotType.Ability_15);
-        TryDispatchSlot(SkillSlotType.Ability_16);
-        TryDispatchSlot(SkillSlotType.Ability_17);
-        // Primary 槽位脉冲被 PrimaryAttackPressTracker 在 Tick() 中独立消费（轻击 vs 蓄力分流），
-        // 不走通用 dispatch；同时由 PressTracker 调用 PlayerIntentCatalog.LightAttack(holdDuration)。
+        TryDispatchEntry(SkillEntrySlot.RM);
+        TryDispatchEntry(SkillEntrySlot.Q);
+        TryDispatchEntry(SkillEntrySlot.Shift);
+        TryDispatchEntry(SkillEntrySlot.Space);
+        TryDispatchEntry(SkillEntrySlot.R);
+        TryDispatchEntry(SkillEntrySlot.Key0);
+        TryDispatchEntry(SkillEntrySlot.Key1);
+        TryDispatchEntry(SkillEntrySlot.Key2);
+        TryDispatchEntry(SkillEntrySlot.Key3);
+        TryDispatchEntry(SkillEntrySlot.Key4);
+        TryDispatchEntry(SkillEntrySlot.Key5);
+        TryDispatchEntry(SkillEntrySlot.Key6);
+        TryDispatchEntry(SkillEntrySlot.Key7);
+        TryDispatchEntry(SkillEntrySlot.Key8);
+        TryDispatchEntry(SkillEntrySlot.Key9);
+        // Primary 槽位脉冲被 PrimaryAttackPressTracker 独立消费（Press/Release + holdSeconds），
+        // 由 RouteResolver 在仲裁阶段决定 Tap/Combo/Charge 走向。
     }
 
-    /// <summary>消费指定 slot 的脉冲并入队对应 Intent。无脉冲则什么都不做。</summary>
-    private void TryDispatchSlot(SkillSlotType slot)
+    /// <summary>
+    /// 消费指定 SkillEntrySlot 的按下脉冲，转发到 InputSemanticResolver（Ver4.3.7+ Phase E）。
+    ///
+    /// ═══ 数据流 ═══
+    ///   Reader.ConsumeSkillEntryPressed → InputSemanticResolver.OnDiscretePulse
+    ///     → 由 Resolver 决策 Tap / Combo / Directional
+    ///     → EnqueueSemantic（intent.Semantic + ComboIndex + DirectionAxis）
+    ///     → IntentBuffer → PlayerStateManager → SkillEntryService.TryResolveForIntent（单轨）
+    ///
+    /// 仍保留 SkillEntryIntentFactory.ForEntryTapFallback 作为 Resolver 不可用时的兜底（Phase F 之前）。
+    /// </summary>
+    private void TryDispatchEntry(SkillEntrySlot slot)
     {
-        if (!PlayerIntentCatalog.HasFactoryFor(slot))
+        if (!inputReader.ConsumeSkillEntryPressed(slot, out var holdSeconds))
         {
             return;
         }
 
-        if (!inputReader.ConsumeSkillSlotPressed(slot, out var holdSeconds))
-        {
-            return;
-        }
+        Vector2 moveBuf = default;
+        var moveBufValid = inputReader.MoveModifierBuffer != null
+            && (moveBuf = inputReader.MoveModifierBuffer.GetBufferedMove(Time.time)).sqrMagnitude > 0.0001f;
 
-        // ForSlot 内部根据 slot 选择对应 IntentKind（与 SkillSystem.TryMapIntentToSlot 双向一致）。
-        // 注意：长按时长仅对 Primary/Ability1（蓄力主攻）有意义；其它槽传入但不使用。
-        var intent = PlayerIntentCatalog.ForSlot(slot, Time.time, primaryHold: holdSeconds);
-        player.EnqueueGameplayIntent(intent);
+        var resolver = player.InputSemantic;
+        if (resolver != null)
+        {
+            resolver.OnDiscretePulse(slot, Time.time, holdSeconds, moveBuf, moveBufValid);
+        }
+        else
+        {
+            // Resolver 缺失（启动时序问题）→ 兜底 Tap 直连入队，避免输入丢失。
+            var intent = SkillEntryIntentFactory.ForEntryTapFallback(
+                slot, Time.time, holdSeconds, moveBuf, moveBufValid);
+            player.EnqueueGameplayIntent(intent);
+            if (player.DebugSkillRoute)
+            {
+                Debug.LogWarning($"[IntentInput] FALLBACK Tap slot={slot} (InputSemantic 未初始化)", this);
+            }
+        }
 
         if (player.DebugInterruptFlow)
         {
-            var slotLabel = intent.HasSkillSlot ? intent.SkillSlot.ToString() : "(none)";
-            Debug.Log(
-                $"[IntentInput] source=SlotPulse slot={slotLabel} kind={intent.Kind} hasSlot={intent.HasSkillSlot} hold={holdSeconds:F3}s",
-                this);
+            Debug.Log($"[IntentInput] EntryPulse slot={slot} hold={holdSeconds:F3}s moveBuf={moveBuf} valid={moveBufValid}", this);
         }
     }
 
@@ -484,7 +483,7 @@ public class PlayerController : EntityController
 #if UNITY_EDITOR
     private void OnValidate()
     {
-        _primaryAttackPress.Configure(in primaryAttackSplit);
+
     }
 #endif
 }

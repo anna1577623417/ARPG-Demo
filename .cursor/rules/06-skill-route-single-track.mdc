@@ -1,0 +1,47 @@
+---
+description: Skill domain — single-track SkillRoute (implements global 07-single-track)
+alwaysApply: true
+---
+
+# SkillRoute Single-Track（技能域）
+
+> 全局原则见 **`07-single-track-migration.mdc`**。本节只约束技能管线。
+
+- 运行时技能最小单位：**`SkillRouteDefinition` + `SkillEntry*` + `SkillStage*`**（及对应 `*Runtime`）。
+- **禁止**运行时读取 legacy `SkillDataSO` / `SkillSlotType` / 旧 `SkillLoadout` 管线。
+- **禁止** `SkillRouteDefinitionSO`（前驱脚手架）与 P1 新 `SkillRouteDefinition` 抽象类双轨并存于 Player 主循环。
+- 入口枚举仅表达**物理键位**（`LM` / `RM` / `Q` …）；Normal / Combo / Charge 由 Route + Resolver 表达，不写在 Entry 名里。
+- 动作语义（`ActionDataSO` / `MotionProfileSO`）与入口语义分离；握手点仅为 `SkillStageDefinition.Action`。
+- 资产迁移：`Tools/Skill/*`、Clip→Action+Motion 批处理；回滚用 git，不用 `UseRouteRuntime` 类开关。
+
+## 时间与结算（单点真相 — 禁止兜底）
+
+| 概念 | 唯一权威 | 禁止 |
+|------|----------|------|
+| 衔接窗口起点 | `ComboRouteRuntime.NotifySubRouteSegmentEnded` | 松手时刻、`CommitAdvance` 时刻 |
+| 容器 CD | `ApplyLastSubRouteSettlement`（`OnLastSubRouteEnd`） | SubRoute `OnExit`、FirstSubRoute 起手 CD |
+| Session 段位 | `NotifyRouteEntered` → `CommitAdvance` | Resolve 阶段 `CommitAdvance` |
+| ComboIndex（意图） | Resolver 只读；Service 提交 | Service 在 Resolve 写段位 |
+| gap 超时（Session 内） | `ComboSessionResetTime` 自段结束起 | per-edge `max` 结束 Session |
+
+## 优先级（同一 Entry 有 Combo 时）
+
+1. Session 进行中 → 只解析 `ComboChain[i]`，不落 `Entry.NormalRoute`  
+2. 容器 CD 中 → 只 `Entry.NormalRoute`（若配置），不走 chain  
+3. 无 Session、容器可施放 → `ComboChain[0]` 起手  
+
+详见 `09-refactor-delivery-protocol.mdc`。
+
+## 落位与通电（Skill 切片示例）
+
+引入 Route 系统时，蓝图须拆 **Landing**，每落位只通 1～2 站，例如：
+
+| Landing | 设施 | 本落位 WIRE（通电） | 最早验证 Log |
+|---------|------|---------------------|--------------|
+| 1/5 | `SkillRouteRuntime` 工厂、空 Tick | — | `[Route] factory ok` |
+| 2/5 | `InputSemanticResolver` | Reader→Semantic→Intent | `[Semantic] ENQUEUE` |
+| 3/5 | `SkillEntryService` | Intent→Resolve→`OnEnter` | `[Resolve] RESOLVED` |
+| 4/5 | `ComboRouteRuntime` 会话 | `NotifyRouteEntered`→`CommitAdvance` | `[Combo] SESSION START` |
+| 5/5 | 结算/窗口锚点 | `NotifySubRouteSegmentEnded`、Last CD | Slice 验收清单 |
+
+**Slice Done** 才要求 ABC+容器 CD 等行为正确；Landing 3 允许只解析到 Route 而 Session 未通。

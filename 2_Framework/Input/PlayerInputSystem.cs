@@ -336,6 +336,15 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
                     ""initialStateCheck"": false
                 },
                 {
+                    ""name"": ""SlotAbility_18"",
+                    ""type"": ""Button"",
+                    ""id"": ""c0a1b2d3-e4f5-6789-abcd-ef0123456700"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
                     ""name"": ""SlotAbility_09"",
                     ""type"": ""Button"",
                     ""id"": ""be2f67a0-f830-4052-86d6-191acf4b2f2c"",
@@ -948,6 +957,17 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
                 },
                 {
                     ""name"": """",
+                    ""id"": ""d0e1f2a3-b4c5-6789-abcd-ef0123456701"",
+                    ""path"": ""<Keyboard>/0"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""SlotAbility_18"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
                     ""id"": ""a993f935-d0d9-4b3f-9af0-7b5bcbb116ce"",
                     ""path"": ""<Keyboard>/7"",
                     ""interactions"": """",
@@ -1136,6 +1156,7 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
         m_GamePlay_SlotAbility_06 = m_GamePlay.FindAction("SlotAbility_06", throwIfNotFound: true);
         m_GamePlay_SlotAbility_07 = m_GamePlay.FindAction("SlotAbility_07", throwIfNotFound: true);
         m_GamePlay_SlotAbility_08 = m_GamePlay.FindAction("SlotAbility_08", throwIfNotFound: true);
+        m_GamePlay_SlotAbility_18 = m_GamePlay.FindAction("SlotAbility_18", throwIfNotFound: true);
         m_GamePlay_SlotAbility_09 = m_GamePlay.FindAction("SlotAbility_09", throwIfNotFound: true);
         m_GamePlay_SlotAbility_10 = m_GamePlay.FindAction("SlotAbility_10", throwIfNotFound: true);
         m_GamePlay_SlotAbility_11 = m_GamePlay.FindAction("SlotAbility_11", throwIfNotFound: true);
@@ -1258,6 +1279,7 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
     private readonly InputAction m_GamePlay_SlotAbility_06;
     private readonly InputAction m_GamePlay_SlotAbility_07;
     private readonly InputAction m_GamePlay_SlotAbility_08;
+    private readonly InputAction m_GamePlay_SlotAbility_18;
     private readonly InputAction m_GamePlay_SlotAbility_09;
     private readonly InputAction m_GamePlay_SlotAbility_10;
     private readonly InputAction m_GamePlay_SlotAbility_11;
@@ -1386,6 +1408,10 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
         /// Provides access to the underlying input action "GamePlay/SlotAbility_08".
         /// </summary>
         public InputAction @SlotAbility_08 => m_Wrapper.m_GamePlay_SlotAbility_08;
+        /// <summary>
+        /// Provides access to the underlying input action "GamePlay/SlotAbility_18".
+        /// </summary>
+        public InputAction @SlotAbility_18 => m_Wrapper.m_GamePlay_SlotAbility_18;
         /// <summary>
         /// Provides access to the underlying input action "GamePlay/SlotAbility_09".
         /// </summary>
@@ -1529,6 +1555,9 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
             @SlotAbility_08.started += instance.OnSlotAbility_08;
             @SlotAbility_08.performed += instance.OnSlotAbility_08;
             @SlotAbility_08.canceled += instance.OnSlotAbility_08;
+            @SlotAbility_18.started += instance.OnSlotAbility_18;
+            @SlotAbility_18.performed += instance.OnSlotAbility_18;
+            @SlotAbility_18.canceled += instance.OnSlotAbility_18;
             @SlotAbility_09.started += instance.OnSlotAbility_09;
             @SlotAbility_09.performed += instance.OnSlotAbility_09;
             @SlotAbility_09.canceled += instance.OnSlotAbility_09;
@@ -1648,6 +1677,9 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
             @SlotAbility_08.started -= instance.OnSlotAbility_08;
             @SlotAbility_08.performed -= instance.OnSlotAbility_08;
             @SlotAbility_08.canceled -= instance.OnSlotAbility_08;
+            @SlotAbility_18.started -= instance.OnSlotAbility_18;
+            @SlotAbility_18.performed -= instance.OnSlotAbility_18;
+            @SlotAbility_18.canceled -= instance.OnSlotAbility_18;
             @SlotAbility_09.started -= instance.OnSlotAbility_09;
             @SlotAbility_09.performed -= instance.OnSlotAbility_09;
             @SlotAbility_09.canceled -= instance.OnSlotAbility_09;
@@ -2022,6 +2054,13 @@ public partial class @PlayerInputSystem: IInputActionCollection2, IDisposable
         /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
         /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
         void OnSlotAbility_08(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "SlotAbility_18" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnSlotAbility_18(InputAction.CallbackContext context);
         /// <summary>
         /// Method invoked when associated input action "SlotAbility_09" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
         /// </summary>

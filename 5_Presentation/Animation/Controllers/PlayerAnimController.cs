@@ -397,15 +397,9 @@ public class PlayerAnimController : EntityAnimController
             return;
         }
 
-        // 无 SO 回退：按 Kind 查 AnimLibrary
-        var libraryKey = evt.Kind switch
-        {
-            GameplayIntentKind.Dodge => "Action_Dodge",
-            GameplayIntentKind.SwordDash => "Action_SwordDash",
-            _ => "Action_Attack",
-        };
-
-        PlayLibraryEntry(libraryKey);
+        // 无 SO 回退：按 Kind 查 AnimLibrary（Ver4.3.6+ Skill_Entry_NN 默认走 Action_Attack 兜底，
+        // 具体 Clip 仍以 ActionData.MainClip 优先）
+        PlayLibraryEntry("Action_Attack");
     }
 
     private void OnPlayablePlaybackSpeedRequest(PlayablePlaybackSpeedRequestEvent evt)

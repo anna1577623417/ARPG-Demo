@@ -1,55 +1,230 @@
-using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Action 支柱：翻滚 / 剑冲 / 普攻。<see cref="ActionDataSO.MotionProfile"/> 非空时由 MotionExecutor 驱动程序化位移；
-/// 为空时不写平面爆发位移，仅占位时长 + 动画表现。
-/// 主攻击长按蓄力档由 Skill（CastType.Charge）+ <see cref="GameplayIntent.PrimaryHoldDurationSeconds"/> 在 <see cref="SkillSystem"/> 侧解析。
+/// Action 支柱（Ver4.3.6+） — 播放 SkillEntries.ActiveRoute 当前 Stage 的 ActionData。
+///
+/// ═══ 设计契约 ═══
+///   · 不感知 Skill / Combo / Charge 细节 — 一律从 Player.SkillEntries.ActiveRoute 读取。
+///   · ChargeMicroPhase / ApproachingHold / HoldingAtPoint 等微相位**完全删除** —
+///     已下沉到 ChargeRouteRuntime 内部。
+///   · MotionExecutor 接收 ChargeRouteRuntime.Playback（蓄力压速 / 循环窗 / 冻结时钟）。
 /// </summary>
 public sealed class PlayerActionState : PlayerState
 {
-    static bool IsMeleeStrikeIntent(GameplayIntentKind k) =>
-        k == GameplayIntentKind.LightAttack
-        || k == GameplayIntentKind.ComboAttack
-        || k == GameplayIntentKind.ChargeAttack
-        || k == GameplayIntentKind.HeavyAttack
-        || k == GameplayIntentKind.CastAbility1
-        || k == GameplayIntentKind.CastAbility7
-        || k == GameplayIntentKind.CastAbility8
-        || k == GameplayIntentKind.Ability_09
-        || k == GameplayIntentKind.Ability_10
-        || k == GameplayIntentKind.Ability_11
-        || k == GameplayIntentKind.Ability_12
-        || k == GameplayIntentKind.Ability_13
-        || k == GameplayIntentKind.Ability_14
-        || k == GameplayIntentKind.Ability_15
-        || k == GameplayIntentKind.Ability_16
-        || k == GameplayIntentKind.Ability_17
-        || k == GameplayIntentKind.CastUltimate;
+    GameplayIntentKind m_kind;
+    ActionDataSO m_action;
+    float m_baseDuration;
+    float m_elapsed;
+    float m_prevNormalizedTime;
+    float m_lastHoldSeconds;
 
-    static bool IsAttackComboCleanExit(GameplayIntentKind k) =>
-        k == GameplayIntentKind.LightAttack
-        || k == GameplayIntentKind.ComboAttack
-        || k == GameplayIntentKind.CastAbility1;
+    MotionExecutor m_motionExecutor;
+    PlayerMotorAdapter m_motorAdapter;
+    bool m_useMotionProfile;
+    Vector3 m_burstFaceDir;
+    float m_nextHeartbeatLogTime;
 
-    private GameplayIntentKind m_kind;
-    private ActionDataSO m_action;
+    protected override void OnEnter(Player player)
+    {
+        if (!player.TryTakePendingAction(out m_kind, out m_action) || m_action == null)
+        {
+            if (player.DebugSkillRoute)
+            {
+                Debug.LogWarning($"[ActionState] OnEnter ABORT: PendingAction=null → 退回 Locomotion", player);
+            }
+            // 无 PendingAction：立即退回 Locomotion
+            player.States.Change<PlayerLocomotionState>();
+            return;
+        }
 
-    private bool m_isBurst;
-    private Vector3 m_burstFaceDir;
-    private float m_burstDuration;
-    private bool m_lightAttackFinishedCleanly;
+        m_elapsed = 0f;
+        m_prevNormalizedTime = 0f;
+        m_lastHoldSeconds = 0f;
+        m_baseDuration = m_action.ResolveLogicalDurationSeconds();
+        m_useMotionProfile = m_action.MotionProfile != null;
+        m_burstFaceDir = player.GetMovementDirectionOrForward();
+        m_nextHeartbeatLogTime = 0f;
 
-    private bool m_useMotionProfile;
-    private MotionExecutor m_motionExecutor;
-    private PlayerMotorAdapter m_motionMotor;
-    private float m_nextGravityDebugLogTime;
-    private float m_prevNormalizedTime;
+        if (player.DebugSkillRoute)
+        {
+            var activeRoute = player.SkillEntries?.ActiveRoute;
+            Debug.Log(
+                $"[ActionState] OnEnter | kind={m_kind} action={m_action.name} " +
+                $"baseDuration={m_baseDuration:F3}s windows={m_action.Windows?.Count ?? 0} " +
+                $"useMotion={m_useMotionProfile} activeRoute={activeRoute?.Definition?.name ?? "<null>"} " +
+                $"routeKind={activeRoute?.Kind} isActive={activeRoute?.IsActive}",
+                player);
+        }
 
-    private readonly TaskExecutor m_skillTaskExecutor = new TaskExecutor();
-    private readonly List<ActionWindowEvent> m_skillWindowScratch = new List<ActionWindowEvent>(8);
-    private SkillContext m_skillCtxRef;
-    private bool m_usedSkillRouting;
+        EnsureMotionPlumbing(player);
+
+        // 标签：进入 Action — 写 State 轨
+        player.Tags.Add(TagCategory.State, (ulong)StateTag.PhaseStartup);
+
+        // MotionProfile 接管时进入"Action Motor Session"
+        if (m_useMotionProfile)
+        {
+            player.BeginActionMotorSession();
+            if (m_action.MotionProfile.GravityBehavior == MotionGravityBehavior.Suspended)
+            {
+                player.SuspendGravity();
+            }
+            m_motionExecutor.Begin(
+                m_action.MotionProfile,
+                m_baseDuration,
+                m_burstFaceDir,
+                player.transform.position,
+                baseAnimSpeed: Mathf.Max(0.01f, m_action.AnimSpeed));
+        }
+
+        player.BeginAttackWithManualCompletion();
+        player.RequestActionPresentation(m_kind, m_action);
+    }
+
+    /// <summary>MultiStage 同次内 Auto 衔接下一段（凯隐 Q 冲刺→旋转）。</summary>
+    public void SwapToStageAction(Player player, ActionDataSO action)
+    {
+        if (action == null) return;
+
+        m_action = action;
+        m_elapsed = 0f;
+        m_prevNormalizedTime = 0f;
+        m_baseDuration = action.ResolveLogicalDurationSeconds();
+        m_useMotionProfile = action.MotionProfile != null;
+        m_burstFaceDir = player.GetMovementDirectionOrForward();
+
+        if (m_useMotionProfile && m_motionExecutor != null)
+        {
+            m_motionExecutor.End();
+            if (action.MotionProfile.GravityBehavior == MotionGravityBehavior.Suspended)
+            {
+                player.SuspendGravity();
+            }
+
+            m_motionExecutor.Begin(
+                action.MotionProfile,
+                m_baseDuration,
+                m_burstFaceDir,
+                player.transform.position,
+                baseAnimSpeed: Mathf.Max(0.01f, action.AnimSpeed));
+        }
+
+        player.RequestActionPresentation(m_kind, action);
+    }
+
+    protected override void OnLogicUpdate(Player player)
+    {
+        var dt = Time.deltaTime;
+
+        // 凝滞点：若当前 ActiveRoute 是 ChargeRoute 且 Playback 标了 FreezeNormalizedAdvance，
+        // PlayerActionState 自己的 elapsed 也同步暂停 —— 否则 nt 会照常推进到 1，硬退出 Action 状态。
+        var frozen = player.SkillEntries?.ActiveRoute is ChargeRouteRuntime chargeRt
+                     && chargeRt.Playback.FreezeNormalizedAdvance;
+        if (!frozen)
+        {
+            m_elapsed += dt;
+        }
+
+        var nt = m_baseDuration > 0.0001f ? Mathf.Clamp01(m_elapsed / m_baseDuration) : 1f;
+
+        // Action 内派发 ActionWindow 事件（HitFrame / 标签切片）
+        if (m_action != null && m_action.Windows != null)
+        {
+            // 走 ActionData 内部 EvaluatePhaseTags 写 Phase 位
+            m_action.EvaluatePhaseTags(nt, ref player.GameplayTags);
+        }
+
+        // 推进 SkillEntries.ActiveRoute（Stage Transition / Charge 状态机等）
+        if (player.SkillEntries != null)
+        {
+            var input = BuildInputSnapshot(player);
+            player.SkillEntries.TickActive(in input, dt);
+        }
+
+        // MotionExecutor.Tick — 接 ChargeRouteRuntime.Playback
+        if (m_useMotionProfile && m_motionExecutor != null)
+        {
+            if (player.SkillEntries?.ActiveRoute is ChargeRouteRuntime charge)
+            {
+                var pb = charge.Playback;
+                m_motionExecutor.SetPlaybackContext(in pb);
+            }
+
+            m_motionExecutor.Tick(dt, 1f, player.transform.position);
+            m_motorAdapter.ApplyToPlayer();
+            m_motionExecutor.SyncPostMotorPosition(player.transform.position);
+        }
+
+        m_prevNormalizedTime = nt;
+
+        // 结束条件（收敛）：Action 已播完 + Route 已退出。
+        // 若 Route 先退出，保持到当前 Action 播放完成，避免出现中途硬切状态。
+        var route = player.SkillEntries?.ActiveRoute;
+        var routeEnded = route == null || !route.IsActive;
+        var actionEnded = nt >= 0.9999f;
+        var stageCompleted = route?.Stage?.Completed ?? false;
+        SkillRouteDebug.TryLogActionStuck(
+            player,
+            nt,
+            route != null && route.IsActive,
+            stageCompleted,
+            route?.Stage?.DurationSeconds ?? 0f);
+
+        // 心跳日志：每 0.5s 一次，便于看清"卡死时"的真实状态。
+        if (player.DebugSkillRoute && Time.time >= m_nextHeartbeatLogTime)
+        {
+            m_nextHeartbeatLogTime = Time.time + 0.5f;
+            var routeName = route?.Definition?.name ?? "<null>";
+            var stageName = route?.Stage?.Definition?.name ?? "<null>";
+            var stageDur = route?.Stage?.DurationSeconds ?? 0f;
+            var stageElapsed = route?.Stage?.Elapsed ?? 0f;
+            Debug.Log(
+                $"[ActionState][HB] nt={nt:F2}/1 elapsed={m_elapsed:F2}/{m_baseDuration:F2}s " +
+                $"| action={m_action?.name} | route={routeName} kind={route?.Kind} active={route?.IsActive} " +
+                $"| stage={stageName} idx={route?.CurrentStageIndex} stageNt={(stageDur > 0.0001f ? stageElapsed / stageDur : 0f):F2} completed={stageCompleted} " +
+                $"| actionEnded={actionEnded} routeEnded={routeEnded}",
+                player);
+        }
+
+        if (actionEnded && routeEnded)
+        {
+            if (player.DebugSkillRoute)
+            {
+                Debug.Log($"[ActionState] EXIT → Locomotion | nt={nt:F2} routeEnded={routeEnded}", player);
+            }
+            SkillRouteDebug.Log(
+                player,
+                SkillRouteDebug.CatAction,
+                $"ExitToLocomotion nt={nt:F2} routeEnded={routeEnded}");
+            ExitToBaseline(player);
+        }
+    }
+
+    protected override void OnExit(Player player)
+    {
+        if (player.DebugSkillRoute)
+        {
+            Debug.Log($"[ActionState] OnExit | action={m_action?.name} elapsed={m_elapsed:F2}s", player);
+        }
+
+        if (m_useMotionProfile && m_motionExecutor != null)
+        {
+            m_motionExecutor.End();
+            if (m_action != null && m_action.MotionProfile != null
+                && m_action.MotionProfile.GravityBehavior == MotionGravityBehavior.Suspended)
+            {
+                player.ReleaseGravity();
+            }
+            player.EndActionMotorSession();
+        }
+
+        player.SkillEntries?.NotifyRouteExited(wasInterrupted: false);
+        player.Tags.Remove(TagCategory.State, (ulong)StateTag.PhaseStartup);
+        player.ForceEndAttackIfActive();
+
+        m_action = null;
+        m_useMotionProfile = false;
+    }
 
     public override bool TryConsumeGameplayIntent(Player player, in FrameContext ctx, in GameplayIntent intent)
     {
@@ -58,602 +233,71 @@ public sealed class PlayerActionState : PlayerState
             return false;
         }
 
-        if (m_action == null)
-        {
-            if (player.DebugInterruptFlow)
-            {
-                Debug.Log($"[ActionInterrupt] REJECT | incoming={intent.Kind} | reason=no current action data", player);
-            }
-
-            return false;
-        }
-
-        var normalized = ResolveCurrentActionNormalized(player);
         var incomingAction = IntentRouter.PeekActionDataForRouting(player, in intent);
-        if (!ActionInterruptResolver.CanInterrupt(m_action, normalized, in intent, incomingAction))
+        if (!ActionInterruptResolver.CanInterrupt(m_action, m_prevNormalizedTime, in intent, incomingAction))
         {
-            if (player.DebugInterruptFlow)
+            if (player.DebugSkillRoute)
             {
+                var winCnt = m_action != null && m_action.Windows != null ? m_action.Windows.Count : 0;
                 Debug.Log(
-                    $"[ActionInterrupt] REJECT | action={m_action.name} | incoming={intent.Kind} | slot={(intent.HasSkillSlot ? intent.SkillSlot.ToString() : "(none)")} | t={normalized:F3} | reason=window disallow",
+                    $"[ActionState][Interrupt] BLOCKED intent={intent.Kind} hold={intent.HoldDurationSeconds:F3} " +
+                    $"current={m_action?.name} nt={m_prevNormalizedTime:F2} windowCnt={winCnt} " +
+                    $"(无 ActionWindows 时本动作整段不可被打断 — 这也是卡死时 F/移动/再次触发 全失效的根因)",
                     player);
             }
 
             return false;
         }
 
-        if (player.DebugInterruptFlow)
-        {
-            Debug.Log(
-                $"[ActionInterrupt] PASS | action={m_action.name} | incoming={intent.Kind} | slot={(intent.HasSkillSlot ? intent.SkillSlot.ToString() : "(none)")} | t={normalized:F3}",
-                player);
-        }
+        // 通知 SkillEntries 当前 Route 被打断
+        SkillRouteDebug.Log(
+            player,
+            SkillRouteDebug.CatIntent,
+            $"Interrupt route → re-route intent={intent.Kind}");
+        player.SkillEntries?.NotifyRouteExited(wasInterrupted: true);
 
         return IntentRouter.Route(player, in intent, forceActionReentry: true);
     }
 
-    protected override void OnEnter(Player player)
+    // ─── 内部 ───
+
+    void EnsureMotionPlumbing(Player player)
     {
-        player.GameplayTags.Clear();
-
-        m_useMotionProfile = false;
-        m_nextGravityDebugLogTime = 0f;
-        m_prevNormalizedTime = 0f;
-
-        if (!player.TryTakePendingAction(out m_kind, out m_action))
+        if (m_motorAdapter == null)
         {
-            m_kind = GameplayIntentKind.LightAttack;
-            m_action = null;
+            m_motorAdapter = new PlayerMotorAdapter(player);
         }
 
-        m_skillCtxRef = player.ActiveSkillContext;
-        m_usedSkillRouting = m_skillCtxRef != null;
-        if (m_usedSkillRouting)
+        if (m_motionExecutor == null)
         {
-            var costsOk = player.TryBeginSkillCostsIfNeeded();
-            player.SkillNotifyCooldownOnCastEnter();
-            m_skillTaskExecutor.StartAll(
-                m_skillCtxRef.CurrentStage != null ? m_skillCtxRef.CurrentStage.tasks : null,
-                m_skillCtxRef);
-            if (costsOk)
-            {
-                player.TriggerSkillGlobalCooldownIfCommitted();
-            }
-        }
-
-        m_lightAttackFinishedCleanly = false;
-
-        m_isBurst = m_kind == GameplayIntentKind.Dodge || m_kind == GameplayIntentKind.SwordDash;
-        m_useMotionProfile = m_action != null && m_action.MotionProfile != null;
-
-        if (m_useMotionProfile)
-        {
-            EnsureMotionRuntime(player);
-            var motionDir = ResolveMotionDirection(player);
-            var duration = m_action.ResolveMotionDurationSeconds();
-            // ★ v4.5：把 ActionData.AnimSpeed 作为基础倍率传入；MotionExecutor 内 finalSpeed = base × profileFactor。
-            m_motionExecutor.Begin(m_action.MotionProfile, duration, motionDir, player.Position,
-                baseAnimSpeed: Mathf.Max(0.01f, m_action.AnimSpeed));
-
-            if (m_isBurst)
-            {
-                ApplyBurstEnterSideEffects(player, motionDir);
-            }
-            else if (IsMeleeStrikeIntent(m_kind))
-            {
-                player.BeginAttackWithManualCompletion();
-            }
-        }
-        else if (m_isBurst)
-        {
-            ConfigureBurst(player);
-        }
-        else if (IsMeleeStrikeIntent(m_kind))
-        {
-            var duration = m_action != null && m_action.Duration > 0.001f ? m_action.Duration : -1f;
-            player.BeginAttack(duration);
-        }
-
-        var shouldSuspendGravity = m_action != null
-            && m_action.MotionProfile != null
-            && m_action.MotionProfile.GravityBehavior == MotionGravityBehavior.Suspended;
-        if (shouldSuspendGravity)
-        {
-            player.SuspendGravity();
-        }
-        else
-        {
-            var enteredAirborne = !player.IsGrounded || player.VerticalSpeed < -0.05f;
-            if (enteredAirborne)
-            {
-                player.SetActionAirborneLock(true);
-            }
-        }
-
-        player.BeginActionMotorSession();
-
-        if (player.DebugInterruptFlow)
-        {
-            var actionName = m_action != null ? m_action.name : "null";
-            var gravityBehavior = m_action != null && m_action.MotionProfile != null
-                ? m_action.MotionProfile.GravityBehavior.ToString()
-                : "AnimOnly (no MotionProfile)";
-            Debug.Log(
-                $"[ActionGravity] Enter | action={actionName} | useMotionProfile={m_useMotionProfile} | behavior={gravityBehavior} | shouldSuspend={shouldSuspendGravity} | suspendedNow={player.IsGravitySuspended} | grounded={player.IsGrounded}",
-                player);
-        }
-
-        player.PublishEvent(new PlayerActionPresentationRequestEvent(
-            player.GetInstanceID(), m_kind, m_action));
-
-        UpdatePhaseTagsForCurrentNormalized(player, 0f);
-    }
-
-    private void ConfigureBurst(Player player)
-    {
-        player.ClearPlanarVelocity();
-
-        if (m_kind == GameplayIntentKind.SwordDash)
-        {
-            m_burstFaceDir = player.Forward;
-            m_burstDuration = m_action != null
-                ? m_action.ResolveAnimWallClockSeconds()
-                : player.FallbackSwordDashDurationSeconds;
-
-            player.LookAtDirection(m_burstFaceDir, true);
-            player.StartSwordDashCooldown();
-            player.GameplayTags.Add((ulong)StateTag.Invulnerable);
-            return;
-        }
-
-        m_burstFaceDir = player.GetMovementDirectionOrForward();
-        m_burstDuration = m_action != null
-            ? m_action.ResolveAnimWallClockSeconds()
-            : player.FallbackDodgeDurationSeconds;
-
-        player.LookAtDirection(m_burstFaceDir, true);
-        player.StartDodgeCooldown();
-        player.PublishEvent(new PlayerDodgeStartedEvent(player.GetInstanceID(), player.name));
-        player.GameplayTags.Add((ulong)StateTag.Invulnerable);
-    }
-
-    protected override void OnExit(Player player)
-    {
-        if (player.DebugInterruptFlow)
-        {
-            Debug.Log(
-                $"[ActionGravity] Exit-BeforeRelease | action={(m_action != null ? m_action.name : "null")} | suspended={player.IsGravitySuspended} | grounded={player.IsGrounded}",
-                player);
-        }
-
-        if (m_useMotionProfile && m_motionExecutor != null)
-        {
-            m_motionExecutor.End();
-        }
-
-        var skillRt = m_skillCtxRef != null ? m_skillCtxRef.Runtime : null;
-
-        if (m_usedSkillRouting && m_skillCtxRef != null)
-        {
-            m_skillTaskExecutor.ExitAll(m_skillCtxRef);
-        }
-
-        player.SkillNotifyCooldownOnCastExit();
-
-        if (m_usedSkillRouting && skillRt != null && m_skillCtxRef != null)
-        {
-            var seg = m_skillCtxRef.ResolvedSkillSheet;
-            if (seg?.stages != null && seg.stages.Length > 1)
-            {
-                var logical = Mathf.Clamp(skillRt.CurrentStageIndex, 0, seg.stages.Length - 1);
-                if (logical >= seg.stages.Length - 1)
-                {
-                    skillRt.ResetStage();
-                }
-            }
-        }
-
-        if (!m_isBurst && IsMeleeStrikeIntent(m_kind))
-        {
-            player.ForceEndAttackIfActive();
-            if (m_lightAttackFinishedCleanly)
-            {
-                if (m_kind == GameplayIntentKind.LightAttack || m_kind == GameplayIntentKind.ComboAttack)
-                {
-                    if (m_usedSkillRouting && skillRt?.Data?.comboChain != null && skillRt.Data.comboChain.Length > 0)
-                    {
-                        skillRt.AdvanceCombo();
-                    }
-                    else
-                    {
-                        player.AdvanceLightComboIndex();
-                    }
-                }
-                else if (m_kind == GameplayIntentKind.CastAbility1
-                         && m_usedSkillRouting
-                         && skillRt?.Data?.comboChain != null
-                         && skillRt.Data.comboChain.Length > 0)
-                {
-                    skillRt.AdvanceCombo();
-                }
-            }
-        }
-
-        if (m_kind == GameplayIntentKind.Dodge)
-        {
-            player.PublishEvent(new PlayerDodgeEndedEvent(player.GetInstanceID(), player.name));
-        }
-
-        var phaseMask = (ulong)(StateTag.PhaseStartup | StateTag.PhaseActive | StateTag.PhaseRecovery);
-        player.GameplayTags.Remove(phaseMask);
-        player.GameplayTags.Remove((ulong)StateTag.Invulnerable);
-
-        player.ReleaseGravity();
-        player.SetActionAirborneLock(false);
-        player.EndActionMotorSession();
-
-        if (player.DebugInterruptFlow)
-        {
-            Debug.Log(
-                $"[ActionGravity] Exit-AfterRelease | action={(m_action != null ? m_action.name : "null")} | suspended={player.IsGravitySuspended} | grounded={player.IsGrounded}",
-                player);
-        }
-
-        player.SkillNotifyRuntimeInactive();
-        player.SkillNotifyClearContext();
-        player.SkillIndicators?.HidePreview();
-        m_skillCtxRef = null;
-        m_usedSkillRouting = false;
-    }
-
-    protected override void OnLogicUpdate(Player player)
-    {
-        if (player.IsDead)
-        {
-            player.States.Change<PlayerDeadState>();
-            return;
-        }
-
-        if (m_useMotionProfile)
-        {
-            TickMotionProfile(player);
-            return;
-        }
-
-        if (m_isBurst)
-        {
-            var n = m_burstDuration > 0.001f
-                ? Mathf.Clamp01(TimeSinceEntered / m_burstDuration)
-                : 1f;
-
-            UpdatePhaseTagsForCurrentNormalized(player, n);
-            TickSkillModules(player, m_prevNormalizedTime, n);
-            EvaluateTeleportTriggers(player, n);
-
-            player.StopMove();
-            player.ApplyMotor(player.BuildActionMotorSolveContext());
-
-            if (TimeSinceEntered >= m_burstDuration)
-            {
-                TransitionToLocomotionOrAirborne(player);
-            }
-
-            return;
-        }
-
-        var durationForNorm = m_action != null && m_action.Duration > 0.001f
-            ? m_action.Duration
-            : player.AttackDuration;
-
-        var normAttack = durationForNorm > 0.001f ? Mathf.Clamp01(TimeSinceEntered / durationForNorm) : 1f;
-        UpdatePhaseTagsForCurrentNormalized(player, normAttack);
-        TickSkillModules(player, m_prevNormalizedTime, normAttack);
-        EvaluateTeleportTriggers(player, normAttack);
-
-        if (!m_usedSkillRouting)
-        {
-            player.MoveByLocomotionIntent(player.WalkSpeedMultiplier, wantsRun: false);
-        }
-
-        player.TickAttackTimer();
-        player.ApplyMotor(player.BuildActionMotorSolveContext());
-
-        if (!player.IsAttacking)
-        {
-            m_lightAttackFinishedCleanly = IsAttackComboCleanExit(m_kind);
-            TransitionToLocomotionOrAirborne(player);
+            m_motionExecutor = new MotionExecutor(
+                m_motorAdapter,
+                new EventBusAnimSpeedControl(player),
+                new PlayerMotionStatsProvider(player));
         }
     }
 
-    private void UpdatePhaseTagsForCurrentNormalized(Player player, float normalizedTime)
+    InputSnapshot BuildInputSnapshot(Player player)
     {
-        var phaseMask = (ulong)(StateTag.PhaseStartup | StateTag.PhaseActive | StateTag.PhaseRecovery);
-        player.GameplayTags.Remove(phaseMask);
+        InputSnapshot snap = default;
+        var reader = player.InputReader;
+        if (reader == null) return snap;
 
-        SyncPhysicalGroundTag(player);
-        EntityAbilitySystem.Update(player);
-
-        if (m_action == null)
-        {
-            player.GameplayTags.Add((ulong)StateTag.PhaseActive);
-            return;
-        }
-
-        m_action.EvaluatePhaseTags(normalizedTime, ref player.GameplayTags);
-        if (!player.GameplayTags.HasAny((ulong)(StateTag.PhaseStartup | StateTag.PhaseActive | StateTag.PhaseRecovery)))
-        {
-            player.GameplayTags.Add((ulong)StateTag.PhaseActive);
-        }
+        var slot = player.SkillEntries?.ActiveEntrySlot ?? default;
+        snap.TriggerSlot = slot;
+        snap.TriggerHolding = reader.IsSkillEntryHeld(slot);
+        snap.TriggerHoldSeconds = reader.GetSkillEntryHoldDuration(slot);
+        snap.TriggerPressedEdge = reader.ConsumeSkillEntryPressed(slot);
+        // 释放沿：上一帧有累计 hold，本帧 hold 清零且不再 holding。
+        snap.TriggerReleasedEdge = !snap.TriggerHolding
+            && m_lastHoldSeconds > 0.0001f
+            && snap.TriggerHoldSeconds <= 0.0001f;
+        m_lastHoldSeconds = snap.TriggerHoldSeconds;
+        return snap;
     }
 
-    private static void SyncPhysicalGroundTag(Player player)
+    void ExitToBaseline(Player player)
     {
-        var groundMask = (ulong)(StateTag.Grounded | StateTag.Airborne);
-        player.GameplayTags.Remove(groundMask);
-        player.GameplayTags.Add(player.IsGrounded ? (ulong)StateTag.Grounded : (ulong)StateTag.Airborne);
-    }
-
-    private static void TransitionToLocomotionOrAirborne(Player player)
-    {
-        if (player.IsGrounded)
-        {
-            player.States.Change<PlayerLocomotionState>();
-        }
-        else
-        {
-            player.States.Change<PlayerAirborneState>();
-        }
-    }
-
-    private void EnsureMotionRuntime(Player player)
-    {
-        if (m_motionExecutor != null)
-        {
-            return;
-        }
-
-        m_motionMotor = new PlayerMotorAdapter(player);
-        var animSpeedCtrl = new EventBusAnimSpeedControl(player);
-        var statsProvider = new PlayerMotionStatsProvider(player);
-        m_motionExecutor = new MotionExecutor(m_motionMotor, animSpeedCtrl, statsProvider);
-    }
-
-    private Vector3 ResolveMotionDirection(Player player)
-    {
-        if (m_kind == GameplayIntentKind.SwordDash)
-        {
-            return player.Forward;
-        }
-
-        if (m_kind == GameplayIntentKind.Dodge)
-        {
-            return player.GetMovementDirectionOrForward();
-        }
-
-        return player.Forward;
-    }
-
-    private void ApplyBurstEnterSideEffects(Player player, Vector3 motionDir)
-    {
-        player.LookAtDirection(motionDir, true);
-
-        if (m_kind == GameplayIntentKind.SwordDash)
-        {
-            player.StartSwordDashCooldown();
-        }
-        else if (m_kind == GameplayIntentKind.Dodge)
-        {
-            player.StartDodgeCooldown();
-            player.PublishEvent(new PlayerDodgeStartedEvent(player.GetInstanceID(), player.name));
-        }
-
-        player.GameplayTags.Add((ulong)StateTag.Invulnerable);
-    }
-
-    private float ResolveCurrentActionNormalized(Player player)
-    {
-        if (m_useMotionProfile && m_motionExecutor != null)
-        {
-            return m_motionExecutor.NormalizedTime;
-        }
-
-        if (m_isBurst)
-        {
-            if (m_burstDuration <= 0.001f)
-            {
-                return 1f;
-            }
-
-            return Mathf.Clamp01(TimeSinceEntered / m_burstDuration);
-        }
-
-        var durationForNorm = m_action != null && m_action.Duration > 0.001f
-            ? m_action.Duration
-            : player.AttackDuration;
-        if (durationForNorm <= 0.001f)
-        {
-            return 1f;
-        }
-
-        return Mathf.Clamp01(TimeSinceEntered / durationForNorm);
-    }
-
-    void TickSkillModules(Player player, float prevNorm, float nextNorm)
-    {
-        if (!m_usedSkillRouting || m_skillCtxRef == null)
-        {
-            return;
-        }
-
-        UpdateSkillAreaTargetingAndPreview(player);
-
-        var ch = m_skillCtxRef.CastHandler;
-        ch?.OnUpdate(m_skillCtxRef, Time.deltaTime);
-
-        var sheet = m_skillCtxRef.ResolvedSkillSheet;
-        var dispatch = SkillCastGating.ShouldDispatchTasksAndWindows(ch, sheet);
-
-        if (dispatch && m_action != null && m_action.Windows != null && m_action.Windows.Count > 0)
-        {
-            m_skillWindowScratch.Clear();
-            ActionWindowTimelineEvents.AppendEventsOnWindowEnter(
-                m_action.Windows,
-                prevNorm,
-                nextNorm,
-                m_skillWindowScratch);
-            for (var i = 0; i < m_skillWindowScratch.Count; i++)
-            {
-                m_skillTaskExecutor.BroadcastWindowSignal(m_skillCtxRef, m_skillWindowScratch[i].Kind);
-            }
-        }
-
-        m_skillCtxRef.StageNormalizedTime = nextNorm;
-        m_skillCtxRef.StageElapsedTime += Time.deltaTime;
-        if (dispatch)
-        {
-            m_skillTaskExecutor.UpdateAll(m_skillCtxRef, Time.deltaTime);
-        }
-
-        MaybeAbortAfterCastInterrupt(player);
-    }
-
-    void MaybeAbortAfterCastInterrupt(Player player)
-    {
-        if (!m_usedSkillRouting || m_skillCtxRef == null)
-        {
-            return;
-        }
-
-        var h = m_skillCtxRef.CastHandler;
-        if (h is CastTimeCastHandler ctc && ctc.WasCancelled)
-        {
-            player.ForceEndAttackIfActive();
-            TransitionToLocomotionOrAirborne(player);
-            return;
-        }
-
-        if (h is ChannelCastHandler chc && chc.ReleasedEarly)
-        {
-            player.ForceEndAttackIfActive();
-            TransitionToLocomotionOrAirborne(player);
-        }
-    }
-
-    static void UpdateSkillAreaTargetingAndPreview(Player player, SkillContext ctx)
-    {
-        if (player == null || ctx == null)
-        {
-            return;
-        }
-
-        var sheet = ctx.ResolvedSkillSheet;
-        var ind = player.SkillIndicators;
-        if (sheet == null || ind == null || sheet.targetType != TargetType.Area)
-        {
-            return;
-        }
-
-        var aimRange = SkillModifierShapes.ScaleMaxRange(sheet.maxRange, ctx.FinalModifiers);
-        if (ind.TrySampleAreaPlacement(player, aimRange, out var p))
-        {
-            var tgt = ctx.Target;
-            tgt.Position = p;
-            var flat = Vector3.ProjectOnPlane(p - player.Position, Vector3.up);
-            if (flat.sqrMagnitude > 1e-6f)
-            {
-                tgt.Direction = flat.normalized;
-            }
-            else
-            {
-                tgt.Direction = player.Forward;
-            }
-
-            tgt.IsValid = true;
-            ctx.Target = tgt;
-        }
-
-        var r = Mathf.Max(0.25f, SkillModifierShapes.ScaleMaxRange(sheet.maxRange, ctx.FinalModifiers));
-
-        if (ctx.Target.IsValid)
-        {
-            ind.PresentAreaPreview(r, ctx.Target.Position);
-        }
-    }
-
-    void UpdateSkillAreaTargetingAndPreview(Player player)
-    {
-        UpdateSkillAreaTargetingAndPreview(player, m_skillCtxRef);
-    }
-
-    private void EvaluateTeleportTriggers(Player player, float currentNormalizedTime)
-    {
-        var currentT = Mathf.Clamp01(currentNormalizedTime);
-        if (m_action == null || m_action.TeleportTriggers == null || m_action.TeleportTriggers.Count == 0)
-        {
-            m_prevNormalizedTime = currentT;
-            return;
-        }
-
-        var prevT = Mathf.Clamp01(m_prevNormalizedTime);
-        for (var i = 0; i < m_action.TeleportTriggers.Count; i++)
-        {
-            var trigger = m_action.TeleportTriggers[i];
-            var triggerTime = Mathf.Clamp01(trigger.TriggerTime);
-            if (prevT < triggerTime && currentT >= triggerTime)
-            {
-                var positionBefore = player.Position;
-                var target = positionBefore + player.Forward * trigger.Distance;
-                var forceAirborne = !player.IsGrounded || player.VerticalSpeed < -0.1f;
-                player.TeleportTo(target, forceAirborne);
-                var actualOffset = player.Position - positionBefore;
-
-                if (m_useMotionProfile && m_motionExecutor != null && actualOffset.sqrMagnitude > 1e-12f)
-                {
-                    m_motionExecutor.ApplyTeleportOffset(actualOffset);
-                }
-            }
-        }
-
-        m_prevNormalizedTime = currentT;
-    }
-
-    private void TickMotionProfile(Player player)
-    {
-        if (m_motionExecutor == null || m_motionMotor == null)
-        {
-            TransitionToLocomotionOrAirborne(player);
-            return;
-        }
-
-        var dt = Time.deltaTime;
-        m_motionExecutor.Tick(dt, 1f, player.Position);
-        m_motionMotor.ApplyToPlayer();
-        m_motionExecutor.SyncPostMotorPosition(player.Position);
-
-        var t = m_motionExecutor.NormalizedTime;
-        UpdatePhaseTagsForCurrentNormalized(player, t);
-        TickSkillModules(player, m_prevNormalizedTime, t);
-        EvaluateTeleportTriggers(player, t);
-
-        if (player.DebugInterruptFlow && Time.time >= m_nextGravityDebugLogTime)
-        {
-            m_nextGravityDebugLogTime = Time.time + 0.15f;
-            Debug.Log(
-                $"[ActionGravity] TickMotion | t={t:F3} | suspended={player.IsGravitySuspended} | vSpeed={player.VerticalSpeed:F3} | y={player.Position.y:F3} | grounded={player.IsGrounded}",
-                player);
-        }
-
-        if (t < 1f)
-        {
-            return;
-        }
-
-        if (IsMeleeStrikeIntent(m_kind))
-        {
-            player.ForceEndAttackIfActive();
-            m_lightAttackFinishedCleanly = IsAttackComboCleanExit(m_kind);
-        }
-
-        TransitionToLocomotionOrAirborne(player);
+        player.States.Change<PlayerLocomotionState>();
     }
 }
