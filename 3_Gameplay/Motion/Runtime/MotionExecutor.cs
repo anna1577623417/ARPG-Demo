@@ -1,8 +1,7 @@
 using UnityEngine;
 
 /// <summary>
-/// Motion 运行时执行器（时间意图 -> 期望速度）。
-/// Why: 将动作时钟与位移数学聚合在独立模块，状态机只负责生命周期与窗口判定。
+/// Motion 运行时执行器（时间意图 -> 期望速度 / MotionContribution）。
 /// </summary>
 public sealed class MotionExecutor
 {
@@ -13,6 +12,7 @@ public sealed class MotionExecutor
     private readonly IMotorAdapter _motor;
     private readonly IAnimSpeedControl _animSpeed;
     private readonly IStatsProvider _stats;
+    private readonly Player _debugOwner;
 
     private MotionProfileSO _profile;
     private float _baseDuration;
@@ -23,27 +23,24 @@ public sealed class MotionExecutor
     private Vector3 _lastPos;
     private float _smoothedAnimSpeed = 1f;
     private bool _active;
-
     private MotionPlaybackContext _playback;
-
-    /// <summary>
-    /// ActionData.AnimSpeed 作为整段动作的基础倍率（v4.5）：finalClipSpeed = baseAnimSpeed × profileFactor。
-    /// 由 PlayerActionState.OnEnter 在 Begin 时传入；profileFactor 来自 MotionProfile 的 AnimSpeedMode。
-    /// </summary>
     private float _baseAnimSpeed = 1f;
+    private bool _loggedMissingAxisCurves;
 
-    public MotionExecutor(IMotorAdapter motor, IAnimSpeedControl animSpeed, IStatsProvider stats)
+    public MotionExecutor(IMotorAdapter motor, IAnimSpeedControl animSpeed, IStatsProvider stats, Player debugOwner = null)
     {
         _motor = motor;
         _animSpeed = animSpeed;
         _stats = stats;
+        _debugOwner = debugOwner;
     }
 
     public bool IsActive => _active;
 
     public float NormalizedTime => _baseDuration > 0.0001f ? Mathf.Clamp01(_elapsed / _baseDuration) : 0f;
 
-    /// <summary>本帧 Tick 前写入；蓄力等逻辑可冻结时间轴并覆盖主 Clip 速率。</summary>
+    public MotionContribution LastContribution { get; private set; }
+
     public void SetPlaybackContext(in MotionPlaybackContext ctx) => _playback = ctx;
 
     public void Begin(MotionProfileSO profile, float baseDuration, Vector3 direction, Vector3 startPos, float baseAnimSpeed = 1f)
@@ -55,11 +52,18 @@ public sealed class MotionExecutor
         _elapsed = 0f;
         _startPos = startPos;
         _lastPos = startPos;
-        // 步幅匹配的"平滑起点"用 baseAnimSpeed，而非 1.0；防止第一帧从 1.0 → ratio 跳变。
         _smoothedAnimSpeed = Mathf.Max(0.01f, baseAnimSpeed);
         _baseAnimSpeed = Mathf.Max(0.01f, baseAnimSpeed);
         _active = profile != null;
+        _loggedMissingAxisCurves = false;
         _motionScale = _active && _stats != null ? Mathf.Max(0f, _stats.GetMotionScale(profile.ScaleType)) : 1f;
+        LastContribution = MotionContribution.Inactive;
+
+        if (_active && !_profile.UsesAxisCurves)
+        {
+            MotionXYZDebug.Log(_debugOwner, MotionXYZDebug.CatMotion,
+                $"OPEN axisCurves missing on profile={_profile.name} — no displacement (run Tools/Motion XYZ/Migrate All)");
+        }
     }
 
     public void Tick(float deltaTime, float timeScale, Vector3 currentPosition)
@@ -69,50 +73,65 @@ public sealed class MotionExecutor
             return;
         }
 
-        var dtScale = _playback.FreezeNormalizedAdvance ? 0f : deltaTime * Mathf.Max(0f, timeScale);
-        _elapsed += dtScale;
-
-        // LoopWindow（蓝图 C2 / Phase 3）：t 落入循环段后，越过 end 时把 _elapsed 卷回 start，
-        // 并把"等价位移"叠到 _startPos —— 这样平面位置在 wrap 边界不会回跳（_lastPos 不需要外部改写）。
-        ApplyLoopWindowIfNeeded();
-
-        var t = Mathf.Clamp01(_elapsed / _baseDuration);
-
-        var displacementRatio = _profile.SampleDisplacement(t);
-        var lateralRatio = _profile.SampleLateral(t);
-
-        var forwardDistance = _profile.BaseDistance * _motionScale * Mathf.Max(0f, _profile.PeakSpeedMultiplier);
-        var lateralDistance = _profile.LateralDistance * _motionScale;
-
-        var forwardOffset = _direction * forwardDistance * displacementRatio;
-        var lateralDir = Vector3.Cross(Vector3.up, _direction);
-        var lateralOffset = lateralDir * lateralDistance * lateralRatio;
-        var warpOffset = _direction * _profile.SampleWarp(t);
-
-        var targetPos = _startPos + forwardOffset + lateralOffset + warpOffset;
-        var delta = targetPos - _lastPos;
-
-        // DefaultPhysics：模具只在水平面内展开（forward/lateral/warp 均沿水平 _direction），
-        // 但差分速度会把「目标高度锁在起手 Y」与「_lastPos 因重力下落」写成 delta.y>0 → 虚假向上速度，
-        // 与马达重力积分对冲（用户 VertAuthority：eatenRatio=1、[Y-driven] 与纯重力帧交替抖动）。
-        // 垂直分量交给 PlayerKCCMotor 的 vy / Solver，与 v3.1.1 前「平面 Motion + 独立重力」一致。
-        if (_profile.GravityBehavior == MotionGravityBehavior.DefaultPhysics)
+        if (!_profile.UsesAxisCurves)
         {
-            delta.y = 0f;
+            if (!_loggedMissingAxisCurves)
+            {
+                _loggedMissingAxisCurves = true;
+                MotionXYZDebug.Log(_debugOwner, MotionXYZDebug.CatMotion,
+                    $"OPEN axisCurves missing — zero delta (profile={_profile.name})");
+            }
+
+            _motor?.SetDesiredVelocity(Vector3.zero);
+            _motor?.SetMotionComposeContext(_profile.GetEffectiveYPolicy());
+            TickAnimSpeed(NormalizedTime, deltaTime);
+            return;
         }
 
-        var desiredVelocity = delta / deltaTime;
-        _motor?.SetDesiredVelocity(desiredVelocity);
+        var dtScale = _playback.FreezeNormalizedAdvance ? 0f : deltaTime * Mathf.Max(0f, timeScale);
+        var prevElapsed = _elapsed;
+        _elapsed += dtScale;
 
-        // ═══ v4.5 三层组合公式 ═══════════════════════════════════════════════
-        //   finalClipSpeed = ActionData.AnimSpeed (=_baseAnimSpeed)
-        //                  × profileFactor (来自 MotionProfile.AnimSpeedMode)
-        //
-        //   Constant     → factor = 1.0          （ActionData.AnimSpeed 单独生效）
-        //   Curve        → factor = SpeedOverTime.Evaluate(t)
-        //   StrideMatch  → factor = clamp(actualSpeed / ReferenceSpeed, 0.7, 1.3)
-        //                                         （平滑后；防滑步）
-        // ────────────────────────────────────────────────────────────────────
+        ApplyLoopWindowIfNeeded();
+
+        var prevT = _baseDuration > 0.0001f ? Mathf.Clamp01(prevElapsed / _baseDuration) : 0f;
+        var t = NormalizedTime;
+        TickAxisCurves(prevT, t, deltaTime);
+        TickAnimSpeed(t, deltaTime);
+    }
+
+    void TickAxisCurves(float prevT, float t, float deltaTime)
+    {
+        var localDelta = _profile.AxisCurves.SampleLocalDelta(prevT, t, _motionScale);
+        var yPolicy = _profile.GetEffectiveYPolicy();
+
+        if (yPolicy == YAxisPolicy.UseGravity)
+        {
+            localDelta.y = 0f;
+        }
+
+        LastContribution = new MotionContribution
+        {
+            LocalDelta = localDelta,
+            YPolicy = yPolicy,
+            IsActive = true,
+        };
+
+        var worldDelta = LocalDeltaToWorld(localDelta);
+        var desiredVelocity = worldDelta / deltaTime;
+        _motor?.SetDesiredVelocity(desiredVelocity);
+        _motor?.SetMotionComposeContext(yPolicy);
+
+        if (MotionXYZDebug.ShouldLogMotionSample)
+        {
+            MotionXYZDebug.MarkMotionSampleLogged();
+            MotionXYZDebug.Log(_debugOwner, MotionXYZDebug.CatMotion,
+                $"sample t={t:F2} deltaLocal=({localDelta.x:F2},{localDelta.y:F2},{localDelta.z:F2}) yPolicy={yPolicy}");
+        }
+    }
+
+    void TickAnimSpeed(float t, float deltaTime)
+    {
         float profileFactor;
         switch (_profile.AnimSpeedMode)
         {
@@ -121,16 +140,14 @@ public sealed class MotionExecutor
                 {
                     var actualSpeed = _motor != null ? _motor.GetActualSpeed() : 0f;
                     var raw = actualSpeed / _profile.ReferenceSpeed;
-                    // 注意：钳位 / 平滑作用在"profileFactor"上，而不是 final speed，
-                    // 这样 ActionData.AnimSpeed 的基础倍率不会被 0.7~1.3 上下限误吃。
                     var smoothedFactor = Mathf.Lerp(_smoothedAnimSpeed / Mathf.Max(0.01f, _baseAnimSpeed),
-                                                    raw, AnimSpeedLerp);
+                        raw, AnimSpeedLerp);
                     smoothedFactor = Mathf.Clamp(smoothedFactor, AnimSpeedMin, AnimSpeedMax);
                     profileFactor = smoothedFactor;
                 }
                 else
                 {
-                    profileFactor = 1f;   // ReferenceSpeed=0 视作"未配置"，退化为 Constant
+                    profileFactor = 1f;
                 }
                 break;
 
@@ -150,27 +167,24 @@ public sealed class MotionExecutor
             finalSpeed = Mathf.Max(0f, _playback.AnimatorSpeedOverride);
         }
 
-        _smoothedAnimSpeed = finalSpeed;   // 留给下一帧平滑参考
+        _smoothedAnimSpeed = finalSpeed;
         _animSpeed?.SetSpeed(finalSpeed);
-
-        // 注意：_lastPos 必须由外部在马达执行后回写真实位置；
-        // 这里不能直接写 currentPosition（它是本帧物理前位置）。
     }
 
-    /// <summary>
-    /// 回写马达执行后的真实位置，供下一帧位移差分使用。
-    /// Why: 若误用物理前位置，会让 desiredVelocity 持续偏大/抖动，破坏 MotionProfile 手感与时空一致性。
-    /// </summary>
-    public void SyncPostMotorPosition(Vector3 position)
+    Vector3 LocalDeltaToWorld(Vector3 localDelta)
     {
-        _lastPos = position;
+        var right = GetCharacterRight();
+        return right * localDelta.x + Vector3.up * localDelta.y + _direction * localDelta.z;
     }
 
-    /// <summary>
-    /// 外部离散瞬移后平移整条 Motion 求解坐标系，使连续位移与 Teleport 可叠加。
-    /// Why: <c>targetPos = _startPos + profileOffset</c>；若只改 Transform 而不同步 <c>_startPos</c>/<c>_lastPos</c>，
-    /// 下一帧 <c>(targetPos - _lastPos)/dt</c> 会得到反向速度把角色拽回。
-    /// </summary>
+    Vector3 GetCharacterRight()
+    {
+        var right = Vector3.Cross(Vector3.up, _direction);
+        return right.sqrMagnitude > 0.0001f ? right.normalized : Vector3.right;
+    }
+
+    public void SyncPostMotorPosition(Vector3 position) => _lastPos = position;
+
     public void ApplyTeleportOffset(Vector3 worldOffset)
     {
         if (!_active || worldOffset.sqrMagnitude < 1e-12f)
@@ -186,20 +200,15 @@ public sealed class MotionExecutor
     {
         _playback = default;
         _active = false;
+        LastContribution = MotionContribution.Inactive;
         _motor?.SetDesiredVelocity(Vector3.zero);
-        // 复位到 1.0：动作结束后下一段动画（Locomotion / 下一动作）会自行 SetSpeed，本步只确保不残留 profile 倍率。
+        _motor?.SetMotionComposeContext(YAxisPolicy.UseGravity);
         _animSpeed?.SetSpeed(1f);
         _baseAnimSpeed = 1f;
         _smoothedAnimSpeed = 1f;
     }
 
-    /// <summary>
-    /// 子区间循环采样实现：当 <see cref="MotionPlaybackContext.HasLoopWindow"/>=true 且 <c>_elapsed</c> 越过
-    /// <see cref="MotionPlaybackContext.LoopWindowEnd"/> 时，把 <c>_elapsed</c> 卷回
-    /// <see cref="MotionPlaybackContext.LoopWindowStart"/>，同时把 <c>[start, end]</c> 段的等价平面位移叠到 <c>_startPos</c>，
-    /// 保证 wrap 边界处位置连续；<c>_lastPos</c> 在 wrap 帧不需要外部改写，差分速度会随之自洽。
-    /// </summary>
-    private void ApplyLoopWindowIfNeeded()
+    void ApplyLoopWindowIfNeeded()
     {
         if (!_playback.HasLoopWindow || _playback.FreezeNormalizedAdvance || _baseDuration <= 1e-4f || _profile == null)
         {
@@ -226,7 +235,6 @@ public sealed class MotionExecutor
             return;
         }
 
-        // 把 _elapsed 卷回 start（多帧 dt 超过一整圈时通过取模归并）。
         var overshoot = _elapsed - loopEndElapsed;
         var wrapCount = Mathf.Max(1, Mathf.CeilToInt(overshoot / span));
         _elapsed = loopEndElapsed - span + (overshoot - (wrapCount - 1) * span);
@@ -235,32 +243,21 @@ public sealed class MotionExecutor
             _elapsed = loopStartElapsed;
         }
 
-        // 同步把 [start, end] 段的等价平面位移叠到 _startPos —— 否则 targetPos 会一次性回跳一段。
-        var loopOffset = ComputeWindowDisplacement(ws, we);
+        var loopOffset = ComputeWindowDisplacementAxis(ws, we);
         _startPos += wrapCount * loopOffset;
         _lastPos += wrapCount * loopOffset;
     }
 
-    /// <summary>
-    /// 计算归一化区间 <c>[a, b]</c> 内的等价平面位移（forward + lateral + warp 三分量合成）。<br/>
-    /// 与 <see cref="Tick"/> 内每帧位移公式严格对偶，仅用于 LoopWindow 越界时的 _startPos 补偿。
-    /// </summary>
-    private Vector3 ComputeWindowDisplacement(float a, float b)
+    Vector3 ComputeWindowDisplacementAxis(float a, float b)
     {
-        var forwardDistance = _profile.BaseDistance * _motionScale * Mathf.Max(0f, _profile.PeakSpeedMultiplier);
-        var lateralDistance = _profile.LateralDistance * _motionScale;
-        var lateralDir = Vector3.Cross(Vector3.up, _direction);
-
-        var dispDelta = _profile.SampleDisplacement(b) - _profile.SampleDisplacement(a);
-        var latDelta = _profile.SampleLateral(b) - _profile.SampleLateral(a);
-        var warpDelta = _profile.SampleWarp(b) - _profile.SampleWarp(a);
-
-        var offset = _direction * (forwardDistance * dispDelta + warpDelta)
-                   + lateralDir * (lateralDistance * latDelta);
-        if (_profile.GravityBehavior == MotionGravityBehavior.DefaultPhysics)
+        var localA = _profile.AxisCurves.SampleLocalPosition(a, _motionScale);
+        var localB = _profile.AxisCurves.SampleLocalPosition(b, _motionScale);
+        if (_profile.GetEffectiveYPolicy() == YAxisPolicy.UseGravity)
         {
-            offset.y = 0f;
+            localA.y = 0f;
+            localB.y = 0f;
         }
-        return offset;
+
+        return LocalDeltaToWorld(localB - localA);
     }
 }

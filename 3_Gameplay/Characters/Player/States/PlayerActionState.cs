@@ -65,7 +65,7 @@ public sealed class PlayerActionState : PlayerState
         if (m_useMotionProfile)
         {
             player.BeginActionMotorSession();
-            if (m_action.MotionProfile.GravityBehavior == MotionGravityBehavior.Suspended)
+            if (ShouldSuspendMotorGravity(m_action.MotionProfile))
             {
                 player.SuspendGravity();
             }
@@ -96,7 +96,7 @@ public sealed class PlayerActionState : PlayerState
         if (m_useMotionProfile && m_motionExecutor != null)
         {
             m_motionExecutor.End();
-            if (action.MotionProfile.GravityBehavior == MotionGravityBehavior.Suspended)
+            if (ShouldSuspendMotorGravity(action.MotionProfile))
             {
                 player.SuspendGravity();
             }
@@ -211,7 +211,7 @@ public sealed class PlayerActionState : PlayerState
         {
             m_motionExecutor.End();
             if (m_action != null && m_action.MotionProfile != null
-                && m_action.MotionProfile.GravityBehavior == MotionGravityBehavior.Suspended)
+                && ShouldSuspendMotorGravity(m_action.MotionProfile))
             {
                 player.ReleaseGravity();
             }
@@ -273,8 +273,20 @@ public sealed class PlayerActionState : PlayerState
             m_motionExecutor = new MotionExecutor(
                 m_motorAdapter,
                 new EventBusAnimSpeedControl(player),
-                new PlayerMotionStatsProvider(player));
+                new PlayerMotionStatsProvider(player),
+                player);
         }
+    }
+
+    static bool ShouldSuspendMotorGravity(MotionProfileSO profile)
+    {
+        if (profile == null)
+        {
+            return false;
+        }
+
+        var y = profile.GetEffectiveYPolicy();
+        return y == YAxisPolicy.SuspendGravity || y == YAxisPolicy.MotionControlled;
     }
 
     InputSnapshot BuildInputSnapshot(Player player)

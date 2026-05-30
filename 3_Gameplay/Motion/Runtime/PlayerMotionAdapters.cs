@@ -46,21 +46,18 @@ public sealed class PlayerMotorAdapter : IMotorAdapter
 {
     private readonly Player _player;
     private Vector3 _desiredVelocity;
+    private YAxisPolicy _yPolicy = YAxisPolicy.UseGravity;
 
     public PlayerMotorAdapter(Player player)
     {
         _player = player;
     }
 
-    public void SetDesiredVelocity(Vector3 velocity)
-    {
-        _desiredVelocity = velocity;
-    }
+    public void SetDesiredVelocity(Vector3 velocity) => _desiredVelocity = velocity;
 
-    public float GetActualSpeed()
-    {
-        return _player != null ? _player.Speed : 0f;
-    }
+    public void SetMotionComposeContext(YAxisPolicy yPolicy) => _yPolicy = yPolicy;
+
+    public float GetActualSpeed() => _player != null ? _player.Speed : 0f;
 
     public void ApplyToPlayer()
     {
@@ -70,7 +67,7 @@ public sealed class PlayerMotorAdapter : IMotorAdapter
         }
 
         var ctx = _player.BuildActionMotorSolveContext();
-        _player.ApplyMotorFromGameplayVelocity(_desiredVelocity, in ctx);
+        _player.ApplyMotorFromGameplayVelocity(_desiredVelocity, in ctx, _yPolicy, useMotionComposer: true);
     }
 }
 

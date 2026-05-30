@@ -30,6 +30,9 @@ public interface IPlayerMotor
     /// <summary>跳过 planar 累加，直接用外部 gameplay 速度求解一帧位移（MotionExecutor 路径）。</summary>
     void ApplyMotorFromGameplayVelocity(Vector3 worldVelocity, in MotorSolveContext ctx);
 
+    /// <summary>MotionComposer 汇合 Motion + Gravity 后求解（三轴 Motion 路径）。</summary>
+    void ApplyMotorFromGameplayVelocity(Vector3 worldVelocity, in MotorSolveContext ctx, YAxisPolicy yPolicy, bool useMotionComposer);
+
     /// <summary>离散瞬移；forceAirborne=true：禁止贴地射线 / 不清 vy / 用 Airborne 上下文刷新接地。</summary>
     void TeleportTo(Vector3 worldPosition, bool forceAirborne = false);
 

@@ -487,6 +487,13 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
     public void ApplyMotor(in MotorSolveContext ctx) => m_motor?.ApplyMotor(in ctx);
     public void ApplyMotorFromGameplayVelocity(Vector3 v, in MotorSolveContext ctx)
         => m_motor?.ApplyMotorFromGameplayVelocity(v, in ctx);
+
+    public void ApplyMotorFromGameplayVelocity(
+        Vector3 v,
+        in MotorSolveContext ctx,
+        YAxisPolicy yPolicy,
+        bool useMotionComposer)
+        => m_motor?.ApplyMotorFromGameplayVelocity(v, in ctx, yPolicy, useMotionComposer);
     public MotorSolveContext BuildActionMotorSolveContext()
         => m_motor != null ? m_motor.BuildActionMotorSolveContext() : MotorSolveContext.Locomotion;
     public void TeleportTo(Vector3 worldPos, bool forceAirborne = false)

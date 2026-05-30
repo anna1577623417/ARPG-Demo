@@ -7,5 +7,6 @@ using UnityEngine;
 public interface IMotorAdapter
 {
     void SetDesiredVelocity(Vector3 velocity);
+    void SetMotionComposeContext(YAxisPolicy yPolicy);
     float GetActualSpeed();
 }

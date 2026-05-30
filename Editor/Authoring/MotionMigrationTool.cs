@@ -68,19 +68,15 @@ public static class MotionMigrationTool
         var wall = action.ResolveAnimWallClockSeconds();
 
         profile.BurstDurationSeconds = wall;
-        if (profile.DisplacementCurve == null || profile.DisplacementCurve.length == 0)
+        if (!profile.UsesAxisCurves)
         {
-            profile.DisplacementCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
+            profile.ApplyDefaultForwardAxis(4f);
         }
 
-        if (profile.BaseDistance < 0.001f)
-        {
-            profile.BaseDistance = 4f;
-        }
-
-        profile.ReferenceSpeed = Mathf.Max(0.1f, profile.BaseDistance / Mathf.Max(wall, 0.0001f));
+        var dist = profile.AxisCurves.ZScale > 0.001f ? profile.AxisCurves.ZScale : 4f;
+        profile.ReferenceSpeed = Mathf.Max(0.1f, dist / Mathf.Max(wall, 0.0001f));
         profile.UsePlanarVelocityShape = false;
-        profile.LegacyConstantPlanarSpeed = profile.BaseDistance / Mathf.Max(wall, 0.0001f);
+        profile.LegacyConstantPlanarSpeed = dist / Mathf.Max(wall, 0.0001f);
     }
 }
 #endif

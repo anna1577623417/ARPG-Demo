@@ -342,6 +342,15 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
 
     public void ApplyMotorFromGameplayVelocity(Vector3 gameplayWorldVelocity, in MotorSolveContext context)
     {
+        ApplyMotorFromGameplayVelocity(gameplayWorldVelocity, in context, YAxisPolicy.UseGravity, useMotionComposer: false);
+    }
+
+    public void ApplyMotorFromGameplayVelocity(
+        Vector3 gameplayWorldVelocity,
+        in MotorSolveContext context,
+        YAxisPolicy yPolicy,
+        bool useMotionComposer)
+    {
         var wasGroundedAtMotorStart = _wasGroundedLastFrame;
         _lastStepDownTriggered = false;
 
@@ -351,10 +360,41 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
         ClampTerminalVelocityVertical();
         var vyAfterClamp = _verticalSpeed;
 
+        var gravityContrib = new GravityContribution
+        {
+            Vy = _verticalSpeed,
+            IsActive = !_gravitySuspended,
+        };
+
         var velocity = gameplayWorldVelocity;
-        var solvedDelta = velocity * Time.deltaTime;
         var gameplayDrivenVy = false;
-        if (!_gravitySuspended)
+        if (useMotionComposer)
+        {
+            var motionContrib = new MotionContribution
+            {
+                IsActive = true,
+                YPolicy = yPolicy,
+            };
+            velocity = MotionComposer.ComposeWorldVelocity(
+                in motionContrib,
+                in gravityContrib,
+                gameplayWorldVelocity,
+                log: MotionXYZDebug.ShouldLogMotionSample,
+                logContext: _player);
+            if (MotionXYZDebug.ShouldLogMotionSample)
+            {
+                MotionXYZDebug.MarkMotionSampleLogged();
+            }
+
+            gameplayDrivenVy = yPolicy == YAxisPolicy.MotionControlled
+                || yPolicy == YAxisPolicy.AdditiveGravity
+                || yPolicy == YAxisPolicy.SuspendGravity;
+            if (yPolicy == YAxisPolicy.UseGravity && !_gravitySuspended)
+            {
+                gameplayDrivenVy = Mathf.Abs(gameplayWorldVelocity.y) >= 0.001f;
+            }
+        }
+        else if (!_gravitySuspended)
         {
             if (Mathf.Abs(gameplayWorldVelocity.y) < 0.001f)
             {
@@ -369,14 +409,15 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
         {
             _verticalSpeed = 0f;
         }
+
+        var solvedDelta = velocity * Time.deltaTime;
         var vyAfterGameplay = _verticalSpeed;
 
         var solveCtx = _actionMotorSessionActive ? ComputeActionMotorSolveContext() : context;
 
-        // PhysicsPassThrough（滞空 / 不接 HardSnap）：垂直分量只用马达 vy，丢弃 Motion 曲线里的 world Y。
-        // 否则 sampled Y 与重力积分反向 → solver dY 与 expY 符号相反、eatenRatio≈1、与其它帧交替 → 抖动。
-        // 重力挂起（Suspended）仍允许曲线驱动 Y。
-        if (!solveCtx.AllowsHardGroundSnap && !_gravitySuspended)
+        if (!useMotionComposer
+            && !solveCtx.AllowsHardGroundSnap
+            && !_gravitySuspended)
         {
             velocity = new Vector3(velocity.x, _verticalSpeed, velocity.z);
             gameplayDrivenVy = false;
