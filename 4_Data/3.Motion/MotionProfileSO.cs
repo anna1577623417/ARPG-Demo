@@ -33,7 +33,7 @@ public class MotionProfileSO : ScriptableObject
     public AnimationCurve DisplacementCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
 
     [Tooltip("基础前向位移距离（米）。")]
-    public float BaseDistance = 2f;
+    public float BaseDistance = 0f;
 
     [Tooltip("峰值运动缩放，用于同节奏动作在不同体型上的幅度适配。")]
     public float PeakSpeedMultiplier = 1f;

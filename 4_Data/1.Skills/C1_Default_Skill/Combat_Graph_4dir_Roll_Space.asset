@@ -1,0 +1,97 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3a671dfaf1df2a74f8f7c0df9f59d23e, type: 3}
+  m_Name: Combat_Graph_4dir_Roll_Space
+  m_EditorClassIdentifier: 
+  idleNodeId: Idle
+  registeredRoutes:
+  - {fileID: 11400000, guid: 907ecbf7443cb3c4d852a82f6eae23fe, type: 2}
+  - {fileID: 11400000, guid: bd5f64a19af7c6641949cc1a024638c1, type: 2}
+  - {fileID: 11400000, guid: 961d3be9662bc0643818a9de2798684f, type: 2}
+  - {fileID: 11400000, guid: 619ee5b1b379641418e349f8fc4e00c3, type: 2}
+  edges:
+  - fromNodeId: Idle
+    toNodeId: Idle
+    targetRoute: {fileID: 11400000, guid: bd5f64a19af7c6641949cc1a024638c1, type: 2}
+    triggerSlot: 7
+    triggerSemantic: 7
+    conditions:
+    - kind: 0
+      requiredHitCount: 0
+      targetRule: 0
+      requiredStateTags: 0
+      forbiddenStateTags: 0
+      requiredMechanicTags: 0
+      forbiddenMechanicTags: 0
+      requireInputAgain: 1
+      expectedSlot: 7
+      minElapsedSeconds: 0
+      requiredMoveDirection: 1
+      routeForCdCheck: {fileID: 0}
+    priority: 0
+  - fromNodeId: Idle
+    toNodeId: Idle
+    targetRoute: {fileID: 11400000, guid: 907ecbf7443cb3c4d852a82f6eae23fe, type: 2}
+    triggerSlot: 7
+    triggerSemantic: 7
+    conditions:
+    - kind: 7
+      requiredHitCount: 0
+      targetRule: 0
+      requiredStateTags: 0
+      forbiddenStateTags: 0
+      requiredMechanicTags: 0
+      forbiddenMechanicTags: 0
+      requireInputAgain: 0
+      expectedSlot: 7
+      minElapsedSeconds: 0
+      requiredMoveDirection: 2
+      routeForCdCheck: {fileID: 0}
+    priority: 0
+  - fromNodeId: Idle
+    toNodeId: Idle
+    targetRoute: {fileID: 11400000, guid: 961d3be9662bc0643818a9de2798684f, type: 2}
+    triggerSlot: 7
+    triggerSemantic: 7
+    conditions:
+    - kind: 7
+      requiredHitCount: 0
+      targetRule: 0
+      requiredStateTags: 0
+      forbiddenStateTags: 0
+      requiredMechanicTags: 0
+      forbiddenMechanicTags: 0
+      requireInputAgain: 0
+      expectedSlot: 7
+      minElapsedSeconds: 0
+      requiredMoveDirection: 3
+      routeForCdCheck: {fileID: 0}
+    priority: 0
+  - fromNodeId: Idle
+    toNodeId: Idle
+    targetRoute: {fileID: 11400000, guid: 619ee5b1b379641418e349f8fc4e00c3, type: 2}
+    triggerSlot: 7
+    triggerSemantic: 7
+    conditions:
+    - kind: 7
+      requiredHitCount: 0
+      targetRule: 0
+      requiredStateTags: 0
+      forbiddenStateTags: 0
+      requiredMechanicTags: 0
+      forbiddenMechanicTags: 0
+      requireInputAgain: 0
+      expectedSlot: 7
+      minElapsedSeconds: 0
+      requiredMoveDirection: 4
+      routeForCdCheck: {fileID: 0}
+    priority: 0

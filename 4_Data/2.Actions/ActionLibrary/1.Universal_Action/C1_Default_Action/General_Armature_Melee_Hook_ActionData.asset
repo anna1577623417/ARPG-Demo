@@ -16,7 +16,7 @@ MonoBehaviour:
     type: 3}
   CrossfadeTime: 0.08
   AnimSpeed: 1
-  Duration: 0.4666667
+  Duration: 0.45
   Category: 0
   InterruptPriority: 10
   InterruptStability: 10

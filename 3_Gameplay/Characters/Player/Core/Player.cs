@@ -49,6 +49,10 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
              "未指派或某槽位未在 SO 中配置时回落到 ChargeRoute / ComboRoute 资产字段。")]
     [SerializeField] SemanticConfigSO semanticConfig;
 
+    [Header("Combat Flow Graph (124.1)")]
+    [SerializeField, Tooltip("装配后 SkillEntryService 优先经 Graph 解析 Space 翻滚 / 空中连段等边。")]
+    CombatGraphAsset combatFlowGraph;
+
     // ─── Debug ───
     [Header("Debug")]
     [SerializeField] bool debugInterruptFlow;
@@ -84,6 +88,7 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
     public PlayerStateManager States => m_stateManager;
     public SkillEntryService SkillEntries => m_skillEntries;
     public SkillEntryLoadoutSO SkillEntryLoadout => skillEntryLoadout;
+    public CombatGraphAsset CombatFlowGraph => combatFlowGraph;
     public InputSemanticResolver InputSemantic => m_inputSemantic;
     public bool DebugInterruptFlow => debugInterruptFlow;
     public bool DebugSkillRoute => debugSkillRoute;
@@ -181,6 +186,7 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
 
         m_skillEntries = new SkillEntryService(this);
         m_skillEntries.Rebuild(skillEntryLoadout);
+        m_skillEntries.AttachGraph(combatFlowGraph);
 
         // Phase B：Semantic Resolver 初始化 + 从 Loadout 拉每槽位阈值
         m_inputSemantic = new InputSemanticResolver(this);
@@ -232,10 +238,35 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
             }
 
             m_inputSemantic.ConfigureSlot(b.Slot, in cfg);
+            m_skillEntries?.SyncComboSemanticConfig(b.Slot);
         }
     }
 
     // ─── 帧上下文 ───
+
+    /// <summary>单点构建战斗上下文；hitConfirmed 由 SkillEntryService 在 Stage 内维护。</summary>
+    public CombatContextSnapshot BuildCombatContext(bool hitConfirmedThisStage, Vector2 moveOverride, bool moveOverrideValid)
+    {
+        var move = moveOverrideValid ? moveOverride : Vector2.zero;
+        if (!moveOverrideValid && inputReader != null)
+        {
+            move = inputReader.MoveModifierBuffer.GetBufferedMove(Time.time);
+            moveOverrideValid = move.sqrMagnitude > 0.0001f;
+        }
+
+        var dirType = moveOverrideValid
+            ? InputChordResolver.Resolve(move)
+            : DirectionalRouteType.Forward;
+        return new CombatContextSnapshot
+        {
+            IsAirborne = !IsGrounded,
+            MoveDirection = moveOverrideValid
+                ? MoveDirection8Extensions.FromDirectional(dirType)
+                : MoveDirection8.None,
+            HitConfirmedThisStage = hitConfirmedThisStage,
+            SnapshotTime = Time.time,
+        };
+    }
 
     public FrameContext BuildFrameContext(float deltaTime)
     {

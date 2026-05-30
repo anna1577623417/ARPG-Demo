@@ -154,6 +154,14 @@ public sealed class ComboRouteRuntime : SkillRouteRuntime
         Reset();
     }
 
+    /// <summary>Primary Session 结束但不结算 CD（衔接到 Extended 前）。</summary>
+    public void EndSessionWithoutSettlement()
+    {
+        _sessionActive = false;
+        IsActive = false;
+        Reset();
+    }
+
     public void Reset()
     {
         _comboIndex = 0;

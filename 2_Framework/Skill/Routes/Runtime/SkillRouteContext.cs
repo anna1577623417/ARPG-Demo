@@ -20,6 +20,7 @@ public struct SkillRouteContext
     public bool DebugVerbose;
     public float Now;
     public float DeltaTime;
+    public CombatContextSnapshot CombatCtx;
 }
 
 /// <summary>

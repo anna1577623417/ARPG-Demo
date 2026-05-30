@@ -15,8 +15,8 @@ MonoBehaviour:
   MainClip: {fileID: -2807887025256620907, guid: c334125d0dbc3a544a089e659a9370d4,
     type: 3}
   CrossfadeTime: 0.08
-  AnimSpeed: 1
-  Duration: 1.5333334
+  AnimSpeed: 1.5
+  Duration: 0.5
   Category: 2
   InterruptPriority: 10
   InterruptStability: 10

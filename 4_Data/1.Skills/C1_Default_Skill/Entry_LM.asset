@@ -17,7 +17,12 @@ MonoBehaviour:
   fallbackIcon: {fileID: 0}
   chargeRoute: {fileID: 11400000, guid: 9d3dd363997f34f4b8f48527c5784d82, type: 2}
   comboRoute: {fileID: 11400000, guid: 4f6023870e04df14da419ff4f69a6043, type: 2}
+  extendedComboRoute: {fileID: 11400000, guid: 62069fbc9f654794b8ece155748bc927, type: 2}
+  airComboRoute: {fileID: 0}
   directionalRoute: {fileID: 0}
   multiStageRoute: {fileID: 0}
-  normalRoute: {fileID: 11400000, guid: 26fa38f0ebdd84b4cba5655ec34b4cc1, type: 2}
+  normalRoute: {fileID: 0}
+  extendedHandoffWindowSeconds: 1.2
+  extendedHandoffMinGap: 0
+  extendedHandoffMaxGap: 0
   derivativeRoutes: []

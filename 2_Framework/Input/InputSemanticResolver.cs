@@ -53,6 +53,18 @@ public sealed class InputSemanticResolver
         /// edges[i] = node[i] → node[i+1] 的 [MinGap, MaxGap]。
         /// </summary>
         public ComboRouteDefinition.TransitionTimingSnapshot[] ComboEdgeTimings;
+
+        /// <summary>Combo1 链长；virtualIdx ≥ 此值表示 Combo1→Combo2 衔接边。</summary>
+        public int PrimaryChainLength;
+
+        /// <summary>是否配置 Extended Combo（用于衔接边 min/max）。</summary>
+        public bool HasExtendedHandoff;
+
+        public float ExtHandoffMinGap;
+        public float ExtHandoffMaxGap;
+
+        /// <summary>Combo2 容器内边时间（A2→B2、B2→C2）；长度 = ExtendedChainLength - 1。</summary>
+        public ComboRouteDefinition.TransitionTimingSnapshot[] ExtComboEdgeTimings;
     }
 
     struct SlotState
@@ -177,6 +189,7 @@ public sealed class InputSemanticResolver
 
         // 2) Tap / Combo 分流（hold < TapThreshold）— 116.1：先 Session 窗，再 per-edge Transition 窗。
         SyncComboIndexFromActiveSession(slot, ref st);
+        _owner?.SkillEntries?.SyncComboSemanticConfig(slot);
         var gap = ResolveComboLinkGap(slot, now);
         var comboOnCd = _owner?.SkillEntries?.IsComboContainerOnCooldown(slot) ?? false;
         var comboSessionActive = _owner?.SkillEntries?.TryGetActiveComboSession(slot, out _) ?? false;
@@ -185,6 +198,15 @@ public sealed class InputSemanticResolver
         var outcome = EvaluateComboTapOrAdvance(
             in cfg, st.ComboIndex, gap, comboOnCd, comboSessionActive, linkWindowOpen,
             out var semantic, out var newComboIdx, out var detail);
+        if (outcome == ComboAdvanceOutcome.EnqueueAdvance
+            && cfg.HasExtendedHandoff
+            && newComboIdx >= cfg.PrimaryChainLength
+            && !(_owner?.SkillEntries?.IsExtendedHandoffArmed(slot) ?? false))
+        {
+            outcome = ComboAdvanceOutcome.Suppress;
+            detail = "Combo1→Combo2 需 Combo1 末段自然结束后再按";
+        }
+
         if (!TryApplyComboOutcome(slot, now, hold, ref st, outcome, semantic, newComboIdx, detail, moveBuffered: default, moveBufferValid: false))
         {
             return;
@@ -219,6 +241,7 @@ public sealed class InputSemanticResolver
         }
 
         SyncComboIndexFromActiveSession(slot, ref st);
+        _owner?.SkillEntries?.SyncComboSemanticConfig(slot);
         var gap = ResolveComboLinkGap(slot, now);
         var comboOnCd = _owner?.SkillEntries?.IsComboContainerOnCooldown(slot) ?? false;
         var comboSessionActive = _owner?.SkillEntries?.TryGetActiveComboSession(slot, out _) ?? false;
@@ -227,6 +250,15 @@ public sealed class InputSemanticResolver
         var outcome = EvaluateComboTapOrAdvance(
             in cfg, st.ComboIndex, gap, comboOnCd, comboSessionActive, linkWindowOpen,
             out var semantic, out var newComboIdx, out var detail);
+        if (outcome == ComboAdvanceOutcome.EnqueueAdvance
+            && cfg.HasExtendedHandoff
+            && newComboIdx >= cfg.PrimaryChainLength
+            && !(_owner?.SkillEntries?.IsExtendedHandoffArmed(slot) ?? false))
+        {
+            outcome = ComboAdvanceOutcome.Suppress;
+            detail = "Combo1→Combo2 需 Combo1 末段自然结束后再按";
+        }
+
         TryApplyComboOutcome(slot, now, holdSeconds, ref st, outcome, semantic, newComboIdx, detail,
             moveBuffered, moveBufferValid);
     }
@@ -294,7 +326,55 @@ public sealed class InputSemanticResolver
         }
 
         var edgeIndex = nextNode - 1;
-        if (cfg.ComboEdgeTimings != null && edgeIndex >= 0 && edgeIndex < cfg.ComboEdgeTimings.Length)
+        var isExtHandoffEdge = cfg.HasExtendedHandoff
+            && cfg.PrimaryChainLength > 0
+            && nextNode == cfg.PrimaryChainLength;
+
+        if (isExtHandoffEdge)
+        {
+            if (cfg.ExtHandoffMinGap > 0.0001f && gapSinceSegmentEnd < cfg.ExtHandoffMinGap)
+            {
+                detail = $"handoff gap {gapSinceSegmentEnd:F2}s < min {cfg.ExtHandoffMinGap:F2}s (B1→A2)";
+                return ComboAdvanceOutcome.Suppress;
+            }
+
+            if (!comboSessionActive)
+            {
+                var handoffMax = cfg.ExtHandoffMaxGap > 0.0001f ? cfg.ExtHandoffMaxGap : cfg.ComboWindow;
+                if (handoffMax > 0.0001f && gapSinceSegmentEnd > handoffMax)
+                {
+                    detail = $"handoff gap {gapSinceSegmentEnd:F2}s > max {handoffMax:F2}s → new chain";
+                    return ComboAdvanceOutcome.EnqueueNewChain;
+                }
+            }
+        }
+        else if (cfg.HasExtendedHandoff
+            && cfg.PrimaryChainLength > 0
+            && nextNode > cfg.PrimaryChainLength
+            && cfg.ExtComboEdgeTimings != null)
+        {
+            var extEdgeIndex = nextNode - cfg.PrimaryChainLength - 1;
+            if (extEdgeIndex >= 0 && extEdgeIndex < cfg.ExtComboEdgeTimings.Length)
+            {
+                var edge = cfg.ExtComboEdgeTimings[extEdgeIndex];
+                if (edge.MinGap > 0.0001f && gapSinceSegmentEnd < edge.MinGap)
+                {
+                    detail = $"combo2 edge[{extEdgeIndex}] gap {gapSinceSegmentEnd:F2}s < min {edge.MinGap:F2}s";
+                    return ComboAdvanceOutcome.Suppress;
+                }
+
+                if (!comboSessionActive)
+                {
+                    var maxEffective = edge.MaxGap > 0.0001f ? edge.MaxGap : cfg.ComboWindow;
+                    if (maxEffective > 0.0001f && gapSinceSegmentEnd > maxEffective)
+                    {
+                        detail = $"combo2 edge[{extEdgeIndex}] gap {gapSinceSegmentEnd:F2}s > max {maxEffective:F2}s → new chain";
+                        return ComboAdvanceOutcome.EnqueueNewChain;
+                    }
+                }
+            }
+        }
+        else if (cfg.ComboEdgeTimings != null && edgeIndex >= 0 && edgeIndex < cfg.ComboEdgeTimings.Length)
         {
             var edge = cfg.ComboEdgeTimings[edgeIndex];
             if (edge.MinGap > 0.0001f && gapSinceSegmentEnd < edge.MinGap)
@@ -362,9 +442,9 @@ public sealed class InputSemanticResolver
             return;
         }
 
-        if (_owner.SkillEntries.TryGetActiveComboSession(slot, out var session))
+        if (_owner.SkillEntries.TryGetActiveComboSession(slot, out _))
         {
-            st.ComboIndex = session.ComboIndex;
+            st.ComboIndex = _owner.SkillEntries.GetActiveVirtualComboIndex(slot);
         }
     }
 

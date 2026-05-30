@@ -46,6 +46,27 @@ public static class ConditionEvaluator
             case SkillTransitionConditionKind.OnTime:
                 return stageElapsedSeconds >= cond.MinElapsedSeconds;
 
+            case SkillTransitionConditionKind.OnAirborne:
+                return ctx.CombatCtx.IsAirborne;
+
+            case SkillTransitionConditionKind.OnGrounded:
+                return !ctx.CombatCtx.IsAirborne;
+
+            case SkillTransitionConditionKind.WithMoveDirection:
+                return ctx.CombatCtx.MatchesMoveDirection(cond.RequiredMoveDirection);
+
+            case SkillTransitionConditionKind.RouteCdReady:
+            {
+                if (cond.RouteForCdCheck == null)
+                {
+                    return true;
+                }
+
+                // 由 SkillEntryService 在 ctx 外挂查：此处仅当 CombatCtx 已注入时由调用方保证 route runtime 可查。
+                // RouteCdReady 在 Graph 边求值前由 SkillEntryService.FillRouteCdIntoContext 处理 — 见 EvaluateRouteCdReady。
+                return EvaluateRouteCdReady(cond.RouteForCdCheck, in ctx);
+            }
+
             case SkillTransitionConditionKind.OnTag:
             {
                 if (cond.ForbiddenStateTags != 0UL && ctx.Tags.HasAny(TagCategory.State, cond.ForbiddenStateTags))
@@ -72,7 +93,26 @@ public static class ConditionEvaluator
             }
 
             default:
+                SkillRouteDebug.LogWarn(
+                    ctx.Self as Player,
+                    SkillRouteDebug.CatCond,
+                    $"unknown kind={cond.Kind}");
                 return false;
         }
+    }
+
+    static bool EvaluateRouteCdReady(SkillRouteDefinition route, in SkillRouteContext ctx)
+    {
+        if (route == null || ctx.Self is not Player player)
+        {
+            return true;
+        }
+
+        if (!player.SkillEntries.TryGetRuntime(route, out var rt) || rt == null)
+        {
+            return true;
+        }
+
+        return rt.CdRemainingSeconds <= 0.0001f;
     }
 }

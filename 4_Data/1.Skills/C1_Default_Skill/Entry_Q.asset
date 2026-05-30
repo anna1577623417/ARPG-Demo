@@ -12,11 +12,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 68aa9736e2d13184ba7ad069dc7e0d8d, type: 3}
   m_Name: Entry_Q
   m_EditorClassIdentifier: 
-  slot: 0
+  slot: 5
   displayName: 
   fallbackIcon: {fileID: 0}
   chargeRoute: {fileID: 0}
   comboRoute: {fileID: 0}
+  airComboRoute: {fileID: 0}
   directionalRoute: {fileID: 0}
   multiStageRoute: {fileID: 11400000, guid: e3544bc9a7ffb864d9a0efba5d1dde32, type: 2}
   normalRoute: {fileID: 0}

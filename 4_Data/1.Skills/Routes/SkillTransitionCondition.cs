@@ -42,6 +42,12 @@ public struct SkillTransitionCondition
     [SerializeField, Min(0f), Tooltip("OnTime：相对 Stage 起点的最小经过秒数。")]
     private float minElapsedSeconds;
 
+    [SerializeField, Tooltip("WithMoveDirection：需要 CombatContext 移动方向与此一致。")]
+    private MoveDirection8 requiredMoveDirection;
+
+    [SerializeField, Tooltip("RouteCdReady：需要指定 Route 的 CD 已就绪（剩余≤0）。")]
+    private SkillRouteDefinition routeForCdCheck;
+
     public SkillTransitionConditionKind Kind => kind;
     public int RequiredHitCount => Mathf.Max(1, requiredHitCount);
     public TransitionTargetRule TargetRule => targetRule;
@@ -52,6 +58,8 @@ public struct SkillTransitionCondition
     public bool RequireInputAgain => requireInputAgain;
     public SkillEntrySlot ExpectedSlot => expectedSlot;
     public float MinElapsedSeconds => minElapsedSeconds;
+    public MoveDirection8 RequiredMoveDirection => requiredMoveDirection;
+    public SkillRouteDefinition RouteForCdCheck => routeForCdCheck;
 
     public static SkillTransitionCondition OnHit(int count = 1, TransitionTargetRule rule = TransitionTargetRule.Any) =>
         new SkillTransitionCondition { kind = SkillTransitionConditionKind.OnHit, requiredHitCount = count, targetRule = rule };
@@ -72,6 +80,19 @@ public struct SkillTransitionCondition
             requiredMechanicTags = required,
             forbiddenMechanicTags = forbidden,
         };
+
+    public static SkillTransitionCondition Airborne() =>
+        new SkillTransitionCondition { kind = SkillTransitionConditionKind.OnAirborne };
+
+    public static SkillTransitionCondition Grounded() =>
+        new SkillTransitionCondition { kind = SkillTransitionConditionKind.OnGrounded };
+
+    public static SkillTransitionCondition WithMoveDirection(MoveDirection8 dir) =>
+        new SkillTransitionCondition
+        {
+            kind = SkillTransitionConditionKind.WithMoveDirection,
+            requiredMoveDirection = dir,
+        };
 }
 
 /// <summary>
@@ -84,4 +105,8 @@ public enum SkillTransitionConditionKind : byte
     OnInput  = 2,
     OnTime   = 3,
     OnTag    = 4,
+    OnAirborne = 5,
+    OnGrounded = 6,
+    WithMoveDirection = 7,
+    RouteCdReady = 8,
 }

@@ -36,6 +36,15 @@ public class SkillEntryDefinition : ScriptableObject
     [SerializeField, Tooltip("连段路由（短按多次时启用）。")]
     private ComboRouteDefinition comboRoute;
 
+    [SerializeField, Tooltip(
+        "Combo2 独立连段容器（如 A2→B2→C2），可与 Combo1 共用动作但须用不同 NormalRoute SO。\n" +
+        "Combo1 完整打完 B1 后、窗内且 Combo2 CD 好 → 接续整段 Combo2。\n" +
+        "虚拟链：A1-B1-A2-B2-C2。CD 在 Combo2 末段结束结算。")]
+    private ComboRouteDefinition extendedComboRoute;
+
+    [SerializeField, Tooltip("空中连段（IsAirborne 时替代 comboRoute）。")]
+    private ComboRouteDefinition airComboRoute;
+
     [SerializeField, Tooltip("方向化路由集（WASD modifier + Trigger 时启用）。")]
     private DirectionalRouteSet directionalRoute;
 
@@ -44,6 +53,21 @@ public class SkillEntryDefinition : ScriptableObject
 
     [SerializeField, Tooltip("普通路由（默认 fallback）。一般每个 Entry 至少配此项。")]
     private NormalRouteDefinition normalRoute;
+
+    [Header("Combo1 末段(B1) → Combo2 起手(A2) 双链衔接")]
+    [SerializeField, Min(0f), Tooltip(
+        "B1 自然结束后，允许多久内按 LM 接续 Combo2（秒）。\n" +
+        "0 = 回落 Combo Route 的 Combo Session Reset Time。\n" +
+        "与 Combo1 内 A1→B1 的 Session 窗可分开调。")]
+    private float extendedHandoffWindowSeconds;
+
+    [SerializeField, Min(0f), Tooltip("B1 结束后，最早何时可接 A2（秒）；0 = 不限制。")]
+    private float extendedHandoffMinGap;
+
+    [SerializeField, Min(0f), Tooltip(
+        "B1 结束后，最晚何时必须按下才能接 A2（秒）；0 = 与【衔接总窗口】相同。\n" +
+        "A2→B2、B2→C2 使用 Combo2 的 Combo Transitions。")]
+    private float extendedHandoffMaxGap;
 
     [Header("Derivative Routes (派生招池)")]
     [SerializeField, Tooltip("派生招池 — 当父 Route 处于 Active 时由 RouteResolver 动态接入。")]
@@ -55,10 +79,64 @@ public class SkillEntryDefinition : ScriptableObject
     public Sprite FallbackIcon => fallbackIcon;
     public ChargeRouteDefinition ChargeRoute => chargeRoute;
     public ComboRouteDefinition ComboRoute => comboRoute;
+    public ComboRouteDefinition ExtendedComboRoute => extendedComboRoute;
+    public ComboRouteDefinition AirComboRoute => airComboRoute;
     public DirectionalRouteSet DirectionalRoute => directionalRoute;
     public MultiStageRouteDefinition MultiStageRoute => multiStageRoute;
     public NormalRouteDefinition NormalRoute => normalRoute;
+    public float ExtendedHandoffWindowSeconds => extendedHandoffWindowSeconds;
+    public float ExtendedHandoffMinGap => extendedHandoffMinGap;
+    public float ExtendedHandoffMaxGap => extendedHandoffMaxGap;
     public DerivativeRouteDefinition[] DerivativeRoutes => derivativeRoutes;
+
+    /// <summary>B1 后等候 Combo2 的总窗口（秒）。0 = Combo1.ComboSessionResetTime。</summary>
+    public float GetExtendedHandoffWindowSeconds(ComboRouteDefinition primary)
+    {
+        if (extendedHandoffWindowSeconds > 0.0001f)
+        {
+            return extendedHandoffWindowSeconds;
+        }
+
+        return primary != null ? primary.ComboSessionResetTime : 0f;
+    }
+
+    /// <summary>B1→A2 按键的最晚间隔；0 = 与总窗口相同。</summary>
+    public float GetExtendedHandoffMaxGapEffective(ComboRouteDefinition primary)
+    {
+        if (extendedHandoffMaxGap > 0.0001f)
+        {
+            return extendedHandoffMaxGap;
+        }
+
+        return GetExtendedHandoffWindowSeconds(primary);
+    }
+
+    /// <summary>Combo1 末段 → Combo2 的衔接间隔是否合法（gap 自 Combo1 最后一段自然结束起算）。</summary>
+    public bool IsExtendedHandoffGapValid(float gapSeconds, ComboRouteDefinition primary, out string rejectReason)
+    {
+        rejectReason = null;
+        if (extendedComboRoute == null || primary == null)
+        {
+            return false;
+        }
+
+        if (extendedHandoffMinGap > 0.0001f && gapSeconds < extendedHandoffMinGap)
+        {
+            rejectReason =
+                $"handoff gap {gapSeconds:F2}s < min {extendedHandoffMinGap:F2}s (B1→A2)";
+            return false;
+        }
+
+        var maxEffective = GetExtendedHandoffMaxGapEffective(primary);
+        if (maxEffective > 0.0001f && gapSeconds > maxEffective)
+        {
+            rejectReason =
+                $"handoff gap {gapSeconds:F2}s > max {maxEffective:F2}s (B1→A2)";
+            return false;
+        }
+
+        return true;
+    }
 
     /// <summary>聚合所有 Route 给 HUD Presenter 用（不含派生招池）。</summary>
     /// <remarks>0-GC 调用方需提供 buffer，长度 ≥ 5。返回写入的数量。</remarks>
@@ -72,6 +150,8 @@ public class SkillEntryDefinition : ScriptableObject
 
         if (chargeRoute     != null && chargeRoute.ShowOnHud     && n < buffer.Length) buffer[n++] = chargeRoute;
         if (comboRoute      != null && comboRoute.ShowOnHud      && n < buffer.Length) buffer[n++] = comboRoute;
+        if (extendedComboRoute != null && extendedComboRoute.ShowOnHud && n < buffer.Length) buffer[n++] = extendedComboRoute;
+        if (airComboRoute   != null && airComboRoute.ShowOnHud   && n < buffer.Length) buffer[n++] = airComboRoute;
         if (directionalRoute!= null && directionalRoute.ShowOnHud&& n < buffer.Length) buffer[n++] = directionalRoute;
         if (multiStageRoute != null && multiStageRoute.ShowOnHud && n < buffer.Length) buffer[n++] = multiStageRoute;
         if (normalRoute     != null && normalRoute.ShowOnHud     && n < buffer.Length) buffer[n++] = normalRoute;

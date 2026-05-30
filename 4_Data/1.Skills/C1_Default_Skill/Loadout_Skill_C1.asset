@@ -22,3 +22,9 @@ MonoBehaviour:
   - slot: 4
     entry: {fileID: 11400000, guid: 8079201aedb7079409fbf0f1a7cc3458, type: 2}
     hudKeyLabel: R
+  - slot: 6
+    entry: {fileID: 11400000, guid: 3c96d4742a31b634684424f5614638fd, type: 2}
+    hudKeyLabel: Shift
+  - slot: 7
+    entry: {fileID: 11400000, guid: b6c58b50e7a4b2a4ebdcaa243d00e936, type: 2}
+    hudKeyLabel: Space

@@ -15,6 +15,11 @@ public static class SkillRouteDebug
     public const string CatResolve = "Resolve";     // SkillEntryService.TryResolveForIntent 决策
     public const string CatCharge = "Charge";       // ChargeRouteRuntime 状态机
     public const string CatCombo = "Combo";         // Combo Session / 段位提交
+    public const string CatComboCd = "ComboCd";     // 双容器 CD / 起手容器选择
+    public const string CatStage = "Stage";         // SubRoute Stage 切换
+    public const string CatCtx = "Ctx";             // CombatContextSnapshot
+    public const string CatGraph = "Graph";         // CombatGraphRuntime
+    public const string CatCond = "Cond";           // ConditionEvaluator
 
     static float s_nextStuckLogTime;
 
@@ -40,6 +45,12 @@ public static class SkillRouteDebug
 
         var ctx = context != null ? context : player;
         Debug.LogWarning($"[SkillRoute][{category}] {message}", ctx);
+    }
+
+    public static void LogError(Player player, string category, string message, Object context = null)
+    {
+        var ctx = context != null ? context : player;
+        Debug.LogError($"[SkillRoute][{category}] {message}", ctx);
     }
 
     /// <summary>Action 内 Route 仍 Active 且动作已播完 — 节流告警（疑似 Stage 未完成 / Route 未收口）。</summary>
