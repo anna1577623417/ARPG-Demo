@@ -42,7 +42,8 @@ public sealed class ComboRouteDefinitionEditor : UnityEditor.Editor
 
         DrawDefaultInspectorExcluding(
             "comboChain", "comboTransitions", "comboSessionResetTime", "allowEarlyBufferInput",
-            "linkInputWindows", "fallbackToFirstOnExpire", "cooldownPolicy", "baseCooldownSeconds");
+            "linkInputWindows", "fallbackToFirstOnExpire", "cooldownPolicy", "baseCooldownSeconds",
+            "ownerGroup", "overrideCooldown", "overrideIcon", "overrideCost");
 
         EditorGUILayout.Space(8);
         EditorGUILayout.LabelField("Combo Chain (Nodes + Transitions)", EditorStyles.boldLabel);
@@ -102,6 +103,7 @@ public sealed class ComboRouteDefinitionEditor : UnityEditor.Editor
             }
         }
 
+        SkillRouteGroupMembershipDrawer.Draw(serializedObject);
         serializedObject.ApplyModifiedProperties();
     }
 

@@ -23,7 +23,15 @@ public sealed class ChargeRouteDefinitionEditor : UnityEditor.Editor
             EditorGUILayout.HelpBox(SingleClipStagesHelp, MessageType.Info);
         }
 
-        DrawDefaultInspector();
+        DrawPropertiesExcluding(
+            serializedObject,
+            "m_Script",
+            "ownerGroup",
+            "overrideCooldown",
+            "overrideIcon",
+            "overrideCost");
+        SkillRouteGroupMembershipDrawer.Draw(serializedObject);
+        serializedObject.ApplyModifiedProperties();
     }
 }
 #endif

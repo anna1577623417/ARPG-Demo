@@ -21,6 +21,9 @@ public struct SkillRouteContext
     public float Now;
     public float DeltaTime;
     public CombatContextSnapshot CombatCtx;
+
+    /// <summary>Route CD / Group CD 联动（由 SkillEntryService 每帧填充）。</summary>
+    public SkillEntryService EntryService;
 }
 
 /// <summary>

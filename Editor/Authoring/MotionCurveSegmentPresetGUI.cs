@@ -16,11 +16,20 @@ public static class MotionCurveSegmentPresetGUI
 
     static AxisChoice s_axis = AxisChoice.Z;
     static int s_selectedKeyIndex;
+    static bool s_segmentFoldout;
 
     public static void Draw(MotionProfileSO profile, SerializedObject serializedObject)
     {
         EditorGUILayout.Space(8f);
-        EditorGUILayout.LabelField("Selected Segment（曲线段预设）", EditorStyles.boldLabel);
+        s_segmentFoldout = EditorGUILayout.BeginFoldoutHeaderGroup(
+            s_segmentFoldout,
+            "Selected Segment（曲线段预设）");
+        if (!s_segmentFoldout)
+        {
+            EditorGUILayout.EndFoldoutHeaderGroup();
+            return;
+        }
+
         EditorGUILayout.HelpBox(
             "选择轴与段起点 Key，再点预设按钮。仅修改该段 Key[i].outTangent 与 Key[i+1].inTangent，不改时间与值。",
             MessageType.None);
@@ -28,6 +37,7 @@ public static class MotionCurveSegmentPresetGUI
         if (profile == null || !profile.UsesAxisCurves)
         {
             EditorGUILayout.HelpBox("请先配置 AxisCurves。", MessageType.Warning);
+            EditorGUILayout.EndFoldoutHeaderGroup();
             return;
         }
 
@@ -41,6 +51,7 @@ public static class MotionCurveSegmentPresetGUI
         if (curve == null || curve.length == 0)
         {
             EditorGUILayout.HelpBox($"当前 {s_axis} 轴无曲线，请先在上方添加 Key。", MessageType.Info);
+            EditorGUILayout.EndFoldoutHeaderGroup();
             return;
         }
 
@@ -64,6 +75,8 @@ public static class MotionCurveSegmentPresetGUI
                 EditorGUILayout.HelpBox("最后一个 Key 无下一段，请选择更早的 Key。", MessageType.Info);
             }
         }
+
+        EditorGUILayout.EndFoldoutHeaderGroup();
     }
 
     static AnimationCurve GetCurve(MotionProfileSO profile, AxisChoice axis) => axis switch

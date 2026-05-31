@@ -78,6 +78,13 @@ public abstract class SkillRouteRuntime
     public virtual bool CanCast(in SkillRouteContext ctx)
     {
         if (Definition == null) return false;
+        if (ctx.EntryService != null
+            && Definition is SkillRouteDefinition routeDef
+            && ctx.EntryService.IsRouteBlockedByGroupCooldown(routeDef))
+        {
+            return false;
+        }
+
         if (CdRemainingSeconds > 0f) return false;
         if (!HasEnoughResources(in ctx)) return false;
         return true;
@@ -236,7 +243,16 @@ public abstract class SkillRouteRuntime
     protected void StartCooldown(in SkillRouteContext ctx)
     {
         if (Definition == null) return;
-        var raw = Definition.BaseCooldownSeconds;
+        if (ctx.EntryService != null
+            && Definition is SkillRouteDefinition routeDef
+            && ctx.EntryService.TryApplyGroupCooldown(routeDef, in ctx))
+        {
+            return;
+        }
+
+        var raw = Definition is SkillRouteDefinition srd
+            ? srd.GetEffectiveCooldownSeconds(ctx.Stats)
+            : Definition.BaseCooldownSeconds;
         var stats = ctx.Stats;
         var cdr = stats != null ? Mathf.Clamp(stats.Get(StatType.CooldownReduction), 0f, 0.4f) : 0f;
         var cd = Mathf.Max(0f, raw * (1f - cdr));
@@ -247,7 +263,7 @@ public abstract class SkillRouteRuntime
     protected bool HasEnoughResources(in SkillRouteContext ctx)
     {
         if (Definition == null) return false;
-        var costs = Definition.Costs;
+        var costs = Definition is SkillRouteDefinition srd ? srd.GetEffectiveCosts() : Definition.Costs;
         if (costs == null || costs.Length == 0 || ctx.Resources == null)
         {
             return true;
@@ -269,7 +285,7 @@ public abstract class SkillRouteRuntime
     protected void ConsumeRouteCosts(in SkillRouteContext ctx)
     {
         if (Definition == null) return;
-        var costs = Definition.Costs;
+        var costs = Definition is SkillRouteDefinition srd ? srd.GetEffectiveCosts() : Definition.Costs;
         if (costs == null || ctx.Resources == null) return;
 
         for (var i = 0; i < costs.Length; i++)

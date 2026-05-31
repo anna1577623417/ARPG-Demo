@@ -63,7 +63,7 @@ public static class MotionProfileLegacyMigration
         var zScale = axis.FindPropertyRelative("ZScale");
         var xCurve = axis.FindPropertyRelative("XCurve");
         var xScale = axis.FindPropertyRelative("XScale");
-        var yPolicy = so.FindProperty("YPolicy");
+        var yPolicy = so.FindProperty("legacyYPolicy") ?? so.FindProperty("YPolicy");
 
         if (disp != null && disp.animationCurveValue != null && disp.animationCurveValue.length > 0)
         {

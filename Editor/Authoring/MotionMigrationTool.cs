@@ -67,7 +67,6 @@ public static class MotionMigrationTool
     {
         var wall = action.ResolveAnimWallClockSeconds();
 
-        profile.BurstDurationSeconds = wall;
         if (!profile.UsesAxisCurves)
         {
             profile.ApplyDefaultForwardAxis(4f);
@@ -75,8 +74,8 @@ public static class MotionMigrationTool
 
         var dist = profile.AxisCurves.ZScale > 0.001f ? profile.AxisCurves.ZScale : 4f;
         profile.ReferenceSpeed = Mathf.Max(0.1f, dist / Mathf.Max(wall, 0.0001f));
-        profile.UsePlanarVelocityShape = false;
-        profile.LegacyConstantPlanarSpeed = dist / Mathf.Max(wall, 0.0001f);
+        profile.Duration_AuthoringReference = action.ResolveLogicalDurationSeconds();
+        profile.Distance_AuthoringReference = dist;
     }
 }
 #endif

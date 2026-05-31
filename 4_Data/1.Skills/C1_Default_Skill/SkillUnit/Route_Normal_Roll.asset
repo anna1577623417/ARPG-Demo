@@ -10,15 +10,15 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 50409d845c0919445a2e067fee88b2aa, type: 3}
-  m_Name: Route_Normal_Standing Dodge Forward
+  m_Name: Route_Normal_Roll
   m_EditorClassIdentifier: 
-  routeId: Route_Normal_Standing Dodge Forward
+  routeId: Route_Normal_Roll
   icon: {fileID: 0}
   displayName: 
   showOnHud: 0
   priority: 5
   cooldownPolicy: 1
-  baseCooldownSeconds: 0
+  baseCooldownSeconds: 2
   cooldownGroup: 
   ignoreGlobalCooldown: 0
   costs: []
@@ -36,6 +36,10 @@ MonoBehaviour:
     critChanceOverride: -1
     critMultiplierOverride: 1
   stages:
-  - {fileID: 11400000, guid: 7307ce502466123459db7835d5083269, type: 2}
+  - {fileID: 11400000, guid: 83f8cc9046897f84e902da4c736344f7, type: 2}
   grantedStateTags: 0
   grantedAbilityTags: 0
+  ownerGroup: {fileID: 0}
+  overrideCooldown: 0
+  overrideIcon: 0
+  overrideCost: 0

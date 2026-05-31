@@ -1,0 +1,39 @@
+# SO Inspector Authoring Foldout（非必填工具默认折叠）
+
+> 适用：所有 `ScriptableObject` 的 CustomEditor / PropertyDrawer / 批处理窗口中的 **Authoring 辅助区**。
+
+## 原则
+
+1. **运行时必填字段** — 始终可见（Identity、Stages、AxisCurves、CD/Cost 等）。
+2. **非日常 / 可选 Authoring 工具** — 必须用 **`EditorGUILayout.BeginFoldoutHeaderGroup`** 折叠；**默认收起**（`static bool` 初始 `false`）。
+3. **新增 SO 或 Inspector 区块前** — 先问：「不配这项，Runtime 能否正常跑？」能 → 折叠；不能 → 常驻。
+
+## 归类示例
+
+| 类型 | 处理 | 例 |
+|------|------|-----|
+| Runtime 数据 | 常驻 | MotionProfile `AxisCurves`、Route `Stages[]` |
+| 一次性迁移 | 条件常驻（缺数据时 Warning + 按钮） | MotionProfile 无 AxisCurves 时的迁移 |
+| 离线提取 / 生成 | **折叠，默认关** | Clip→XYZ、整段曲线生成 |
+| 段级微调 | **折叠，默认关** | Segment Preset |
+| Scene 调试 | **折叠，默认关** | Gizmo 预览 |
+| 高级 / 少见配置 | **折叠，默认关** | SkillRoute `SkillGroup 隶属` |
+
+## 实现约定
+
+- 折叠标题带 **（可选）** 或等价中文，避免与 Runtime 字段混淆。
+- 同一 Inspector 内多个可选区 → **分块折叠**，不要堆一个大 Foldout。
+- 共享抽屉抽静态类（例：`SkillRouteGroupMembershipDrawer`），Combo/Charge/Normal 等子类 Editor 复用。
+- 禁止把整页工具默认展开导致「Scroll 地狱」；设计师日常只改曲线 Key 时不应看到 5 屏按钮。
+
+## 已有落地
+
+- `MotionProfileEditor`：Clip 提取 / Segment 预设 / Scene 预览 / 整段生成 — 均折叠默认关。
+- `SkillRouteGroupMembershipDrawer`：Route 的 `ownerGroup` + Override 位 — 折叠默认关。
+
+## 设计 SO 自检（新增字段时）
+
+- [ ] 该字段 Runtime 是否读取？
+- [ ] 是否仅 Editor / 迁移 / 调试？
+- [ ] 若是可选工具，Inspector 是否已折叠且默认关？
+- [ ] Tooltip 是否说明「不配时的 Runtime 行为」？

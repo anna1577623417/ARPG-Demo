@@ -7,6 +7,10 @@ using UnityEngine;
 public interface IMotorAdapter
 {
     void SetDesiredVelocity(Vector3 velocity);
-    void SetMotionComposeContext(YAxisPolicy yPolicy);
+    void SetMotionComposeContext(MotionYAxisConfig yAxisConfig);
+
     float GetActualSpeed();
+
+    /// <summary>GroundTargeted：自 worldPos 向下探测地面世界 Y。</summary>
+    bool TryProbeGroundHeight(Vector3 worldPos, float maxCastDistance, out float groundWorldY);
 }

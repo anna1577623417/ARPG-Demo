@@ -12,6 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3c30fbadfb384604eb3acc4303290eb1, type: 3}
   m_Name: General_Standing Dodge Backward_MotionProfile
   m_EditorClassIdentifier: 
+  SourceClip: {fileID: -203655887218126122, guid: dc5fab59a40a527409c80c32b74b45ed,
+    type: 3}
   AxisCurves:
     XCurve:
       serializedVersion: 2
@@ -51,41 +53,39 @@ MonoBehaviour:
       m_RotationOrder: 4
     XScale: 0
     YScale: 0
-    ZScale: 4.0
+    ZScale: 4
   YPolicy: 0
-  DisplacementCurve:
+  LandingOffset: 0
+  LandingCurve:
     serializedVersion: 2
     m_Curve:
     - serializedVersion: 3
       time: 0
       value: 0
-      inSlope: 1
-      outSlope: 1
-      tangentMode: 34
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
       weightedMode: 0
       inWeight: 0
       outWeight: 0
     - serializedVersion: 3
       time: 1
       value: 1
-      inSlope: 1
-      outSlope: 1
-      tangentMode: 34
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
       weightedMode: 0
       inWeight: 0
       outWeight: 0
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  BaseDistance: 4
-  PeakSpeedMultiplier: 1
-  LateralCurve:
-    serializedVersion: 2
-    m_Curve: []
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  LateralDistance: 0
+  LandingDetectionRadius: 20
+  LandingSync: 0
+  UseActionDuration: 1
+  AuthoringReferenceDuration: 0.8
+  AuthoringReferenceDistance: 4
+  AuthoringReferenceAnimSpeed: 1
   AnimSpeedMode: 0
   SpeedOverTime:
     serializedVersion: 2
@@ -113,15 +113,7 @@ MonoBehaviour:
     m_RotationOrder: 4
   ReferenceSpeed: 2.4742267
   MatchAnimationSpeed: 1
-  GravityBehavior: 0
   ScaleType: 0
-  WarpCurve:
-    serializedVersion: 2
-    m_Curve: []
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  MaxWarpDistance: 0.5
   BurstDurationSeconds: 1.6166668
   LegacyConstantPlanarSpeed: 2.4742267
   UsePlanarVelocityShape: 0

@@ -12,16 +12,54 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3c30fbadfb384604eb3acc4303290eb1, type: 3}
   m_Name: General_Armature_Sword_Regular_C_MotionProfile
   m_EditorClassIdentifier: 
+  SourceClip: {fileID: 543990450412311274, guid: 30e0c6f0ba714704faaf6b4df5acca56,
+    type: 3}
   AxisCurves:
     XCurve:
       serializedVersion: 2
-      m_Curve: []
+      m_Curve:
+      - serializedVersion: 3
+        time: 0
+        value: 0
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      - serializedVersion: 3
+        time: 1
+        value: 0
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
       m_PreInfinity: 2
       m_PostInfinity: 2
       m_RotationOrder: 4
     YCurve:
       serializedVersion: 2
-      m_Curve: []
+      m_Curve:
+      - serializedVersion: 3
+        time: 0
+        value: 0
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      - serializedVersion: 3
+        time: 1
+        value: 0
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
       m_PreInfinity: 2
       m_PostInfinity: 2
       m_RotationOrder: 4
@@ -30,16 +68,88 @@ MonoBehaviour:
       m_Curve:
       - serializedVersion: 3
         time: 0
-        value: 0
-        inSlope: 2
-        outSlope: 2
+        value: 0.003983759
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      - serializedVersion: 3
+        time: 0.033898305
+        value: 0.024923306
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      - serializedVersion: 3
+        time: 0.06779661
+        value: 0.09447412
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      - serializedVersion: 3
+        time: 0.16949153
+        value: 0.4943797
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      - serializedVersion: 3
+        time: 0.27118644
+        value: 0.6552838
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      - serializedVersion: 3
+        time: 0.33898306
+        value: 0.83702004
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      - serializedVersion: 3
+        time: 0.3898305
+        value: 0.92189515
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      - serializedVersion: 3
+        time: 0.44067797
+        value: 0.93779975
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      - serializedVersion: 3
+        time: 0.59322035
+        value: 0.9231232
+        inSlope: 0
+        outSlope: 0
         tangentMode: 0
         weightedMode: 0
         inWeight: 0
         outWeight: 0
       - serializedVersion: 3
         time: 1
-        value: 1
+        value: 0.9970543
         inSlope: 0
         outSlope: 0
         tangentMode: 0
@@ -51,9 +161,10 @@ MonoBehaviour:
       m_RotationOrder: 4
     XScale: 0
     YScale: 0
-    ZScale: 2.0
-  YPolicy: 0
-  DisplacementCurve:
+    ZScale: 1.5307631
+  YPolicy: 4
+  LandingOffset: 0
+  LandingCurve:
     serializedVersion: 2
     m_Curve:
     - serializedVersion: 3
@@ -77,15 +188,12 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  BaseDistance: 2
-  PeakSpeedMultiplier: 1
-  LateralCurve:
-    serializedVersion: 2
-    m_Curve: []
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  LateralDistance: 0
+  LandingDetectionRadius: 20
+  LandingSync: 1
+  UseActionDuration: 0
+  AuthoringReferenceDuration: 2
+  AuthoringReferenceDistance: 2
+  AuthoringReferenceAnimSpeed: 1
   AnimSpeedMode: 0
   SpeedOverTime:
     serializedVersion: 2
@@ -112,16 +220,8 @@ MonoBehaviour:
     m_PostInfinity: 2
     m_RotationOrder: 4
   ReferenceSpeed: 4.615384
-  MatchAnimationSpeed: 1
-  GravityBehavior: 0
+  MatchAnimationSpeed: 0
   ScaleType: 0
-  WarpCurve:
-    serializedVersion: 2
-    m_Curve: []
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  MaxWarpDistance: 0.5
   BurstDurationSeconds: 0.43333337
   LegacyConstantPlanarSpeed: 4.615384
   UsePlanarVelocityShape: 0

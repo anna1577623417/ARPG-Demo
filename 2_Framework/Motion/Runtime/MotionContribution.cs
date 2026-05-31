@@ -6,7 +6,7 @@ using UnityEngine;
 public struct MotionContribution
 {
     public Vector3 LocalDelta;
-    public YAxisPolicy YPolicy;
+    public MotionYAxisConfig YAxisConfig;
     public bool IsActive;
 
     public static MotionContribution Inactive => default;

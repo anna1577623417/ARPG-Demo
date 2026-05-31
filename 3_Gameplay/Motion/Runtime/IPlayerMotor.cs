@@ -31,7 +31,7 @@ public interface IPlayerMotor
     void ApplyMotorFromGameplayVelocity(Vector3 worldVelocity, in MotorSolveContext ctx);
 
     /// <summary>MotionComposer 汇合 Motion + Gravity 后求解（三轴 Motion 路径）。</summary>
-    void ApplyMotorFromGameplayVelocity(Vector3 worldVelocity, in MotorSolveContext ctx, YAxisPolicy yPolicy, bool useMotionComposer);
+    void ApplyMotorFromGameplayVelocity(Vector3 worldVelocity, in MotorSolveContext ctx, MotionYAxisConfig yAxisConfig, bool useMotionComposer);
 
     /// <summary>离散瞬移；forceAirborne=true：禁止贴地射线 / 不清 vy / 用 Airborne 上下文刷新接地。</summary>
     void TeleportTo(Vector3 worldPosition, bool forceAirborne = false);

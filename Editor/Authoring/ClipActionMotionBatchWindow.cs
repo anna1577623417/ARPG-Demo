@@ -473,7 +473,6 @@ public sealed class ClipActionMotionBatchWindow : EditorWindow
     static void ApplyMotionBaselineFromClip(AnimationClip clip, MotionProfileSO profile)
     {
         var wall = Mathf.Max(0.05f, clip.length);
-        profile.BurstDurationSeconds = wall;
         if (!profile.UsesAxisCurves)
         {
             profile.ApplyDefaultForwardAxis(4f);
@@ -481,8 +480,8 @@ public sealed class ClipActionMotionBatchWindow : EditorWindow
 
         var dist = profile.AxisCurves.ZScale > 0.001f ? profile.AxisCurves.ZScale : 4f;
         profile.ReferenceSpeed = Mathf.Max(0.1f, dist / wall);
-        profile.UsePlanarVelocityShape = false;
-        profile.LegacyConstantPlanarSpeed = profile.ReferenceSpeed;
+        profile.Duration_AuthoringReference = wall;
+        profile.Distance_AuthoringReference = dist;
     }
 
     string BuildCoreName(string clipFileName)

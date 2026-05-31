@@ -93,7 +93,7 @@ public static class MotionXYZAuthoring
     static void CreateGalioE(string path)
     {
         var p = CreateProfile(path);
-        p.YPolicy = YAxisPolicy.UseGravity;
+        ApplyYAxisV2(p, YMotionMode.Curve, GravityMode.UseGravity, GroundConstraintMode.ClampToGround);
         p.AxisCurves.ZCurve = new AnimationCurve(
             new Keyframe(0f, 0f),
             new Keyframe(0.2f, -1f),
@@ -106,7 +106,7 @@ public static class MotionXYZAuthoring
     static void CreateSCurve(string path)
     {
         var p = CreateProfile(path);
-        p.YPolicy = YAxisPolicy.UseGravity;
+        ApplyYAxisV2(p, YMotionMode.Curve, GravityMode.UseGravity, GroundConstraintMode.ClampToGround);
         p.AxisCurves.XCurve = new AnimationCurve(
             new Keyframe(0f, 0f),
             new Keyframe(0.25f, 1f),
@@ -122,7 +122,7 @@ public static class MotionXYZAuthoring
     static void CreateAirSlam(string path)
     {
         var p = CreateProfile(path);
-        p.YPolicy = YAxisPolicy.MotionControlled;
+        ApplyYAxisV2(p, YMotionMode.Curve, GravityMode.SuspendGravity, GroundConstraintMode.None);
         p.AxisCurves.YCurve = new AnimationCurve(
             new Keyframe(0f, 0f),
             new Keyframe(0.3f, 1f),
@@ -137,7 +137,7 @@ public static class MotionXYZAuthoring
     static void CreateLeapAttack(string path)
     {
         var p = CreateProfile(path);
-        p.YPolicy = YAxisPolicy.AdditiveGravity;
+        ApplyYAxisV2(p, YMotionMode.Curve, GravityMode.AdditiveGravity, GroundConstraintMode.None);
         p.AxisCurves.YCurve = new AnimationCurve(
             new Keyframe(0f, 0f),
             new Keyframe(0.4f, 1f),
@@ -151,10 +151,22 @@ public static class MotionXYZAuthoring
     static void CreateLauncher(string path)
     {
         var p = CreateProfile(path);
-        p.YPolicy = YAxisPolicy.MotionControlled;
+        ApplyYAxisV2(p, YMotionMode.Curve, GravityMode.SuspendGravity, GroundConstraintMode.None);
         p.AxisCurves.YCurve = AnimationCurve.Linear(0f, 0f, 0.5f, 1f);
         p.AxisCurves.YScale = 3f;
         EditorUtility.SetDirty(p);
+    }
+
+    static void ApplyYAxisV2(
+        MotionProfileSO profile,
+        YMotionMode yMotion,
+        GravityMode gravity,
+        GroundConstraintMode groundConstraint)
+    {
+        profile.YMotion = yMotion;
+        profile.Gravity = gravity;
+        profile.GroundConstraint = groundConstraint;
+        profile.SetYAxisV2Configured(true);
     }
 }
 #endif

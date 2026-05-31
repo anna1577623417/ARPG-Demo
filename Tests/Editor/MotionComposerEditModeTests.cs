@@ -6,9 +6,10 @@ public sealed class MotionComposerEditModeTests
     [Test]
     public void Composer_UseGravity_UsesGravityVy()
     {
-        var motion = new MotionContribution { IsActive = true, YPolicy = YAxisPolicy.UseGravity };
+        var config = new MotionYAxisConfig(YMotionMode.None, GravityMode.UseGravity, GroundConstraintMode.None);
+        var motion = new MotionContribution { IsActive = true, YAxisConfig = config };
         var gravity = new GravityContribution { Vy = -2f, IsActive = true };
-        var final = MotionComposer.ComposeWorldVelocity(in motion, in gravity, Vector3.forward, log: false);
+        var final = MotionComposer.ComposeWorldVelocity(in motion, in gravity, Vector3.forward, in config);
         Assert.AreEqual(-2f, final.y, 0.001f);
         Assert.AreEqual(1f, final.z, 0.001f);
     }
@@ -16,18 +17,20 @@ public sealed class MotionComposerEditModeTests
     [Test]
     public void Composer_MotionControlled_IgnoresGravity()
     {
-        var motion = new MotionContribution { IsActive = true, YPolicy = YAxisPolicy.MotionControlled };
+        var config = new MotionYAxisConfig(YMotionMode.Curve, GravityMode.SuspendGravity, GroundConstraintMode.None);
+        var motion = new MotionContribution { IsActive = true, YAxisConfig = config };
         var gravity = new GravityContribution { Vy = -9.8f, IsActive = true };
-        var final = MotionComposer.ComposeWorldVelocity(in motion, in gravity, new Vector3(0f, 2f, 0f), log: false);
+        var final = MotionComposer.ComposeWorldVelocity(in motion, in gravity, new Vector3(0f, 2f, 0f), in config);
         Assert.AreEqual(2f, final.y, 0.001f);
     }
 
     [Test]
     public void Composer_AdditiveGravity_Adds()
     {
-        var motion = new MotionContribution { IsActive = true, YPolicy = YAxisPolicy.AdditiveGravity };
+        var config = new MotionYAxisConfig(YMotionMode.Curve, GravityMode.AdditiveGravity, GroundConstraintMode.None);
+        var motion = new MotionContribution { IsActive = true, YAxisConfig = config };
         var gravity = new GravityContribution { Vy = -0.1f, IsActive = true };
-        var final = MotionComposer.ComposeWorldVelocity(in motion, in gravity, new Vector3(0f, 0.3f, 0f), log: false);
+        var final = MotionComposer.ComposeWorldVelocity(in motion, in gravity, new Vector3(0f, 0.3f, 0f), in config);
         Assert.AreEqual(0.2f, final.y, 0.001f);
     }
 

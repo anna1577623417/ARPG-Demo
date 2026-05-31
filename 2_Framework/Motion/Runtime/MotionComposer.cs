@@ -1,7 +1,8 @@
 using UnityEngine;
 
 /// <summary>
-/// Motion / Gravity 汇合 — 按 YAxisPolicy 裁决垂直通道，输出本帧世界速度意图。
+/// Motion / Gravity 汇合 — 按 MotionYAxisConfig 三权裁决垂直通道。
+/// 顺序：Y Motion → Gravity（本类）→ Ground Constraint（<see cref="MotionGroundConstraint"/>）。
 /// </summary>
 public static class MotionComposer
 {
@@ -9,6 +10,7 @@ public static class MotionComposer
         in MotionContribution motion,
         in GravityContribution gravity,
         Vector3 motionWorldVelocity,
+        in MotionYAxisConfig config,
         bool log = false,
         Object logContext = null)
     {
@@ -34,59 +36,63 @@ public static class MotionComposer
             return Vector3.zero;
         }
 
-        var policy = motion.YPolicy;
-        Vector3 final;
-        switch (policy)
+        var motionY = config.YMotion switch
         {
-            case YAxisPolicy.SuspendGravity:
-                final = motionWorldVelocity;
-                if (log)
-                {
-                    MotionXYZDebug.Log(logContext, MotionXYZDebug.CatComposer,
-                        $"yPolicy=SuspendGravity → useY=motion({motionWorldVelocity.y:F3})");
-                }
-                break;
+            YMotionMode.Curve => motionWorldVelocity.y,
+            YMotionMode.GroundTargeted => motionWorldVelocity.y,
+            _ => 0f,
+        };
 
-            case YAxisPolicy.MotionControlled:
-                final = motionWorldVelocity;
-                if (log)
-                {
-                    MotionXYZDebug.Log(logContext, MotionXYZDebug.CatComposer,
-                        $"yPolicy=MotionControlled → useY=motion({motionWorldVelocity.y:F3}) ignoreGravity");
-                }
-                break;
+        var finalY = ComposeVertical(motionY, in gravity, config);
 
-            case YAxisPolicy.AdditiveGravity:
-                final = motionWorldVelocity;
-                if (gravity.IsActive)
-                {
-                    final.y = motionWorldVelocity.y + gravity.Vy;
-                }
-
-                if (log)
-                {
-                    MotionXYZDebug.Log(logContext, MotionXYZDebug.CatComposer,
-                        $"yPolicy=AdditiveGravity → useY=motion({motionWorldVelocity.y:F3})+gravity({gravity.Vy:F3})={final.y:F3}");
-                }
-                break;
-
-            case YAxisPolicy.UseGravity:
-            default:
-                final = motionWorldVelocity;
-                if (gravity.IsActive)
-                {
-                    final.y = gravity.Vy;
-                }
-
-                if (log)
-                {
-                    MotionXYZDebug.Log(logContext, MotionXYZDebug.CatComposer,
-                        $"motion=({motionWorldVelocity.x:F2},{motionWorldVelocity.y:F2},{motionWorldVelocity.z:F2}) " +
-                        $"gravity=(0,{gravity.Vy:F2},0) policy=UseGravity → final=({final.x:F2},{final.y:F2},{final.z:F2})");
-                }
-                break;
+        var final = new Vector3(motionWorldVelocity.x, finalY, motionWorldVelocity.z);
+        if (log)
+        {
+            MotionXYZDebug.Log(logContext, MotionXYZDebug.CatComposer,
+                $"yMotion={config.YMotion} gravity={config.Gravity} ground={config.GroundConstraint} " +
+                $"motionY={motionY:F3} finalY={finalY:F3}");
         }
 
         return final;
     }
+
+    static float ComposeVertical(float motionY, in GravityContribution gravity, in MotionYAxisConfig config)
+    {
+        switch (config.Gravity)
+        {
+            case GravityMode.SuspendGravity:
+                return motionY;
+
+            case GravityMode.AdditiveGravity:
+                if (!gravity.IsActive)
+                {
+                    return motionY;
+                }
+
+                return motionY + gravity.Vy;
+
+            case GravityMode.UseGravity:
+            default:
+                if (!gravity.IsActive)
+                {
+                    return motionY;
+                }
+
+                if (config.YMotion == YMotionMode.None)
+                {
+                    return gravity.Vy;
+                }
+
+                return motionY + gravity.Vy;
+        }
+    }
+
+    [System.Obsolete("Use ComposeWorldVelocity with MotionYAxisConfig")]
+    public static Vector3 ComposeWorldVelocity(
+        in MotionContribution motion,
+        in GravityContribution gravity,
+        Vector3 motionWorldVelocity,
+        bool log = false,
+        Object logContext = null) =>
+        ComposeWorldVelocity(in motion, in gravity, motionWorldVelocity, motion.YAxisConfig, log, logContext);
 }

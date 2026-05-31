@@ -73,6 +73,10 @@ public class SkillEntryDefinition : ScriptableObject
     [SerializeField, Tooltip("派生招池 — 当父 Route 处于 Active 时由 RouteResolver 动态接入。")]
     private DerivativeRouteDefinition[] derivativeRoutes;
 
+    [Header("Primary Skill Unit (Ver4.3.7+)")]
+    [SerializeField, Tooltip("【主单位】SkillRouteDefinition 或 SkillGroupDefinition；配置后优先于仅 CombatGraph 的裸 Route 列表。")]
+    private UnityEngine.Object primaryUnit;
+
     // ── 公有只读暴露 ──
     public SkillEntrySlot Slot => slot;
     public string DisplayName => displayName;
@@ -88,6 +92,60 @@ public class SkillEntryDefinition : ScriptableObject
     public float ExtendedHandoffMinGap => extendedHandoffMinGap;
     public float ExtendedHandoffMaxGap => extendedHandoffMaxGap;
     public DerivativeRouteDefinition[] DerivativeRoutes => derivativeRoutes;
+    public ISkillUnit PrimaryUnit => primaryUnit as ISkillUnit;
+    public SkillGroupDefinition PrimaryGroup => primaryUnit as SkillGroupDefinition;
+    public SkillRouteDefinition PrimaryRoute => primaryUnit as SkillRouteDefinition;
+
+    /// <summary>注册 Entry 内所有 Route（含 Group 成员）到 SkillEntryService。</summary>
+    public void CollectAllRoutes(System.Collections.Generic.List<SkillRouteDefinition> buffer)
+    {
+        if (buffer == null)
+        {
+            return;
+        }
+
+        if (PrimaryGroup != null)
+        {
+            var routes = PrimaryGroup.Routes;
+            if (routes != null)
+            {
+                for (var i = 0; i < routes.Count; i++)
+                {
+                    if (routes[i] != null)
+                    {
+                        buffer.Add(routes[i]);
+                    }
+                }
+            }
+
+            if (PrimaryGroup.FallbackRoute != null)
+            {
+                buffer.Add(PrimaryGroup.FallbackRoute);
+            }
+        }
+        else if (PrimaryRoute != null)
+        {
+            buffer.Add(PrimaryRoute);
+        }
+
+        if (chargeRoute != null) buffer.Add(chargeRoute);
+        if (comboRoute != null) buffer.Add(comboRoute);
+        if (extendedComboRoute != null) buffer.Add(extendedComboRoute);
+        if (airComboRoute != null) buffer.Add(airComboRoute);
+        if (directionalRoute != null) buffer.Add(directionalRoute);
+        if (multiStageRoute != null) buffer.Add(multiStageRoute);
+        if (normalRoute != null) buffer.Add(normalRoute);
+        if (derivativeRoutes != null)
+        {
+            for (var i = 0; i < derivativeRoutes.Length; i++)
+            {
+                if (derivativeRoutes[i] != null)
+                {
+                    buffer.Add(derivativeRoutes[i]);
+                }
+            }
+        }
+    }
 
     /// <summary>B1 后等候 Combo2 的总窗口（秒）。0 = Combo1.ComboSessionResetTime。</summary>
     public float GetExtendedHandoffWindowSeconds(ComboRouteDefinition primary)

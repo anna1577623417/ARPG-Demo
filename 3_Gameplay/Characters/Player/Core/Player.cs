@@ -491,11 +491,22 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
     public void ApplyMotorFromGameplayVelocity(
         Vector3 v,
         in MotorSolveContext ctx,
-        YAxisPolicy yPolicy,
+        MotionYAxisConfig yAxisConfig,
         bool useMotionComposer)
-        => m_motor?.ApplyMotorFromGameplayVelocity(v, in ctx, yPolicy, useMotionComposer);
+        => m_motor?.ApplyMotorFromGameplayVelocity(v, in ctx, yAxisConfig, useMotionComposer);
     public MotorSolveContext BuildActionMotorSolveContext()
         => m_motor != null ? m_motor.BuildActionMotorSolveContext() : MotorSolveContext.Locomotion;
     public void TeleportTo(Vector3 worldPos, bool forceAirborne = false)
         => m_motor?.TeleportTo(worldPos, forceAirborne);
+
+    public bool TryProbeGroundHeight(Vector3 worldPos, float maxCastDistance, out float groundWorldY)
+    {
+        groundWorldY = worldPos.y;
+        if (m_motor == null)
+        {
+            return false;
+        }
+
+        return m_motor.TryProbeGroundHeight(worldPos, maxCastDistance, out groundWorldY);
+    }
 }

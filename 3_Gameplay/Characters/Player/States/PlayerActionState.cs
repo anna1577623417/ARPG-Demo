@@ -40,7 +40,7 @@ public sealed class PlayerActionState : PlayerState
         m_elapsed = 0f;
         m_prevNormalizedTime = 0f;
         m_lastHoldSeconds = 0f;
-        m_baseDuration = m_action.ResolveLogicalDurationSeconds();
+        m_baseDuration = MotionDurationResolver.ResolveWithTimeSync(m_action).MotionDurationSeconds;
         m_useMotionProfile = m_action.MotionProfile != null;
         m_burstFaceDir = player.GetMovementDirectionOrForward();
         m_nextHeartbeatLogTime = 0f;
@@ -69,12 +69,16 @@ public sealed class PlayerActionState : PlayerState
             {
                 player.SuspendGravity();
             }
+
+            var timeSync = MotionDurationResolver.ResolveWithTimeSync(m_action);
+            var clipWall = MotionDurationResolver.ResolveClipWallClockSeconds(m_action);
             m_motionExecutor.Begin(
                 m_action.MotionProfile,
-                m_baseDuration,
+                timeSync.MotionDurationSeconds,
                 m_burstFaceDir,
                 player.transform.position,
-                baseAnimSpeed: Mathf.Max(0.01f, m_action.AnimSpeed));
+                baseAnimSpeed: Mathf.Max(0.01f, m_action.AnimSpeed * timeSync.AnimSpeedMultiplier),
+                clipWallClockSeconds: clipWall);
         }
 
         player.BeginAttackWithManualCompletion();
@@ -89,7 +93,7 @@ public sealed class PlayerActionState : PlayerState
         m_action = action;
         m_elapsed = 0f;
         m_prevNormalizedTime = 0f;
-        m_baseDuration = action.ResolveLogicalDurationSeconds();
+        m_baseDuration = MotionDurationResolver.ResolveWithTimeSync(action).MotionDurationSeconds;
         m_useMotionProfile = action.MotionProfile != null;
         m_burstFaceDir = player.GetMovementDirectionOrForward();
 
@@ -101,12 +105,15 @@ public sealed class PlayerActionState : PlayerState
                 player.SuspendGravity();
             }
 
+            var timeSync = MotionDurationResolver.ResolveWithTimeSync(action);
+            var clipWall = MotionDurationResolver.ResolveClipWallClockSeconds(action);
             m_motionExecutor.Begin(
                 action.MotionProfile,
-                m_baseDuration,
+                timeSync.MotionDurationSeconds,
                 m_burstFaceDir,
                 player.transform.position,
-                baseAnimSpeed: Mathf.Max(0.01f, action.AnimSpeed));
+                baseAnimSpeed: Mathf.Max(0.01f, action.AnimSpeed * timeSync.AnimSpeedMultiplier),
+                clipWallClockSeconds: clipWall);
         }
 
         player.RequestActionPresentation(m_kind, action);
@@ -285,8 +292,7 @@ public sealed class PlayerActionState : PlayerState
             return false;
         }
 
-        var y = profile.GetEffectiveYPolicy();
-        return y == YAxisPolicy.SuspendGravity || y == YAxisPolicy.MotionControlled;
+        return profile.GetYAxisConfig().Gravity == GravityMode.SuspendGravity;
     }
 
     InputSnapshot BuildInputSnapshot(Player player)

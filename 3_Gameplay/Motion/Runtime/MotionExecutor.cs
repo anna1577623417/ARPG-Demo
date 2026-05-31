@@ -26,6 +26,11 @@ public sealed class MotionExecutor
     private MotionPlaybackContext _playback;
     private float _baseAnimSpeed = 1f;
     private bool _loggedMissingAxisCurves;
+    private bool _groundTargetedActive;
+    private float _groundStartY;
+    private float _groundEndY;
+    private float _groundPrevWorldY;
+    private AnimationCurve _landingCurve;
 
     public MotionExecutor(IMotorAdapter motor, IAnimSpeedControl animSpeed, IStatsProvider stats, Player debugOwner = null)
     {
@@ -43,7 +48,13 @@ public sealed class MotionExecutor
 
     public void SetPlaybackContext(in MotionPlaybackContext ctx) => _playback = ctx;
 
-    public void Begin(MotionProfileSO profile, float baseDuration, Vector3 direction, Vector3 startPos, float baseAnimSpeed = 1f)
+    public void Begin(
+        MotionProfileSO profile,
+        float baseDuration,
+        Vector3 direction,
+        Vector3 startPos,
+        float baseAnimSpeed = 1f,
+        float clipWallClockSeconds = 0f)
     {
         _playback = default;
         _profile = profile;
@@ -52,14 +63,30 @@ public sealed class MotionExecutor
         _elapsed = 0f;
         _startPos = startPos;
         _lastPos = startPos;
-        _smoothedAnimSpeed = Mathf.Max(0.01f, baseAnimSpeed);
         _baseAnimSpeed = Mathf.Max(0.01f, baseAnimSpeed);
+        _smoothedAnimSpeed = _baseAnimSpeed;
         _active = profile != null;
         _loggedMissingAxisCurves = false;
+        _groundTargetedActive = false;
         _motionScale = _active && _stats != null ? Mathf.Max(0f, _stats.GetMotionScale(profile.ScaleType)) : 1f;
         LastContribution = MotionContribution.Inactive;
 
-        if (_active && !_profile.UsesAxisCurves)
+        if (_active && profile.GetYAxisConfig().YMotion == YMotionMode.GroundTargeted)
+        {
+            _groundTargetedActive = MotionGroundLanding.TryResolveEndHeight(
+                _motor, startPos, profile, out _groundStartY, out _groundEndY);
+            _groundPrevWorldY = startPos.y;
+            _landingCurve = profile.GetLandingCurveOrDefault();
+            MotionXYZDebug.Log(_debugOwner, MotionXYZDebug.CatMotion,
+                $"GroundTargeted startY={_groundStartY:F2} endY={_groundEndY:F2} dist={(_groundStartY - _groundEndY):F2}m dur={_baseDuration:F2}s timeSync={profile.TimeSync}");
+        }
+
+        if (_active)
+        {
+            LogTimeSync(clipWallClockSeconds);
+        }
+
+        if (_active && !_profile.UsesAxisCurves && !_groundTargetedActive)
         {
             MotionXYZDebug.Log(_debugOwner, MotionXYZDebug.CatMotion,
                 $"OPEN axisCurves missing on profile={_profile.name} — no displacement (run Tools/Motion XYZ/Migrate All)");
@@ -73,7 +100,7 @@ public sealed class MotionExecutor
             return;
         }
 
-        if (!_profile.UsesAxisCurves)
+        if (!_profile.UsesAxisCurves && !_groundTargetedActive)
         {
             if (!_loggedMissingAxisCurves)
             {
@@ -83,7 +110,7 @@ public sealed class MotionExecutor
             }
 
             _motor?.SetDesiredVelocity(Vector3.zero);
-            _motor?.SetMotionComposeContext(_profile.GetEffectiveYPolicy());
+            _motor?.SetMotionComposeContext(_profile.GetYAxisConfig());
             TickAnimSpeed(NormalizedTime, deltaTime);
             return;
         }
@@ -100,33 +127,68 @@ public sealed class MotionExecutor
         TickAnimSpeed(t, deltaTime);
     }
 
+    void LogTimeSync(float clipWallClockSeconds)
+    {
+        if (_profile == null || _profile.TimeSync == MotionTimeSyncMode.None)
+        {
+            return;
+        }
+
+        MotionXYZDebug.Log(_debugOwner, MotionXYZDebug.CatMotion,
+            _profile.TimeSync == MotionTimeSyncMode.MatchAnimation
+                ? $"TimeSync MatchAnimation motionDur={_baseDuration:F2}s clipWall={clipWallClockSeconds:F2}s (Logic 已拉伸)"
+                : $"TimeSync MatchMotion motionDur={_baseDuration:F2}s animSpeed={_baseAnimSpeed:F2} clipWall={clipWallClockSeconds:F2}s");
+    }
+
     void TickAxisCurves(float prevT, float t, float deltaTime)
     {
-        var localDelta = _profile.AxisCurves.SampleLocalDelta(prevT, t, _motionScale);
-        var yPolicy = _profile.GetEffectiveYPolicy();
+        Vector3 localDelta;
+        var yAxisConfig = _profile.GetYAxisConfig();
 
-        if (yPolicy == YAxisPolicy.UseGravity)
+        if (_groundTargetedActive)
         {
+            localDelta = _profile.UsesAxisCurves
+                ? _profile.AxisCurves.SampleLocalDelta(prevT, t, _motionScale)
+                : Vector3.zero;
             localDelta.y = 0f;
+
+            var targetWorldY = MotionGroundLanding.SampleTargetWorldY(
+                _groundStartY, _groundEndY, _landingCurve, t);
+            var worldDeltaY = targetWorldY - _groundPrevWorldY;
+            _groundPrevWorldY = targetWorldY;
+            localDelta.y = worldDeltaY;
+            yAxisConfig = new MotionYAxisConfig(
+                YMotionMode.GroundTargeted,
+                yAxisConfig.Gravity,
+                yAxisConfig.GroundConstraint);
+        }
+        else
+        {
+            localDelta = _profile.AxisCurves.SampleLocalDelta(prevT, t, _motionScale);
+            if (yAxisConfig.YMotion == YMotionMode.None)
+            {
+                localDelta.y = 0f;
+            }
         }
 
         LastContribution = new MotionContribution
         {
             LocalDelta = localDelta,
-            YPolicy = yPolicy,
+            YAxisConfig = yAxisConfig,
             IsActive = true,
         };
 
         var worldDelta = LocalDeltaToWorld(localDelta);
         var desiredVelocity = worldDelta / deltaTime;
         _motor?.SetDesiredVelocity(desiredVelocity);
-        _motor?.SetMotionComposeContext(yPolicy);
+        _motor?.SetMotionComposeContext(yAxisConfig);
 
         if (MotionXYZDebug.ShouldLogMotionSample)
         {
             MotionXYZDebug.MarkMotionSampleLogged();
             MotionXYZDebug.Log(_debugOwner, MotionXYZDebug.CatMotion,
-                $"sample t={t:F2} deltaLocal=({localDelta.x:F2},{localDelta.y:F2},{localDelta.z:F2}) yPolicy={yPolicy}");
+                $"sample t={t:F2} deltaLocal=({localDelta.x:F2},{localDelta.y:F2},{localDelta.z:F2}) " +
+                $"yMotion={yAxisConfig.YMotion} gravity={yAxisConfig.Gravity} ground={yAxisConfig.GroundConstraint}");
         }
     }
 
@@ -202,7 +264,7 @@ public sealed class MotionExecutor
         _active = false;
         LastContribution = MotionContribution.Inactive;
         _motor?.SetDesiredVelocity(Vector3.zero);
-        _motor?.SetMotionComposeContext(YAxisPolicy.UseGravity);
+        _motor?.SetMotionComposeContext(MotionYAxisConfig.DefaultLocomotion);
         _animSpeed?.SetSpeed(1f);
         _baseAnimSpeed = 1f;
         _smoothedAnimSpeed = 1f;
@@ -252,7 +314,7 @@ public sealed class MotionExecutor
     {
         var localA = _profile.AxisCurves.SampleLocalPosition(a, _motionScale);
         var localB = _profile.AxisCurves.SampleLocalPosition(b, _motionScale);
-        if (_profile.GetEffectiveYPolicy() == YAxisPolicy.UseGravity)
+        if (_profile.GetYAxisConfig().YMotion == YMotionMode.None)
         {
             localA.y = 0f;
             localB.y = 0f;

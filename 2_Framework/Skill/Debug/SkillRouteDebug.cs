@@ -20,6 +20,8 @@ public static class SkillRouteDebug
     public const string CatCtx = "Ctx";             // CombatContextSnapshot
     public const string CatGraph = "Graph";         // CombatGraphRuntime
     public const string CatCond = "Cond";           // ConditionEvaluator
+    public const string CatUnit = "Unit";           // ISkillUnit / SkillGroup
+    public const string CatExtract = "Extract";     // ClipMotionExtractor
 
     static float s_nextStuckLogTime;
 

@@ -9,7 +9,7 @@ using UnityEngine;
 ///   · Route 直接持有 Icon / Cooldown / Cost / Damage —— 不再通过 SkillData 中转。
 ///   · Route 不直接持有 ActionData —— Action 全部下沉到 Stages[]。
 /// </summary>
-public abstract class SkillRouteDefinition : ScriptableObject
+public abstract class SkillRouteDefinition : ScriptableObject, ISkillUnit
 {
     [Header("Identity")]
     [SerializeField, Tooltip("调试稳定 ID（不参与运行时分发，仅用于 Recipe 反查 / 日志）。")]
@@ -69,6 +69,19 @@ public abstract class SkillRouteDefinition : ScriptableObject
     [SerializeField, Tooltip("进入 Route 时给 Player 标签写入的 Ability 位。")]
     private ulong grantedAbilityTags;
 
+    [Header("Group Membership (Ver4.3.7+)")]
+    [SerializeField, Tooltip("所属技能组；空 = 独立技能单位。")]
+    SkillGroupDefinition ownerGroup;
+
+    [SerializeField, Tooltip("为 true 时使用本 Route 的 CD，不读 Group。")]
+    bool overrideCooldown;
+
+    [SerializeField, Tooltip("为 true 时使用本 Route 的 Icon。")]
+    bool overrideIcon;
+
+    [SerializeField, Tooltip("为 true 时使用本 Route 的 Cost。")]
+    bool overrideCost;
+
     // ── 公有只读暴露 ──
     public string RouteId => routeId;
     public Sprite Icon => icon;
@@ -85,6 +98,76 @@ public abstract class SkillRouteDefinition : ScriptableObject
     public SkillStageDefinition[] Stages => stages;
     public ulong GrantedStateTags => grantedStateTags;
     public ulong GrantedAbilityTags => grantedAbilityTags;
+    public SkillGroupDefinition OwnerGroup => ownerGroup;
+    public bool OverrideGroupCooldown => overrideCooldown;
+    public bool OverrideGroupIcon => overrideIcon;
+    public bool OverrideGroupCost => overrideCost;
+
+    string ISkillUnit.DisplayName => GetEffectiveDisplayName();
+    Sprite ISkillUnit.Icon => GetEffectiveIcon();
+    float ISkillUnit.CooldownSeconds => GetEffectiveCooldownSeconds(null);
+    SkillCostEntry[] ISkillUnit.Costs => GetEffectiveCosts();
+    ulong ISkillUnit.RequiredAbilityTags => GetEffectiveRequiredAbilityTags();
+
+    public string GetEffectiveDisplayName()
+    {
+        if (!string.IsNullOrEmpty(displayName))
+        {
+            return displayName;
+        }
+
+        if (ownerGroup != null)
+        {
+            return ownerGroup.DisplayName;
+        }
+
+        return name;
+    }
+
+    public Sprite GetEffectiveIcon()
+    {
+        if (overrideIcon || icon != null)
+        {
+            return icon;
+        }
+
+        return ownerGroup != null ? ownerGroup.Icon : icon;
+    }
+
+    public float GetEffectiveCooldownSeconds(IStatSet stats)
+    {
+        var raw = (ownerGroup != null && !overrideCooldown)
+            ? ownerGroup.CooldownSeconds
+            : baseCooldownSeconds;
+        if (stats == null)
+        {
+            return raw;
+        }
+
+        var cdr = Mathf.Clamp(stats.Get(StatType.CooldownReduction), 0f, 0.4f);
+        return Mathf.Max(0f, raw * (1f - cdr));
+    }
+
+    public SkillCostEntry[] GetEffectiveCosts()
+    {
+        if (overrideCost || costs != null && costs.Length > 0)
+        {
+            return costs;
+        }
+
+        return ownerGroup != null ? ownerGroup.Costs : costs;
+    }
+
+    public ulong GetEffectiveRequiredAbilityTags()
+    {
+        var routeTags = grantedAbilityTags;
+        if (ownerGroup == null)
+        {
+            return routeTags;
+        }
+
+        return routeTags | ownerGroup.RequiredAbilityTags;
+    }
 
     /// <summary>子类自报"我是哪种 Route"，用于 RouteResolver 类型分支（避免反射）。</summary>
     public abstract RouteKind Kind { get; }
@@ -93,6 +176,14 @@ public abstract class SkillRouteDefinition : ScriptableObject
     {
         return stages != null && stages.Length > 0 ? stages[0] : null;
     }
+
+#if UNITY_EDITOR
+    internal void EditorAssignOwnerGroup(SkillGroupDefinition group)
+    {
+        ownerGroup = group;
+        UnityEditor.EditorUtility.SetDirty(this);
+    }
+#endif
 }
 
 /// <summary>

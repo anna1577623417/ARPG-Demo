@@ -162,6 +162,25 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
     public Vector3 LastGroundNormal => _lastGroundNormal;
     public bool HasSteepGroundHitForEdgeSlip => _hasSteepGroundHitForEdgeSlip;
 
+    public bool TryProbeGroundHeight(Vector3 pivotWorld, float maxCastDistance, out float groundWorldY)
+    {
+        groundWorldY = pivotWorld.y - pivotToFootOffset;
+        var castExtra = Mathf.Max(0.15f, maxCastDistance);
+        if (KinematicMotorSolver.ProbeGroundBelowPivot(
+                pivotWorld,
+                pivotToFootOffset,
+                groundProbeRadius,
+                castExtra,
+                groundLayers,
+                out var hit))
+        {
+            groundWorldY = hit.point.y;
+            return true;
+        }
+
+        return false;
+    }
+
     /// <summary>由 Player.Init 注入引用与日志开关；不传任何马达参数（自身序列化）。</summary>
     public void Bind(Player player, PlayerStateManager states, bool debugInterruptFlow)
     {
@@ -342,13 +361,17 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
 
     public void ApplyMotorFromGameplayVelocity(Vector3 gameplayWorldVelocity, in MotorSolveContext context)
     {
-        ApplyMotorFromGameplayVelocity(gameplayWorldVelocity, in context, YAxisPolicy.UseGravity, useMotionComposer: false);
+        ApplyMotorFromGameplayVelocity(
+            gameplayWorldVelocity,
+            in context,
+            MotionYAxisConfig.DefaultLocomotion,
+            useMotionComposer: false);
     }
 
     public void ApplyMotorFromGameplayVelocity(
         Vector3 gameplayWorldVelocity,
         in MotorSolveContext context,
-        YAxisPolicy yPolicy,
+        MotionYAxisConfig yAxisConfig,
         bool useMotionComposer)
     {
         var wasGroundedAtMotorStart = _wasGroundedLastFrame;
@@ -373,12 +396,13 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
             var motionContrib = new MotionContribution
             {
                 IsActive = true,
-                YPolicy = yPolicy,
+                YAxisConfig = yAxisConfig,
             };
             velocity = MotionComposer.ComposeWorldVelocity(
                 in motionContrib,
                 in gravityContrib,
                 gameplayWorldVelocity,
+                in yAxisConfig,
                 log: MotionXYZDebug.ShouldLogMotionSample,
                 logContext: _player);
             if (MotionXYZDebug.ShouldLogMotionSample)
@@ -386,13 +410,12 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
                 MotionXYZDebug.MarkMotionSampleLogged();
             }
 
-            gameplayDrivenVy = yPolicy == YAxisPolicy.MotionControlled
-                || yPolicy == YAxisPolicy.AdditiveGravity
-                || yPolicy == YAxisPolicy.SuspendGravity;
-            if (yPolicy == YAxisPolicy.UseGravity && !_gravitySuspended)
-            {
-                gameplayDrivenVy = Mathf.Abs(gameplayWorldVelocity.y) >= 0.001f;
-            }
+            MotionGroundConstraint.ApplyClamp(ref velocity, in yAxisConfig, wasGroundedAtMotorStart);
+
+            gameplayDrivenVy = yAxisConfig.YMotion == YMotionMode.GroundTargeted
+                || yAxisConfig.YMotion == YMotionMode.Curve && (
+                    yAxisConfig.Gravity != GravityMode.UseGravity
+                    || Mathf.Abs(gameplayWorldVelocity.y) >= 0.001f);
         }
         else if (!_gravitySuspended)
         {

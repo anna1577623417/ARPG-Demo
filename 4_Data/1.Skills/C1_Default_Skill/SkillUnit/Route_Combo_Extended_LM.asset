@@ -18,7 +18,7 @@ MonoBehaviour:
   showOnHud: 1
   priority: 5
   cooldownPolicy: 5
-  baseCooldownSeconds: 10
+  baseCooldownSeconds: 0
   cooldownGroup: 
   ignoreGlobalCooldown: 0
   costs: []
@@ -38,6 +38,10 @@ MonoBehaviour:
   stages: []
   grantedStateTags: 0
   grantedAbilityTags: 0
+  ownerGroup: {fileID: 0}
+  overrideCooldown: 0
+  overrideIcon: 0
+  overrideCost: 0
   comboChain:
   - {fileID: 11400000, guid: 6aef75815099a3f46b7460ead1361696, type: 2}
   - {fileID: 11400000, guid: bc398cefcd202cf47ba9920d1d3303a1, type: 2}

@@ -36,6 +36,8 @@ public sealed class SkillEntryService
     float _derivativeUnlockUntil;
 
     CombatGraphRuntime _combatGraph;
+    readonly Dictionary<SkillGroupDefinition, GroupCooldownState> _groupCooldowns
+        = new Dictionary<SkillGroupDefinition, GroupCooldownState>(8);
     bool _hitConfirmedThisStage;
     MoveDirection8 _lastInjectedMoveDir = (MoveDirection8)255;
     bool _lastInjectedAirborne;
@@ -116,6 +118,15 @@ public sealed class SkillEntryService
     void RegisterEntry(SkillEntryDefinition entry, SkillEntrySlot slot, string keyLabel)
     {
         slot = CanonicalEntry(slot);
+        if (entry.PrimaryGroup != null)
+        {
+            RegisterGroupRoutes(entry.PrimaryGroup, slot, keyLabel);
+        }
+        else if (entry.PrimaryRoute != null)
+        {
+            TryAddRoute(entry.PrimaryRoute, slot, keyLabel);
+        }
+
         // 注册所有 Route Runtime
         TryAddRoute(entry.NormalRoute, slot, keyLabel);
         TryAddRoute(entry.ComboRoute, slot, keyLabel);
@@ -136,6 +147,29 @@ public sealed class SkillEntryService
         RegisterComboContainer(entry.ComboRoute, slot, keyLabel, bindSemanticSlot: true);
         RegisterComboContainer(entry.ExtendedComboRoute, slot, keyLabel, bindSemanticSlot: false);
         RegisterComboContainer(entry.AirComboRoute, slot, keyLabel, bindSemanticSlot: false);
+    }
+
+    void RegisterGroupRoutes(SkillGroupDefinition group, SkillEntrySlot slot, string keyLabel)
+    {
+        if (group == null)
+        {
+            return;
+        }
+
+        var routes = group.Routes;
+        if (routes != null)
+        {
+            for (var i = 0; i < routes.Count; i++)
+            {
+                TryAddRoute(routes[i], slot, keyLabel);
+            }
+        }
+
+        TryAddRoute(group.FallbackRoute, slot, keyLabel);
+        SkillRouteDebug.Log(
+            _owner,
+            SkillRouteDebug.CatUnit,
+            $"Register Group={group.name} routes={(routes?.Count ?? 0)} slot={slot}");
     }
 
     void RegisterComboContainer(
@@ -224,6 +258,12 @@ public sealed class SkillEntryService
         if (entry == null) return null;
 
         var ctx = BuildContext(in inputSnapshot);
+
+        // PrimaryUnit（Group / 单 Route）— 优先于 Combat Graph（四向翻滚等）
+        if (TryResolvePrimaryUnit(entry, in intent, in inputSnapshot, in ctx, out var primaryRt))
+        {
+            return primaryRt;
+        }
 
         // Combat Graph：Space 翻滚 / 空中起手等显式边（落地计划 124.1 L3+）
         if (_combatGraph != null
@@ -976,6 +1016,7 @@ public sealed class SkillEntryService
     {
         var stats = _owner?.Stats;
         FillContext(default, dt);
+        TickGroupCooldowns(dt);
         foreach (var kv in _routeRuntimes)
         {
             kv.Value.TickCooldown(dt, stats);
@@ -1556,6 +1597,194 @@ public sealed class SkillEntryService
         }
     }
 
+    public bool IsRouteBlockedByGroupCooldown(SkillRouteDefinition route)
+    {
+        if (route == null || route.OwnerGroup == null || route.OverrideGroupCooldown)
+        {
+            return false;
+        }
+
+        return _groupCooldowns.TryGetValue(route.OwnerGroup, out var state)
+               && state.RemainingSeconds > 0.0001f;
+    }
+
+    public bool TryApplyGroupCooldown(SkillRouteDefinition route, in SkillRouteContext ctx)
+    {
+        var group = route?.OwnerGroup;
+        if (group == null || route.OverrideGroupCooldown)
+        {
+            return false;
+        }
+
+        var cd = group.CooldownSeconds;
+        var stats = ctx.Stats;
+        if (stats != null)
+        {
+            var cdr = Mathf.Clamp(stats.Get(StatType.CooldownReduction), 0f, 0.4f);
+            cd = Mathf.Max(0f, cd * (1f - cdr));
+        }
+
+        _groupCooldowns[group] = new GroupCooldownState(cd, cd);
+        SyncGroupMemberCooldowns(group, cd);
+        SkillRouteDebug.Log(
+            _owner,
+            SkillRouteDebug.CatUnit,
+            $"Group CD start group={group.name} cd={cd:F2}s via route={route.name}");
+        return true;
+    }
+
+    void TickGroupCooldowns(float dt)
+    {
+        if (_groupCooldowns.Count == 0)
+        {
+            return;
+        }
+
+        var keys = new List<SkillGroupDefinition>(_groupCooldowns.Keys);
+        for (var i = 0; i < keys.Count; i++)
+        {
+            var group = keys[i];
+            if (!_groupCooldowns.TryGetValue(group, out var state))
+            {
+                continue;
+            }
+
+            state.RemainingSeconds = Mathf.Max(0f, state.RemainingSeconds - dt);
+            _groupCooldowns[group] = state;
+            if (state.RemainingSeconds <= 0.0001f)
+            {
+                _groupCooldowns.Remove(group);
+            }
+            else
+            {
+                SyncGroupMemberCooldowns(group, state.RemainingSeconds, state.TotalSeconds);
+            }
+        }
+    }
+
+    void SyncGroupMemberCooldowns(SkillGroupDefinition group, float remaining, float total = -1f)
+    {
+        if (group?.Routes == null)
+        {
+            return;
+        }
+
+        for (var i = 0; i < group.Routes.Count; i++)
+        {
+            var member = group.Routes[i];
+            if (member == null || !_routeRuntimes.TryGetValue(member, out var rt))
+            {
+                continue;
+            }
+
+            rt.CdRemainingSeconds = remaining;
+            if (total >= 0f)
+            {
+                rt.CdScaledTotalSeconds = total;
+            }
+        }
+
+        if (group.FallbackRoute != null
+            && _routeRuntimes.TryGetValue(group.FallbackRoute, out var fb))
+        {
+            fb.CdRemainingSeconds = remaining;
+            if (total >= 0f)
+            {
+                fb.CdScaledTotalSeconds = total;
+            }
+        }
+    }
+
+    bool TryResolvePrimaryUnit(
+        SkillEntryDefinition entry,
+        in GameplayIntent intent,
+        in InputSnapshot inputSnapshot,
+        in SkillRouteContext ctx,
+        out SkillRouteRuntime runtime)
+    {
+        runtime = null;
+        if (entry?.PrimaryUnit == null)
+        {
+            return false;
+        }
+
+        if (entry.PrimaryRoute != null)
+        {
+            if (_routeRuntimes.TryGetValue(entry.PrimaryRoute, out runtime)
+                && runtime != null
+                && runtime.CanCast(in ctx))
+            {
+                SkillRouteDebug.Log(
+                    _owner, SkillRouteDebug.CatUnit,
+                    $"PICK PrimaryRoute unit={entry.PrimaryRoute.name}");
+                return true;
+            }
+
+            SkillRouteDebug.Log(
+                _owner, SkillRouteDebug.CatUnit,
+                $"SKIP PrimaryRoute CanCast=false route={entry.PrimaryRoute?.name}");
+            return false;
+        }
+
+        var group = entry.PrimaryGroup;
+        if (group == null)
+        {
+            return false;
+        }
+
+        SkillRouteDefinition picked = null;
+        var semantic = intent.Semantic;
+        var useDirectional = semantic == InputSemanticType.Directional
+            || semantic == InputSemanticType.Tap
+            || semantic == InputSemanticType.None;
+
+        if (useDirectional && entry.DirectionalRoute != null)
+        {
+            var axis = intent.DirectionAxis.sqrMagnitude > 0.0001f
+                ? intent.DirectionAxis
+                : inputSnapshot.MoveBuffered;
+            var dir = InputChordResolver.Resolve(axis);
+            picked = entry.DirectionalRoute.SelectByDirection(dir);
+            if (picked == null && entry.DirectionalRoute.DefaultToForwardWhenNeutral)
+            {
+                picked = entry.DirectionalRoute.SelectByDirection(DirectionalRouteType.Forward);
+            }
+        }
+
+        if (picked == null)
+        {
+            picked = group.FallbackRoute;
+        }
+
+        if (picked != null
+            && _routeRuntimes.TryGetValue(picked, out runtime)
+            && runtime != null
+            && runtime.CanCast(in ctx))
+        {
+            SkillRouteDebug.Log(
+                _owner, SkillRouteDebug.CatUnit,
+                $"PICK Group={group.name} child={picked.name} semantic={semantic}");
+            return true;
+        }
+
+        SkillRouteDebug.Log(
+            _owner, SkillRouteDebug.CatUnit,
+            $"SKIP Group={group.name} picked={picked?.name ?? "null"} CanCast=false");
+        return false;
+    }
+
+    struct GroupCooldownState
+    {
+        public float RemainingSeconds;
+        public float TotalSeconds;
+
+        public GroupCooldownState(float remaining, float total)
+        {
+            RemainingSeconds = remaining;
+            TotalSeconds = total;
+        }
+    }
+
     void FillContext(in InputSnapshot input, float dt)
     {
         _scratchCtx.Self = _owner;
@@ -1566,6 +1795,7 @@ public sealed class SkillEntryService
         _scratchCtx.Input = input;
         _scratchCtx.DeltaTime = dt;
         _scratchCtx.Now = Time.time;
+        _scratchCtx.EntryService = this;
 
         if (_owner != null)
         {
