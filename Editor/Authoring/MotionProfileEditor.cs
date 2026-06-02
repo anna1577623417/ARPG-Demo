@@ -3,7 +3,7 @@ using UnityEditor;
 using UnityEngine;
 
 [CustomEditor(typeof(MotionProfileSO))]
-public sealed class MotionProfileEditor : Editor
+public sealed partial class MotionProfileEditor : Editor
 {
     private CurvePresetType _preset = CurvePresetType.EaseInOut;
     private float _power = 2f;
@@ -11,20 +11,31 @@ public sealed class MotionProfileEditor : Editor
 
     static bool s_yAxisFoldout;
     static bool s_landingFoldout;
-    static bool s_timeAuthorityFoldout;
+    static bool s_animSpeedFoldout = true;
     static bool s_clipExtractFoldout;
+    static bool s_clipExtractAdvancedFoldout;
+    static bool s_perAxisClipFoldout;
     static bool s_scenePreviewFoldout;
     static bool s_wholeCurveFoldout;
 
-    MotionCurveFitMode _fitMode = MotionCurveFitMode.Smooth;
+    MotionCurveFitMode _fitMode = MotionCurveFitMode.CatmullRom;
     MotionCurveFilterMode _filterMode = MotionCurveFilterMode.MovingAverage;
     int _filterWindow = 5;
     float _errorTolerance = 0.01f;
+    MotionExtractMode _extractMode = MotionExtractMode.Auto;
+    string _sampleBonePath = "Hips";
+    int _samplingFps = 30;
 
     static readonly string[] s_excludeCustom =
     {
         "m_Script",
         "SourceClip",
+        "XSourceClip",
+        "YSourceClip",
+        "ZSourceClip",
+        "XExtractSource",
+        "YExtractSource",
+        "ZExtractSource",
         "LandingOffset",
         "LandingCurve",
         "LandingDetectionRadius",
@@ -33,12 +44,8 @@ public sealed class MotionProfileEditor : Editor
         "GroundConstraint",
         "yAxisV2Configured",
         "legacyYPolicy",
-        "UseActionDuration",
-        "TimeSync",
-        "Duration_AuthoringReference",
-        "Distance_AuthoringReference",
-        "AuthoringReferenceAnimSpeed",
-        "MatchAnimationSpeed",
+        "AnimSpeedMode",
+        "SpeedOverTime",
         "BurstDurationSeconds",
         "LegacyConstantPlanarSpeed",
         "UsePlanarVelocityShape",
@@ -52,7 +59,8 @@ public sealed class MotionProfileEditor : Editor
         serializedObject.Update();
 
         EditorGUILayout.HelpBox(
-            "【三轴位置曲线】局部空间：Evaluate(t)×Scale=米。Logic Duration 为 Motion 唯一时间源（Use Action Duration）。",
+            "【三轴位置曲线】局部空间：Evaluate(t)×Scale=米。\n" +
+            "逻辑时长 / Clip 对齐 → Action Time Authority；本页 SpeedOverTime 仅作 motionT 局部节奏（先慢后快等）。",
             MessageType.Info);
 
         if (!profile.UsesAxisCurves && !profile.UsesGroundTargetedLanding)
@@ -79,8 +87,9 @@ public sealed class MotionProfileEditor : Editor
         DrawPropertiesExcluding(serializedObject, s_excludeCustom);
         DrawYAxisSection(profile);
         DrawLandingSettingsSection(profile);
-        DrawTimeAuthoritySection(profile);
+        DrawAnimationSpeedSection(profile);
         DrawClipExtractSection(profile);
+        DrawManualCurveSection(profile);
         MotionCurveSegmentPresetGUI.Draw(profile, serializedObject);
         DrawScenePreviewSection(profile);
         DrawWholeCurveGenerationSection(profile);
@@ -160,55 +169,22 @@ public sealed class MotionProfileEditor : Editor
         EditorGUILayout.EndFoldoutHeaderGroup();
     }
 
-    void DrawTimeAuthoritySection(MotionProfileSO profile)
+    void DrawAnimationSpeedSection(MotionProfileSO profile)
     {
-        s_timeAuthorityFoldout = EditorGUILayout.BeginFoldoutHeaderGroup(
-            s_timeAuthorityFoldout,
-            "Time Authority / 时间对齐（Runtime）");
-        if (!s_timeAuthorityFoldout)
+        s_animSpeedFoldout = EditorGUILayout.BeginFoldoutHeaderGroup(
+            s_animSpeedFoldout,
+            "Animation Speed / 局部节奏");
+        if (!s_animSpeedFoldout)
         {
             EditorGUILayout.EndFoldoutHeaderGroup();
             return;
         }
 
-        EditorGUILayout.PropertyField(serializedObject.FindProperty("UseActionDuration"));
-        EditorGUILayout.PropertyField(
-            serializedObject.FindProperty("TimeSync"),
-            new GUIContent("Time Sync / 时间对齐"));
+        EditorGUILayout.PropertyField(serializedObject.FindProperty(nameof(MotionProfileSO.AnimSpeedMode)));
+        EditorGUILayout.PropertyField(serializedObject.FindProperty(nameof(MotionProfileSO.SpeedOverTime)));
         EditorGUILayout.HelpBox(
-            "None — Logic Duration 与 Action.AnimSpeed 各走各的。\n" +
-                    "当Logic Duaration< ClipLength时\n，并使用【None】可以截断【后摇】\n" +
-            "Match Motion / 匹配运动 — 保持 Logic Duration；动画倍率 = clip.length / AnimSpeed / logicDur。\n" +
-            "Match Animation / 匹配动画 — 保持 Clip 墙钟；Logic/Motion 时长拉伸至 clip.length÷AnimSpeed。\n" +
-            "MatchMotion / MatchAnimation 需 Action 绑定 MainClip。",
-            MessageType.Info);
-
-        EditorGUILayout.Space(4f);
-        EditorGUILayout.LabelField("Authoring Reference（仅 Editor 计算器 · Runtime 不读）", EditorStyles.boldLabel);
-        EditorGUILayout.PropertyField(serializedObject.FindProperty("Duration_AuthoringReference"));
-        EditorGUILayout.PropertyField(serializedObject.FindProperty("Distance_AuthoringReference"));
-
-        var avg = profile.AuthoringAverageSpeed;
-        EditorGUILayout.LabelField("Average Speed (authoring)", $"{avg:F2} m/s");
-
-        EditorGUILayout.PropertyField(serializedObject.FindProperty("AuthoringReferenceAnimSpeed"));
-        if (GUILayout.Button("Generate Reference Speed（从曲线末端位移 + Reference Duration）"))
-        {
-            Undo.RecordObject(profile, "Generate Reference Speed");
-            var end = profile.AxisCurves.SampleLocalPosition(1f, 1f);
-            profile.Distance_AuthoringReference = new Vector3(end.x, 0f, end.z).magnitude;
-            if (profile.SourceClip != null && profile.Duration_AuthoringReference > 0.001f)
-            {
-                profile.AuthoringReferenceAnimSpeed =
-                    profile.SourceClip.length / profile.Duration_AuthoringReference;
-            }
-
-            EditorUtility.SetDirty(profile);
-        }
-
-        EditorGUILayout.HelpBox(
-            "Runtime 时钟：Action.LogicDuration（Use Action Duration=ON）。\n" +
-            "上方 Authoring 字段只用于离线估算平均速率 / 参考 AnimSpeed，不参与 Play Mode。",
+            "finalClipSpeed = Action.AnimSpeed × SpeedOverTime(motionT)。\n" +
+            "Constant 恒 1；Curve 按归一化 Motion 时间塑形段内节奏，不改变位移曲线采样时刻。",
             MessageType.None);
         EditorGUILayout.EndFoldoutHeaderGroup();
     }
@@ -231,46 +207,151 @@ public sealed class MotionProfileEditor : Editor
             typeof(AnimationClip),
             false);
 
-        _fitMode = (MotionCurveFitMode)EditorGUILayout.EnumPopup("Curve Fit Mode", _fitMode);
-        _filterMode = (MotionCurveFilterMode)EditorGUILayout.EnumPopup("Filter Mode", _filterMode);
-        _filterWindow = EditorGUILayout.IntSlider("Filter Window", _filterWindow, 5, 11);
-        _errorTolerance = EditorGUILayout.Slider("Error Tolerance", _errorTolerance, 0.001f, 0.05f);
-
-        using (new EditorGUI.DisabledScope(profile.SourceClip == null))
+        s_perAxisClipFoldout = EditorGUILayout.Foldout(s_perAxisClipFoldout, "按轴不同 Clip（可选）", true);
+        if (s_perAxisClipFoldout)
         {
-            if (GUILayout.Button("Extract XYZ From Source Clip"))
+            using (new EditorGUI.IndentLevelScope())
             {
-                var root = Selection.activeGameObject;
-                if (root == null)
-                {
-                    EditorUtility.DisplayDialog(
-                        "Clip Extract",
-                        "请在 Hierarchy 选中预览 Rig（角色根节点），再提取。",
-                        "OK");
-                    return;
-                }
-
-                var opt = ClipMotionExtractor.Options.Default;
-                opt.FitMode = _fitMode;
-                opt.FilterMode = _filterMode;
-                opt.FilterWindow = _filterWindow;
-                opt.ErrorTolerance = _errorTolerance;
-                ClipMotionExtractor.ExtractInto(profile.SourceClip, root.transform, profile, opt);
+                profile.XSourceClip = (AnimationClip)EditorGUILayout.ObjectField(
+                    "X Source Clip",
+                    profile.XSourceClip,
+                    typeof(AnimationClip),
+                    false);
+                profile.YSourceClip = (AnimationClip)EditorGUILayout.ObjectField(
+                    "Y Source Clip",
+                    profile.YSourceClip,
+                    typeof(AnimationClip),
+                    false);
+                profile.ZSourceClip = (AnimationClip)EditorGUILayout.ObjectField(
+                    "Z Source Clip",
+                    profile.ZSourceClip,
+                    typeof(AnimationClip),
+                    false);
             }
         }
 
-        var report = ClipMotionExtractor.LastReport;
-        if (report.RawSamples > 0)
+        var hasClip = profile.SourceClip != null
+            || profile.XSourceClip != null
+            || profile.YSourceClip != null
+            || profile.ZSourceClip != null;
+
+        using (new EditorGUI.DisabledScope(!hasClip))
         {
-            EditorGUILayout.LabelField(
-                "Last Extract",
-                $"raw={report.RawSamples} keys=({report.KeysX},{report.KeysY},{report.KeysZ})");
+            if (GUILayout.Button("一键提取 XYZ From Source Clip", GUILayout.Height(24f)))
+            {
+                RunClipExtract(profile);
+            }
+        }
+
+        using (new EditorGUI.DisabledScope(profile == null))
+        {
+            if (GUILayout.Button("打开曲线编辑器（全屏）", GUILayout.Height(22f)))
+            {
+                MotionAxisCurveEditorWindow.Open(profile);
+            }
+        }
+
+        DrawLastExtractReport();
+
+        s_clipExtractAdvancedFoldout = EditorGUILayout.Foldout(
+            s_clipExtractAdvancedFoldout,
+            "提取高级选项",
+            true);
+        profile.XExtractSource = (MotionAxisExtractSource)EditorGUILayout.EnumPopup("X Source", profile.XExtractSource);
+        profile.YExtractSource = (MotionAxisExtractSource)EditorGUILayout.EnumPopup("Y Source", profile.YExtractSource);
+        profile.ZExtractSource = (MotionAxisExtractSource)EditorGUILayout.EnumPopup("Z Source", profile.ZExtractSource);
+
+        using (new EditorGUILayout.HorizontalScope())
+        {
+            if (GUILayout.Button("预设：翻滚 X/Z=RootT Y=0", EditorStyles.miniButtonLeft))
+            {
+                profile.XExtractSource = MotionAxisExtractSource.RootT;
+                profile.YExtractSource = MotionAxisExtractSource.ConstantZero;
+                profile.ZExtractSource = MotionAxisExtractSource.RootT;
+            }
+
+            if (GUILayout.Button("预设：跳跃 Y=Bone", EditorStyles.miniButtonRight))
+            {
+                profile.XExtractSource = MotionAxisExtractSource.RootT;
+                profile.YExtractSource = MotionAxisExtractSource.SampleBone;
+                profile.ZExtractSource = MotionAxisExtractSource.RootT;
+            }
+        }
+
+        if (s_clipExtractAdvancedFoldout)
+        {
+            using (new EditorGUI.IndentLevelScope())
+            {
+                _extractMode = (MotionExtractMode)EditorGUILayout.EnumPopup("Extract Mode", _extractMode);
+                _sampleBonePath = EditorGUILayout.TextField("Sample Bone Path", _sampleBonePath);
+                _samplingFps = EditorGUILayout.IntSlider("Sample FPS", _samplingFps, 8, 120);
+                _fitMode = (MotionCurveFitMode)EditorGUILayout.EnumPopup("Curve Fit Mode", _fitMode);
+                _filterMode = (MotionCurveFilterMode)EditorGUILayout.EnumPopup("Filter Mode", _filterMode);
+                _filterWindow = EditorGUILayout.IntSlider("Filter Window", _filterWindow, 5, 11);
+                _errorTolerance = EditorGUILayout.Slider("Error Tolerance", _errorTolerance, 0.001f, 0.05f);
+            }
         }
 
         EditorGUILayout.HelpBox(
-            "Fit Pipeline：None / MovingAverage / SavitzkyGolay → Key Reduction → Spline。需选中 Hierarchy Rig。",
+            "Auto：优先 RootT 曲线（Humanoid RM）→ 骨骼 Hips → Animator RootMotion。\n" +
+            "仅 RootT 模式可不选 Hierarchy；其余模式需选中 Rig（如 Armature）。",
             MessageType.None);
         EditorGUILayout.EndFoldoutHeaderGroup();
+    }
+
+    void RunClipExtract(MotionProfileSO profile)
+    {
+        var rig = Selection.activeGameObject;
+        var needsRig = _extractMode is MotionExtractMode.SampleBone
+            or MotionExtractMode.AnimatorRootMotion
+            or MotionExtractMode.LegacyRootTransform;
+        if (needsRig && rig == null)
+        {
+            EditorUtility.DisplayDialog(
+                "Clip Extract",
+                "请在 Hierarchy 选中预览 Rig（如 Armature），再提取。",
+                "OK");
+            return;
+        }
+
+        var clip = profile.SourceClip
+            ?? profile.XSourceClip
+            ?? profile.YSourceClip
+            ?? profile.ZSourceClip;
+        if (clip == null)
+        {
+            EditorUtility.DisplayDialog("Clip Extract", "请至少指定 Source Clip 或某一轴 Clip。", "OK");
+            return;
+        }
+
+        var opt = ClipMotionExtractor.OptionsFromProfile(profile, ClipMotionExtractor.Options.Default);
+        opt.ExtractMode = _extractMode;
+        opt.SampleBonePath = _sampleBonePath;
+        opt.SamplingFps = _samplingFps;
+        opt.FitMode = _fitMode;
+        opt.FilterMode = _filterMode;
+        opt.FilterWindow = _filterWindow;
+        opt.ErrorTolerance = _errorTolerance;
+        ClipMotionExtractor.ExtractInto(clip, rig, profile, opt);
+        EditorUtility.SetDirty(profile);
+    }
+
+    static void DrawLastExtractReport()
+    {
+        var report = ClipMotionExtractor.LastReport;
+        if (string.IsNullOrEmpty(report.Message) && report.RawSamples <= 0)
+        {
+            return;
+        }
+
+        var msgType = report.Succeeded ? MessageType.Info : MessageType.Warning;
+        var body = report.Succeeded
+            ? $"src=({report.SourceX},{report.SourceY},{report.SourceZ}) raw={report.RawSamples} " +
+              $"max=({report.MaxAbsMeters.x:F2},{report.MaxAbsMeters.y:F2},{report.MaxAbsMeters.z:F2})m " +
+              $"keys=({report.KeysX},{report.KeysY},{report.KeysZ}) " +
+              $"quality=({report.Quality.x:P0},{report.Quality.y:P0},{report.Quality.z:P0})"
+            : report.Message;
+        EditorGUILayout.HelpBox($"Last Extract: {body}", msgType);
     }
 
     void DrawScenePreviewSection(MotionProfileSO profile)
@@ -327,9 +408,10 @@ public sealed class MotionProfileEditor : Editor
             EditorUtility.SetDirty(profile);
         }
 
-        if (GUILayout.Button("Generate Speed Curve"))
+        if (GUILayout.Button("Generate Speed Curve (局部节奏)"))
         {
             Undo.RecordObject(profile, "Generate Motion Speed Curve");
+            profile.AnimSpeedMode = AnimSpeedMode.Curve;
             profile.SpeedOverTime = MotionCurveGenerator.Generate(_preset, _power);
             EditorUtility.SetDirty(profile);
         }

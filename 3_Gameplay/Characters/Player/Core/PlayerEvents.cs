@@ -118,6 +118,21 @@ public readonly struct PlayerTeleportedEvent : IGameEvent
 /// <summary>
 /// Action 支柱请求播放某条动作资产；PlayerAnimController 监听后走 Playables。
 /// </summary>
+/// <summary>Action 时间轴触发的表现事件（SFX/VFX/HitFrame）；Presentation 层订阅。</summary>
+public readonly struct ActionTimelinePresentationEvent : IGameEvent
+{
+    public readonly int PlayerInstanceId;
+    public readonly ActionTimelineMarkerKind Kind;
+    public readonly string Payload;
+
+    public ActionTimelinePresentationEvent(int playerInstanceId, ActionTimelineMarkerKind kind, string payload)
+    {
+        PlayerInstanceId = playerInstanceId;
+        Kind = kind;
+        Payload = payload;
+    }
+}
+
 public readonly struct PlayerActionPresentationRequestEvent : IGameEvent
 {
     public readonly int PlayerInstanceId;

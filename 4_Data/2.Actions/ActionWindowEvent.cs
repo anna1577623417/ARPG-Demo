@@ -13,6 +13,10 @@ public struct ActionWindowEvent
 
     /// <summary>依 Kind：SFX id、VFX 路径、动画事件名等。</summary>
     public string Payload;
+
+    /// <summary>窗内归一化偏移 0~1（0=窗起点）。</summary>
+    [Range(0f, 1f)]
+    public float NormalizedOffset;
 }
 
 /// <summary>窗口事件种类（可继续扩展，保持序列化兼容）。</summary>
@@ -41,10 +45,10 @@ public enum ActionWindowRuntimeEventKind : byte
 /// </summary>
 public static class ActionWindowTimelineEvents
 {
-    /// <summary>
-    /// 当归一化时间从区间外进入 <c>[NormalizedStart, NormalizedEnd]</c> 时，将窗口上配置的事件追加到 buffer。
-    /// </summary>
-    public static void AppendEventsOnWindowEnter(
+    const float Epsilon = 1e-5f;
+
+    /// <summary>穿越窗内 <see cref="ActionWindowEvent.NormalizedOffset"/> 时刻时触发（139.2）。</summary>
+    public static void AppendEventsOnCrossing(
         IReadOnlyList<ActionWindow> windows,
         float prevNormalized,
         float nextNormalized,
@@ -57,6 +61,10 @@ public static class ActionWindowTimelineEvents
 
         var a = Mathf.Clamp01(prevNormalized);
         var b = Mathf.Clamp01(nextNormalized);
+        if (b < a)
+        {
+            (a, b) = (b, a);
+        }
 
         for (var i = 0; i < windows.Count; i++)
         {
@@ -66,24 +74,36 @@ public static class ActionWindowTimelineEvents
                 continue;
             }
 
-            var s = w.NormalizedStart;
-            var e = w.NormalizedEnd;
-            if (e < s)
-            {
-                (s, e) = (e, s);
-            }
-
-            var wasInside = a >= s && a <= e + 1e-6f;
-            var nowInside = b >= s && b <= e + 1e-6f;
-            if (wasInside || !nowInside)
-            {
-                continue;
-            }
+            var s = Mathf.Min(w.NormalizedStart, w.NormalizedEnd);
+            var e = Mathf.Max(w.NormalizedStart, w.NormalizedEnd);
 
             for (var k = 0; k < w.RuntimeEvents.Count; k++)
             {
-                buffer.Add(w.RuntimeEvents[k]);
+                var ev = w.RuntimeEvents[k];
+                if (ev.Kind == ActionWindowRuntimeEventKind.None)
+                {
+                    continue;
+                }
+
+                var t = Mathf.Lerp(s, e, Mathf.Clamp01(ev.NormalizedOffset));
+                if (ActionTimelineSampler.Crossed(a, b, t))
+                {
+                    buffer.Add(ev);
+                }
             }
         }
+    }
+
+    /// <summary>
+    /// 当归一化时间从区间外进入 <c>[NormalizedStart, NormalizedEnd]</c> 时，将窗口上 offset≈0 且未配置偏移的事件追加到 buffer。
+    /// </summary>
+    [Obsolete("Use AppendEventsOnCrossing for per-offset timing.")]
+    public static void AppendEventsOnWindowEnter(
+        IReadOnlyList<ActionWindow> windows,
+        float prevNormalized,
+        float nextNormalized,
+        List<ActionWindowEvent> buffer)
+    {
+        AppendEventsOnCrossing(windows, prevNormalized, nextNormalized, buffer);
     }
 }

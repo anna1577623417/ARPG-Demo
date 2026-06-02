@@ -55,10 +55,13 @@ public sealed class SystemRoot : MonoBehaviour
         for (var i = 0; i < scenePlayerControllers.Length; i++)
         {
             var pc = scenePlayerControllers[i];
-            if (pc != null)
+            if (pc == null)
             {
-                pc.InjectMovementContext(ctx);
+                continue;
             }
+
+            pc.InjectMovementContext(ctx);
+            pc.GetComponent<Player>()?.InjectMovementContext(ctx);
         }
     }
 }

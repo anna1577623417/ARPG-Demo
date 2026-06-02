@@ -4,7 +4,7 @@ using UnityEngine;
 using UnityEngine.Serialization;
 
 /// <summary>
-/// 归一化时间轴片段：战斗过程 <b>Phase</b>（前摇/判定/后摇）、<b>打断许可</b>、<b>时间行为</b>（无敌/缓冲/Hitbox/RootMotion），
+/// 归一化时间轴片段：战斗过程 <b>Phase</b>（前摇/判定/后摇）、<b>打断许可</b>（<see cref="InterruptibleByCategories"/>）、<b>时间行为</b>（无敌/缓冲/Hitbox/RootMotion），
 /// 以及 <b>RuntimeEvents</b>（非 Tag，不进 State 掩码）。
 /// 实体「能不能做」仍由 <see cref="EntityCapabilityTag"/>。
 ///
@@ -17,7 +17,10 @@ public struct ActionWindow
 
     [Range(0f, 1f)] public float NormalizedEnd;
 
-    /// <summary>槽位掩码：第 <c>i</c> 位（0 ≤ i &lt; 64）表示 Init<c>i</c> 启用。</summary>
+    /// <summary>
+    /// 槽位掩码：仅 Phase + 时间行为写入 State 轨。
+    /// <b>打断许可</b>请用 <see cref="InterruptibleByCategories"/>；勿再勾选 AllowInterruptByDodge 等遗留位。
+    /// </summary>
     public ulong WindowSlotMask;
 
     /// <summary>本时间段内触发的事件（HitFrame / SFX / VFX）；运行时见 <see cref="ActionWindowTimelineEvents"/>。</summary>
@@ -32,6 +35,10 @@ public struct ActionWindow
 
     [Tooltip("该窗口是否允许同动作自打断（同动作重入）。")]
     public bool AllowSelfInterrupt;
+
+    [SerializeField, HideInInspector]
+    [Obsolete("137 终态：打断不看 AbilityMap；流转见 Loadout.AbilityMap + CombatFlow。")]
+    public AbilitySemantic incomingAbilityGate;
 
     [SerializeField, HideInInspector]
     [FormerlySerializedAs("Tags")]
@@ -102,6 +109,7 @@ public static class ActionWindowTimeBehaviorMask
         (ulong)StateTag.Invulnerable
       | (ulong)StateTag.ComboInput_Window
       | (ulong)StateTag.HitboxActive_Window
+      | (ulong)StateTag.HurtboxActive_Window
       | (ulong)StateTag.RootMotion_Window;
 }
 

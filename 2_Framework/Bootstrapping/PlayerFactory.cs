@@ -32,6 +32,9 @@ public sealed class PlayerFactory
             return;
         }
 
+        var player = playerRoot.GetComponent<Player>();
+        player?.InjectMovementContext(_movementContext);
+
         var controllers = playerRoot.GetComponentsInChildren<PlayerController>(true);
         for (var i = 0; i < controllers.Length; i++)
         {

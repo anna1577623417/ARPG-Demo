@@ -12,8 +12,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3c30fbadfb384604eb3acc4303290eb1, type: 3}
   m_Name: General_Armature_Roll_MotionProfile
   m_EditorClassIdentifier: 
-  SourceClip: {fileID: -1668504886765760937, guid: c334125d0dbc3a544a089e659a9370d4,
+  SourceClip: {fileID: 3031411921458128146, guid: c334125d0dbc3a544a089e659a9370d4,
     type: 3}
+  XSourceClip: {fileID: 0}
+  YSourceClip: {fileID: 0}
+  ZSourceClip: {fileID: 0}
+  XExtractSource: 0
+  YExtractSource: 0
+  ZExtractSource: 0
   AxisCurves:
     XCurve:
       serializedVersion: 2
@@ -116,8 +122,12 @@ MonoBehaviour:
       m_RotationOrder: 4
     XScale: 0
     YScale: 0
-    ZScale: 4.937353
-  YPolicy: 0
+    ZScale: 4
+  YMotion: 1
+  Gravity: 0
+  GroundConstraint: 1
+  yAxisV2Configured: 0
+  legacyYPolicy: 0
   LandingOffset: 0
   LandingCurve:
     serializedVersion: 2
@@ -144,11 +154,8 @@ MonoBehaviour:
     m_PostInfinity: 2
     m_RotationOrder: 4
   LandingDetectionRadius: 20
-  LandingSync: 0
   UseActionDuration: 1
-  AuthoringReferenceDuration: 0.8
-  AuthoringReferenceDistance: 4
-  AuthoringReferenceAnimSpeed: 1
+  TimeSync: 0
   AnimSpeedMode: 0
   SpeedOverTime:
     serializedVersion: 2
@@ -174,9 +181,9 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  ReferenceSpeed: 1.3636364
   MatchAnimationSpeed: 1
   ScaleType: 0
+  MotionSpace: 0
   BurstDurationSeconds: 1.4666667
   LegacyConstantPlanarSpeed: 1.3636364
   UsePlanarVelocityShape: 0

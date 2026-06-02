@@ -49,15 +49,17 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
              "未指派或某槽位未在 SO 中配置时回落到 ChargeRoute / ComboRoute 资产字段。")]
     [SerializeField] SemanticConfigSO semanticConfig;
 
-    [Header("Combat Flow Graph (124.1)")]
-    [SerializeField, Tooltip("装配后 SkillEntryService 优先经 Graph 解析 Space 翻滚 / 空中连段等边。")]
-    CombatGraphAsset combatFlowGraph;
-
     // ─── Debug ───
     [Header("Debug")]
     [SerializeField] bool debugInterruptFlow;
-    [Tooltip("技能 Route / HUD / Action 支柱诊断日志与 RouteHudDebugOverlay。")]
+    [Tooltip("SkillRoute 通用解析日志（Resolve/Combo 等，不含 Dodge4/Roll4）。")]
     [SerializeField] bool debugSkillRoute;
+    [Tooltip("四向站立闪避链 [SkillRoute][Dodge4]；默认关。")]
+    [SerializeField] bool debugSkillRouteDodge4;
+    [Tooltip("四向武侠翻滚链 [SkillRoute][Roll4]；默认关，调试 Wuxia Group 时开。")]
+    [SerializeField] bool debugSkillRouteRoll4;
+    [Tooltip("能力准入 [Ability] route gate / loadout map（与 Route.abilityGateRules 对应）。")]
+    [SerializeField] bool debugSkillAbility;
 
     // ─── 运行时 ───
     PlayerStateManager m_stateManager;
@@ -82,16 +84,20 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
     bool m_jumpRequestedByIntent;
 
     TurnInfo m_currentTurnInfo;
+    IGameModeMovementContext m_movementContext;
 
     // ─── 公开属性 ───
     public InputReader InputReader => inputReader;
     public PlayerStateManager States => m_stateManager;
     public SkillEntryService SkillEntries => m_skillEntries;
     public SkillEntryLoadoutSO SkillEntryLoadout => skillEntryLoadout;
-    public CombatGraphAsset CombatFlowGraph => combatFlowGraph;
+    public CombatGraphAsset CombatFlowGraph => skillEntryLoadout != null ? skillEntryLoadout.CombatFlow : null;
     public InputSemanticResolver InputSemantic => m_inputSemantic;
     public bool DebugInterruptFlow => debugInterruptFlow;
     public bool DebugSkillRoute => debugSkillRoute;
+    public bool DebugSkillRouteDodge4 => debugSkillRouteDodge4;
+    public bool DebugSkillRouteRoll4 => debugSkillRouteRoll4;
+    public bool DebugSkillAbility => debugSkillAbility;
 
     public Vector3 PlanarVelocity => m_motor != null ? m_motor.PlanarVelocity : Vector3.zero;
     public float VerticalSpeed => m_motor != null ? m_motor.VerticalSpeed : 0f;
@@ -117,6 +123,12 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
 
     public void ActivateRunLatch(float seconds) => m_runLatchEndTime = Time.time + Mathf.Max(0.01f, seconds);
     public void SetTurnInfo(in TurnInfo info) => m_currentTurnInfo = info;
+
+    internal void InjectMovementContext(IGameModeMovementContext context) => m_movementContext = context;
+
+    /// <summary>MotionProfile 局部轴 → 世界水平前向（Z 轴）；不读 MovementIntent。</summary>
+    public Vector3 ResolveMotionPlanarForward(MotionSpace space)
+        => MotionSpaceBasis.ResolvePlanarForward(this, m_movementContext, space);
 
     public float NormalizedSpeed
     {
@@ -186,7 +198,6 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
 
         m_skillEntries = new SkillEntryService(this);
         m_skillEntries.Rebuild(skillEntryLoadout);
-        m_skillEntries.AttachGraph(combatFlowGraph);
 
         // Phase B：Semantic Resolver 初始化 + 从 Loadout 拉每槽位阈值
         m_inputSemantic = new InputSemanticResolver(this);
@@ -194,9 +205,34 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
     }
 
     /// <summary>
-    /// Phase F：先读 SemanticConfigSO（玩家级独立配置），未配项再回落 ChargeRoute.TapThreshold / ComboRoute.ComboSessionResetTime / DirectionalRoute 存在性。
+    /// Phase F：先读 SemanticConfigSO（玩家级独立配置），未配项再回落 ChargeRoute / ComboRoute / PrimaryGroup 存在性。
     /// 任一槽位若两路都拿不到值，对应字段为 0（Resolver 自动跳过该语义分流）。
     /// </summary>
+    bool LoadoutHasDirectionalContext(SkillEntrySlot slot)
+    {
+        var groups = skillEntryLoadout?.ContextGroups;
+        if (groups == null)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < groups.Length; i++)
+        {
+            var g = groups[i];
+            if (g == null || !g.RequireDirectional)
+            {
+                continue;
+            }
+
+            if (g.RequiredSlot == SkillEntrySlot.Any || g.RequiredSlot == slot)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     void RefreshSemanticConfigFromLoadout()
     {
         if (m_inputSemantic == null || skillEntryLoadout?.Bindings == null) return;
@@ -217,7 +253,8 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
                 {
                     TapThreshold = entry.ChargeRoute != null ? entry.ChargeRoute.TapThreshold : 0f,
                     ComboWindow = entry.ComboRoute != null ? entry.ComboRoute.ComboSessionResetTime : 0f,
-                    EnableDirectional = entry.DirectionalRoute != null,
+                    EnableDirectional = entry.PrimaryGroup != null
+                        || LoadoutHasDirectionalContext(b.Slot),
                 };
             }
 

@@ -98,12 +98,13 @@ public class PlayerStateManager : EntityStateManager<Player>
                     Entity.ArmPendingAction(intent.Kind, firstStage.Action);
                 }
 
-                if (Entity.DebugSkillRoute)
+                if (SkillRouteDebug.IsDodge4TraceIntent(in intent))
                 {
-                    Debug.Log(
-                        $"[Arbiter] RESOLVED intent={intent.Kind} → route={resolvedRoute?.Definition?.name} " +
-                        $"kind={resolvedRoute?.Kind} firstStage={firstStage?.name} action={firstStage?.Action?.name}",
-                        this);
+                    SkillRouteDebug.LogDodge4(
+                        Entity,
+                        "Arbiter",
+                        $"RESOLVED intent={intent.Kind} semantic={intent.Semantic} axis={intent.DirectionAxis} " +
+                        $"→ route={resolvedRoute?.Definition?.name} stage={firstStage?.name}");
                 }
             }
 
@@ -111,7 +112,7 @@ public class PlayerStateManager : EntityStateManager<Player>
             if (!Current.TryConsumeGameplayIntent(Entity, in ctx, in intent))
             {
                 Entity.ClearPendingAction();
-                if (debugIntentArbitration || Entity.DebugInterruptFlow || Entity.DebugSkillRoute)
+                if (debugIntentArbitration || Entity.DebugInterruptFlow)
                 {
                     Debug.Log($"[IntentArb] BLOCK by State gate | state={Current.StateId} | intent={intent.Kind} hold={intent.HoldDurationSeconds:F3} (intent stays queued)", this);
                 }
@@ -125,9 +126,12 @@ public class PlayerStateManager : EntityStateManager<Player>
                 Entity.SkillEntries.NotifyRouteEntered(resolvedRoute, slot);
             }
 
-            if (Entity.DebugSkillRoute && resolvedRoute == null && intent.Kind != GameplayIntentKind.Jump)
+            if (SkillRouteDebug.IsDodge4TraceIntent(in intent) && resolvedRoute == null)
             {
-                SkillRouteDebug.Log(Entity, SkillRouteDebug.CatIntent, $"CONSUMED (no route) intent={intent.Kind}");
+                SkillRouteDebug.LogDodge4Warn(
+                    Entity,
+                    "Arbiter",
+                    $"NO_ROUTE intent={intent.Kind} semantic={intent.Semantic} axis={intent.DirectionAxis}");
             }
 
             if (debugIntentArbitration || Entity.DebugInterruptFlow)

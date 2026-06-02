@@ -62,7 +62,14 @@ public static class SkillParadigmDemoGenerator
 
         var routeDash = CreateNormal($"{Root}/Routes/Shift_DashForward_Route.asset", "Dash Fwd", actDash);
         var routeDodge = CreateNormal($"{Root}/Routes/Shift_Dodge_Route.asset", "Dodge", actDodge);
-        var dirSet = CreateDirectional($"{Root}/Routes/Shift_Directional.asset", routeDash, routeDodge);
+        var shiftGroup = SkillGroupFourDirEditorUtil.CreateOrUpdateFourDirGroup(
+            $"{Root}/Routes/Group_Shift_Directional.asset",
+            "Shift Directional",
+            1f,
+            routeDash,
+            routeDodge,
+            routeDodge,
+            routeDodge);
 
         var routeLm = CreateNormal($"{Root}/Routes/LM_Normal_Route.asset", "LM", actLm);
         var routeDer = CreateDerivative($"{Root}/Routes/RM_Derivative_Route.asset", routeLm, actRm);
@@ -70,7 +77,7 @@ public static class SkillParadigmDemoGenerator
         var entryQLeeSin = BindEntry($"{Root}/Entries/Entry_Q_LeeSin.asset", SkillEntrySlot.Q, routeLeeSin);
         var entryQKayn = BindEntry($"{Root}/Entries/Entry_Q_Kayn.asset", SkillEntrySlot.Q, routeKayn);
         var entryQLux = BindEntry($"{Root}/Entries/Entry_Q_Lux.asset", SkillEntrySlot.Q, routeLux);
-        var entryShift = BindEntryDirectional($"{Root}/Entries/Entry_Shift.asset", dirSet, routeDodge);
+        var entryShift = BindEntryShiftWithGroup($"{Root}/Entries/Entry_Shift.asset", shiftGroup, routeDodge);
         var entryLm = BindEntryNormal($"{Root}/Entries/Entry_LM.asset", SkillEntrySlot.LM, routeLm);
         var entryRm = BindEntryDerivative($"{Root}/Entries/Entry_RM.asset", routeDer);
 
@@ -227,21 +234,20 @@ public static class SkillParadigmDemoGenerator
         return r;
     }
 
-    static DirectionalRouteSet CreateDirectional(string path, SkillRouteDefinition fwd, SkillRouteDefinition fallback)
+    static SkillEntryDefinition BindEntryShiftWithGroup(string path, SkillGroupDefinition group, NormalRouteDefinition n)
     {
-        var r = AssetDatabase.LoadAssetAtPath<DirectionalRouteSet>(path);
-        if (r == null)
+        var e = AssetDatabase.LoadAssetAtPath<SkillEntryDefinition>(path);
+        if (e == null)
         {
-            r = ScriptableObject.CreateInstance<DirectionalRouteSet>();
-            AssetDatabase.CreateAsset(r, path);
+            e = ScriptableObject.CreateInstance<SkillEntryDefinition>();
+            AssetDatabase.CreateAsset(e, path);
         }
-        var so = new SerializedObject(r);
-        so.FindProperty("forward").objectReferenceValue = fwd;
-        so.FindProperty("backward").objectReferenceValue = fallback;
-        so.FindProperty("left").objectReferenceValue = fallback;
-        so.FindProperty("right").objectReferenceValue = fallback;
+
+        var so = new SerializedObject(e);
+        so.FindProperty("slot").enumValueIndex = (int)SkillEntrySlot.Shift;
         so.ApplyModifiedPropertiesWithoutUndo();
-        return r;
+        SkillGroupFourDirEditorUtil.BindEntryPrimaryGroup(e, group, n);
+        return e;
     }
 
     static DerivativeRouteDefinition CreateDerivative(string path, SkillRouteDefinition parent, ActionDataSO action)
@@ -264,13 +270,10 @@ public static class SkillParadigmDemoGenerator
     }
 
     static SkillEntryDefinition BindEntry(string path, SkillEntrySlot slot, MultiStageRouteDefinition ms) =>
-        BindEntryCore(path, slot, ms, null, null, null);
+        BindEntryCore(path, slot, ms, null);
 
     static SkillEntryDefinition BindEntryNormal(string path, SkillEntrySlot slot, NormalRouteDefinition n) =>
-        BindEntryCore(path, slot, null, n, null, null);
-
-    static SkillEntryDefinition BindEntryDirectional(string path, DirectionalRouteSet d, NormalRouteDefinition n) =>
-        BindEntryCore(path, SkillEntrySlot.Shift, null, n, d, null);
+        BindEntryCore(path, slot, null, n);
 
     static SkillEntryDefinition BindEntryDerivative(string path, DerivativeRouteDefinition[] ders)
     {
@@ -295,8 +298,11 @@ public static class SkillParadigmDemoGenerator
     static SkillEntryDefinition BindEntryDerivative(string path, DerivativeRouteDefinition d) =>
         BindEntryDerivative(path, new[] { d });
 
-    static SkillEntryDefinition BindEntryCore(string path, SkillEntrySlot slot,
-        MultiStageRouteDefinition ms, NormalRouteDefinition n, DirectionalRouteSet d, DerivativeRouteDefinition[] der)
+    static SkillEntryDefinition BindEntryCore(
+        string path,
+        SkillEntrySlot slot,
+        MultiStageRouteDefinition ms,
+        NormalRouteDefinition n)
     {
         var e = AssetDatabase.LoadAssetAtPath<SkillEntryDefinition>(path);
         if (e == null)
@@ -304,11 +310,11 @@ public static class SkillParadigmDemoGenerator
             e = ScriptableObject.CreateInstance<SkillEntryDefinition>();
             AssetDatabase.CreateAsset(e, path);
         }
+
         var so = new SerializedObject(e);
         so.FindProperty("slot").enumValueIndex = (int)slot;
         so.FindProperty("multiStageRoute").objectReferenceValue = ms;
         so.FindProperty("normalRoute").objectReferenceValue = n;
-        so.FindProperty("directionalRoute").objectReferenceValue = d;
         so.ApplyModifiedPropertiesWithoutUndo();
         return e;
     }

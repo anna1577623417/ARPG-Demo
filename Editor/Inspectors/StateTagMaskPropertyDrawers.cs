@@ -44,8 +44,14 @@ internal enum TagDrawerMode
     /// <summary>Locomotion / Airborne 连续状态：两行掩码（与 ActionWindow 时间语义列一致，不含 Phase）。</summary>
     WindowTimeline,
 
-    /// <summary>ActionDataSO 切片：打断 + 战斗 Phase + 时间行为（Hitbox/RootMotion 等）。</summary>
+    /// <summary>已废弃：打断改由 ActionWindow.InterruptibleByCategories；保留枚举避免旧序列化引用报错。</summary>
     ActionWindow,
+
+    /// <summary>ActionWindow 时间轴：仅 combat_phase + time_WindowBehavior（不含 dodge_Interrupt 等旧位）。</summary>
+    ActionWindowTimelineOnly,
+
+    /// <summary>属性栏紧凑：两行下拉，无顶栏摘要。</summary>
+    ActionWindowCompact,
 }
 
 internal readonly struct TagEntry
@@ -106,6 +112,7 @@ internal static class TagCatalog
             if (e.Tag == StateTag.Invulnerable
                 || e.Tag == StateTag.ComboInput_Window
                 || e.Tag == StateTag.HitboxActive_Window
+                || e.Tag == StateTag.HurtboxActive_Window
                 || e.Tag == StateTag.RootMotion_Window)
             {
                 ActionWindowTimeBehaviorEntries.Add(e);
@@ -177,6 +184,8 @@ internal static class TagCatalog
                 return "stunned_Phase";
             case StateTag.HitboxActive_Window:
                 return "hitbox_active_Window";
+            case StateTag.HurtboxActive_Window:
+                return "hurtbox_active_Window";
             case StateTag.RootMotion_Window:
                 return "root_motion_Window";
             case StateTag.CanJump:
@@ -312,11 +321,42 @@ internal static class GroupedTagDrawer
 
         var y = rect.y + lineH + space;
 
+        if (drawerMode == TagDrawerMode.ActionWindowTimelineOnly)
+        {
+            y = DrawTagMaskRow(rect, y, lineH, space, ulongProp, stateTagMask, isSlotMode,
+                "combat_phase",
+                "startup_Phase / active_Phase / recovery_Phase — animation time stage.",
+                TagCatalog.ActionWindowPhaseEntries);
+            DrawTagMaskRow(rect, y, lineH, space, ulongProp, stateTagMask, isSlotMode,
+                "time_WindowBehavior",
+                "invulnerable, hurtbox_active_Window, combo_input_Window, hitbox_active_Window, root_motion_Window.",
+                TagCatalog.ActionWindowTimeBehaviorEntries);
+            EditorGUI.EndProperty();
+            return;
+        }
+
+        if (drawerMode == TagDrawerMode.ActionWindowCompact)
+        {
+            y = rect.y;
+            y = DrawTagMaskRow(rect, y, lineH, space, ulongProp, stateTagMask, isSlotMode,
+                "阶段",
+                "前摇 / 判定 / 后摇",
+                TagCatalog.ActionWindowPhaseEntries,
+                compactPrefix: true);
+            DrawTagMaskRow(rect, y, lineH, space, ulongProp, stateTagMask, isSlotMode,
+                "战斗行为",
+                "无敌 / Hitbox / Hurtbox / Combo / RootMotion",
+                TagCatalog.ActionWindowTimeBehaviorEntries,
+                compactPrefix: true);
+            EditorGUI.EndProperty();
+            return;
+        }
+
         if (drawerMode == TagDrawerMode.ActionWindow)
         {
             y = DrawTagMaskRow(rect, y, lineH, space, ulongProp, stateTagMask, isSlotMode,
-                "interruption_mechanism",
-                "AllowInterrupt* only. Not Can* / Ability.",
+                "interruption_mechanism (legacy)",
+                "已废弃：打断请用本窗体上方 Interruptible By Categories。此处仅影响 State 轨显示，不参与 ActionInterruptResolver。",
                 TagCatalog.ByCategory[StateTagDrawerCategory.Interrupt]);
             y = DrawTagMaskRow(rect, y, lineH, space, ulongProp, stateTagMask, isSlotMode,
                 "combat_phase",
@@ -324,7 +364,7 @@ internal static class GroupedTagDrawer
                 TagCatalog.ActionWindowPhaseEntries);
             DrawTagMaskRow(rect, y, lineH, space, ulongProp, stateTagMask, isSlotMode,
                 "time_WindowBehavior",
-                "invulnerable, combo_input_Window, hitbox_active_Window, root_motion_Window.",
+                "invulnerable, hurtbox_active_Window, combo_input_Window, hitbox_active_Window, root_motion_Window.",
                 TagCatalog.ActionWindowTimeBehaviorEntries);
             EditorGUI.EndProperty();
             return;
@@ -363,11 +403,14 @@ internal static class GroupedTagDrawer
     }
 
     static float DrawTagMaskRow(Rect rect, float y, float lineH, float space, SerializedProperty ulongProp,
-        ulong stateTagMask, bool isSlotMode, string prefix, string rowTipOrNull, List<TagEntry> entries)
+        ulong stateTagMask, bool isSlotMode, string prefix, string rowTipOrNull, List<TagEntry> entries,
+        bool compactPrefix = false)
     {
         var rowRect = new Rect(rect.x, y, rect.width, lineH);
         var countSel = CountSelected(entries, stateTagMask);
-        var prefixW = Mathf.Min(168f, rowRect.width * 0.38f);
+        var prefixW = compactPrefix
+            ? Mathf.Min(72f, rowRect.width * 0.28f)
+            : Mathf.Min(168f, rowRect.width * 0.38f);
         var prefixRect = new Rect(rowRect.x, rowRect.y, prefixW, lineH);
         var dropRect = new Rect(rowRect.x + prefixW + 4f, rowRect.y,
             Mathf.Max(100f, rowRect.width - prefixW - 4f), lineH);
@@ -406,6 +449,16 @@ internal static class GroupedTagDrawer
         if (drawerMode == TagDrawerMode.ActionWindow)
         {
             return h + (lineH + space) * 3f;
+        }
+
+        if (drawerMode == TagDrawerMode.ActionWindowTimelineOnly)
+        {
+            return h + (lineH + space) * 2f;
+        }
+
+        if (drawerMode == TagDrawerMode.ActionWindowCompact)
+        {
+            return (lineH + space) * 2f;
         }
 
         if (drawerMode == TagDrawerMode.WindowTimeline)
@@ -584,12 +637,22 @@ internal static class ActionWindowSlotMaskDrawerUtility
 {
     internal static float GetMaskHeight(SerializedProperty prop)
     {
-        return GroupedTagDrawer.GetHeight(isSlotMode: true, TagDrawerMode.ActionWindow);
+        return GroupedTagDrawer.GetHeight(isSlotMode: true, TagDrawerMode.ActionWindowTimelineOnly);
+    }
+
+    internal static float GetCompactMaskHeight(SerializedProperty prop)
+    {
+        return GroupedTagDrawer.GetHeight(isSlotMode: true, TagDrawerMode.ActionWindowCompact);
     }
 
     internal static void DrawSlotMaskField(Rect rect, SerializedProperty prop, GUIContent label)
     {
-        GroupedTagDrawer.Draw(rect, prop, label, isSlotMode: true, TagDrawerMode.ActionWindow);
+        GroupedTagDrawer.Draw(rect, prop, label, isSlotMode: true, TagDrawerMode.ActionWindowTimelineOnly);
+    }
+
+    internal static void DrawCompactSlotMaskField(Rect rect, SerializedProperty prop, GUIContent label)
+    {
+        GroupedTagDrawer.Draw(rect, prop, label, isSlotMode: true, TagDrawerMode.ActionWindowCompact);
     }
 
     static ulong SlotMaskToStateTagMask(ulong slotMask)
@@ -600,64 +663,6 @@ internal static class ActionWindowSlotMaskDrawerUtility
         for (var i = 0; i < ActionWindowTagSlots.SlotCount; i++)
             if ((slotMask & (1UL << i)) != 0UL) result |= map[i];
         return result;
-    }
-}
-
-// ───────────────────────────────────────────────────────────────────────────────
-//   ActionWindow 整体绘制：Start/End 滑条 + 分组标签
-// ───────────────────────────────────────────────────────────────────────────────
-[CustomPropertyDrawer(typeof(ActionWindow))]
-internal sealed class ActionWindowDrawer : PropertyDrawer
-{
-    public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
-    {
-        EditorGUI.BeginProperty(position, label, property);
-
-        var line = EditorGUIUtility.singleLineHeight;
-        var space = EditorGUIUtility.standardVerticalSpacing;
-        var y = position.y;
-
-        var pStart = property.FindPropertyRelative(nameof(ActionWindow.NormalizedStart));
-        var pEnd = property.FindPropertyRelative(nameof(ActionWindow.NormalizedEnd));
-        var pSlots = property.FindPropertyRelative(nameof(ActionWindow.WindowSlotMask));
-
-        EditorGUI.PropertyField(new Rect(position.x, y, position.width, line), pStart);
-        y += line + space;
-        EditorGUI.PropertyField(new Rect(position.x, y, position.width, line), pEnd);
-        y += line + space;
-
-        var tagH = ActionWindowSlotMaskDrawerUtility.GetMaskHeight(pSlots);
-        ActionWindowSlotMaskDrawerUtility.DrawSlotMaskField(
-            new Rect(position.x, y, position.width, tagH),
-            pSlots,
-            new GUIContent("timeline_StateTags", "Interrupt + combat_phase + time_WindowBehavior. Not GameplayTag."));
-
-        y += tagH + space;
-        var pEvents = property.FindPropertyRelative(nameof(ActionWindow.RuntimeEvents));
-        if (pEvents != null)
-        {
-            var evH = EditorGUI.GetPropertyHeight(pEvents, new GUIContent("timeline_RuntimeEvents"), true);
-            EditorGUI.PropertyField(
-                new Rect(position.x, y, position.width, evH),
-                pEvents,
-                new GUIContent("timeline_RuntimeEvents", "HitFrame / PlaySfx / SpawnVfx — not Tags; see ActionWindowTimelineEvents."),
-                true);
-        }
-
-        EditorGUI.EndProperty();
-    }
-
-    public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
-    {
-        var line = EditorGUIUtility.singleLineHeight;
-        var space = EditorGUIUtility.standardVerticalSpacing;
-        var pSlots = property.FindPropertyRelative(nameof(ActionWindow.WindowSlotMask));
-        var pEvents = property.FindPropertyRelative(nameof(ActionWindow.RuntimeEvents));
-        var tagH = ActionWindowSlotMaskDrawerUtility.GetMaskHeight(pSlots);
-        var evH = pEvents != null
-            ? EditorGUI.GetPropertyHeight(pEvents, new GUIContent("timeline_RuntimeEvents"), true)
-            : 0f;
-        return line + space + line + space + tagH + (pEvents != null ? space + evH : 0f);
     }
 }
 

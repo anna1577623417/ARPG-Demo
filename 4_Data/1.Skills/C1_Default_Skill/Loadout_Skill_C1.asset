@@ -25,6 +25,13 @@ MonoBehaviour:
   - slot: 6
     entry: {fileID: 11400000, guid: 3c96d4742a31b634684424f5614638fd, type: 2}
     hudKeyLabel: Shift
+  - slot: 3
+    entry: {fileID: 11400000, guid: a3549dfe9ad160841a3dda94510b8dac, type: 2}
+    hudKeyLabel: RM
   - slot: 7
     entry: {fileID: 11400000, guid: b6c58b50e7a4b2a4ebdcaa243d00e936, type: 2}
     hudKeyLabel: Space
+  combatFlow: {fileID: 0}
+  contextGroups:
+  - {fileID: 11400000, guid: 6b31ae08d3a3e2c41878dd6104eb0cbe, type: 2}
+  abilityMap: {fileID: 11400000, guid: a2b3c4d5e6f7890123456789abcdef02, type: 2}

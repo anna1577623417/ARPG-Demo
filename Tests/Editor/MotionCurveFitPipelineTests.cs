@@ -36,6 +36,84 @@ public sealed class MotionCurveFitPipelineTests
     }
 
     [Test]
+    public void CatmullRom_ReducesKeysAndHasQuality()
+    {
+        const int n = 40;
+        var t = new float[n];
+        var v = new float[n];
+        for (var i = 0; i < n; i++)
+        {
+            t[i] = (float)i / (n - 1);
+            v[i] = Mathf.Sin(t[i] * Mathf.PI);
+        }
+
+        var settings = new MotionCurveFitPipeline.Settings
+        {
+            FitMode = MotionCurveFitMode.CatmullRom,
+            FilterMode = MotionCurveFilterMode.MovingAverage,
+            FilterWindow = 5,
+            ErrorTolerance = 0.02f,
+        };
+        var curve = MotionCurveFitPipeline.BuildCurve(t, v, in settings, out var result);
+
+        Assert.Less(result.OutputKeyCount, result.RawSampleCount);
+        Assert.GreaterOrEqual(result.ApproximationQuality, 0.85f);
+        Assert.GreaterOrEqual(curve.length, 2);
+    }
+
+    [Test]
+    public void Hermite_ReducesKeysAndHasQuality()
+    {
+        const int n = 40;
+        var t = new float[n];
+        var v = new float[n];
+        for (var i = 0; i < n; i++)
+        {
+            t[i] = (float)i / (n - 1);
+            v[i] = Mathf.Sin(t[i] * Mathf.PI);
+        }
+
+        var settings = new MotionCurveFitPipeline.Settings
+        {
+            FitMode = MotionCurveFitMode.Hermite,
+            FilterMode = MotionCurveFilterMode.MovingAverage,
+            FilterWindow = 5,
+            ErrorTolerance = 0.02f,
+        };
+        var curve = MotionCurveFitPipeline.BuildCurve(t, v, in settings, out var result);
+
+        Assert.Less(result.OutputKeyCount, result.RawSampleCount);
+        Assert.GreaterOrEqual(result.ApproximationQuality, 0.8f);
+        Assert.GreaterOrEqual(curve.length, 2);
+    }
+
+    [Test]
+    public void Bezier_ReducesKeysAndHasQuality()
+    {
+        const int n = 40;
+        var t = new float[n];
+        var v = new float[n];
+        for (var i = 0; i < n; i++)
+        {
+            t[i] = (float)i / (n - 1);
+            v[i] = Mathf.Sin(t[i] * Mathf.PI);
+        }
+
+        var settings = new MotionCurveFitPipeline.Settings
+        {
+            FitMode = MotionCurveFitMode.Bezier,
+            FilterMode = MotionCurveFilterMode.MovingAverage,
+            FilterWindow = 5,
+            ErrorTolerance = 0.02f,
+        };
+        var curve = MotionCurveFitPipeline.BuildCurve(t, v, in settings, out var result);
+
+        Assert.Less(result.OutputKeyCount, result.RawSampleCount);
+        Assert.GreaterOrEqual(result.ApproximationQuality, 0.8f);
+        Assert.GreaterOrEqual(curve.length, 2);
+    }
+
+    [Test]
     public void SavitzkyGolay_ReducesKeyCountWithSmooth()
     {
         const int n = 40;

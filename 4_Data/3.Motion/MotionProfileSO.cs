@@ -12,6 +12,24 @@ public class MotionProfileSO : ScriptableObject
     [Tooltip("用于离线采样位移的参考 AnimationClip；运行时忽略。")]
     public AnimationClip SourceClip;
 
+    [Tooltip("X 轴专用 Clip；空则回退 SourceClip（143.1 P4 按轴不同 Clip）。")]
+    public AnimationClip XSourceClip;
+
+    [Tooltip("Y 轴专用 Clip；空则回退 SourceClip。")]
+    public AnimationClip YSourceClip;
+
+    [Tooltip("Z 轴专用 Clip；空则回退 SourceClip。")]
+    public AnimationClip ZSourceClip;
+
+    [Tooltip("X 轴提取来源；Manual=提取时保留现有曲线。")]
+    public MotionAxisExtractSource XExtractSource = MotionAxisExtractSource.Auto;
+
+    [Tooltip("Y 轴提取来源；Manual=提取时保留现有曲线。")]
+    public MotionAxisExtractSource YExtractSource = MotionAxisExtractSource.Auto;
+
+    [Tooltip("Z 轴提取来源；Manual=提取时保留现有曲线。")]
+    public MotionAxisExtractSource ZExtractSource = MotionAxisExtractSource.Auto;
+
     [Header("XYZ 局部空间位置曲线")]
     [Tooltip("三轴位置曲线：Evaluate(t)×Scale=米。X=左右，Y=上下，Z=前后（负=后撤）。")]
     public MotionAxisCurves AxisCurves;
@@ -43,47 +61,29 @@ public class MotionProfileSO : ScriptableObject
     [Tooltip("GroundTargeted：向下 SphereCast 最大距离（米）。")]
     public float LandingDetectionRadius = 20f;
 
-    [Header("Time Authority")]
-    [Tooltip("保留序列化兼容。Runtime 恒以 Action.LogicDuration 为 Motion 时钟。")]
-    public bool UseActionDuration = true;
-
+    [Header("Animation Speed / 局部节奏")]
     [Tooltip(
-        "Motion 与 Clip 墙钟对齐（翻滚/冲刺/终结技通用）：\n" +
-        "  None — Logic Duration + Action.AnimSpeed 各走各的。\n" +
-        "  MatchMotion — 保持 Logic Duration，动画倍率 = clipWall/logic。\n" +
-        "  MatchAnimation — 保持 Clip 墙钟，拉伸 Logic/Motion 至 clip.length/AnimSpeed。\n" +
-        "需 Action.MainClip。")]
-    [FormerlySerializedAs("LandingSync")]
-    public MotionTimeSyncMode TimeSync = MotionTimeSyncMode.None;
-
-    [Header("Authoring Reference (Editor / 调试)")]
-    [Tooltip("参考 Logic Duration（秒）；仅展示/Generate Reference Speed，Runtime 不读。")]
-    public float Duration_AuthoringReference = 0.8f;
-
-    [Tooltip("参考平面位移距离（米）；与 AuthoringReferenceDuration 算平均速率。")]
-    public float Distance_AuthoringReference = 4f;
-
-    [Tooltip("由工具写入的参考 AnimSpeed；Runtime 不读。")]
-    public float AuthoringReferenceAnimSpeed = 1f;
-
-    [Header("Animation Speed")]
-    [Tooltip(
-        "动画速率合成模式：\n" +
-        "  Constant / Curve / StrideMatch — 与 ActionData.AnimSpeed 相乘。")]
+        "局部节奏倍率（与 Action.AnimSpeed 相乘）：\n" +
+        "  Constant — 恒 1；\n" +
+        "  Curve — SpeedOverTime(motionT)，控制段内先慢后快等节奏。")]
     public AnimSpeedMode AnimSpeedMode = AnimSpeedMode.Constant;
 
-    [Tooltip("AnimSpeedMode = Curve：归一化时间 t→速率倍率。")]
+    [Tooltip("AnimSpeedMode = Curve：归一化 Motion 时间 t→局部速率倍率。Clip 墙钟对齐见 Action Time Authority。")]
     public AnimationCurve SpeedOverTime = AnimationCurve.Constant(0f, 1f, 1f);
 
-    [Tooltip("AnimSpeedMode = StrideMatch：参考脚步速度（m/s）。")]
-    public float ReferenceSpeed = 3.5f;
-
-    [Tooltip("v4.5 遗留。请用 Time Authority → Time Sync 对齐动画。")]
-    [System.Obsolete("爆发段与动画对齐已迁至 ActionData + MotionProfile.TimeSync；勿再使用。")]
-    public bool MatchAnimationSpeed = true;
-
-    [Header("Stat Scaling")]
+    [Header("Stat Scaling (displacement only)")]
+    [Tooltip("仅缩放位移幅度（AxisCurves）。逻辑时长属性缩放见 ActionData.DurationStatScaling。")]
     public MotionScaleType ScaleType = MotionScaleType.None;
+
+    [Header("Motion Space")]
+    [FormerlySerializedAs("DisplacementFrame")]
+    [Tooltip(
+        "局部 XYZ 映射到世界的参考空间（与 MovementIntent / 转身解耦）。\n" +
+        "· CharacterForward — 角色面朝；冲锋/前刺/剑气冲刺默认。\n" +
+        "· CameraForward — 镜头水平前向；四向闪避等。\n" +
+        "· LockTarget — 锁敌朝向（未接入时回落角色前）。\n" +
+        "· WorldSpace — 世界 +Z 为曲线 Z 轴。")]
+    public MotionSpace MotionSpace = MotionSpace.CharacterForward;
 
     [Header("Burst authoring (obsolete)")]
     [Tooltip("已过时：时长见 ActionData.Duration；离散闪现见 ActionData.TeleportTriggers。")]
@@ -111,16 +111,46 @@ public class MotionProfileSO : ScriptableObject
     /// <summary>是否已配置三轴曲线（运行时唯一位移源）。</summary>
     public bool UsesAxisCurves => AxisCurves.HasAnyCurve;
 
+    /// <summary>是否配置了任一轴的独立 SourceClip。</summary>
+    public bool UsesPerAxisSourceClips =>
+        XSourceClip != null || YSourceClip != null || ZSourceClip != null;
+
+    /// <summary>解析某轴用于离线提取的 Clip（0=X,1=Y,2=Z）。</summary>
+    public AnimationClip GetAxisSourceClip(int axisIndex) => axisIndex switch
+    {
+        0 => XSourceClip != null ? XSourceClip : SourceClip,
+        1 => YSourceClip != null ? YSourceClip : SourceClip,
+        2 => ZSourceClip != null ? ZSourceClip : SourceClip,
+        _ => SourceClip,
+    };
+
     public bool UsesGroundTargetedLanding => GetYAxisConfig().YMotion == YMotionMode.GroundTargeted;
 
 #if UNITY_EDITOR
     public void SetYAxisV2Configured(bool configured) => yAxisV2Configured = configured;
 #endif
 
-    public float AuthoringAverageSpeed =>
-        Duration_AuthoringReference > 0.001f
-            ? Distance_AuthoringReference / Duration_AuthoringReference
-            : 0f;
+    /// <summary>主轴在 t=0→1 的位移量（米），由 AxisCurves 采样。</summary>
+    public float MeasurePrincipalAxisDisplacementMeters(MotionPrincipalAxis axis)
+    {
+        if (!UsesAxisCurves)
+        {
+            return 0f;
+        }
+
+        var p0 = AxisCurves.SampleLocalPosition(0f);
+        var p1 = AxisCurves.SampleLocalPosition(1f);
+        var delta = p1 - p0;
+
+        return axis switch
+        {
+            MotionPrincipalAxis.X => Mathf.Abs(delta.x),
+            MotionPrincipalAxis.Y => Mathf.Abs(delta.y),
+            MotionPrincipalAxis.Z => Mathf.Abs(delta.z),
+            MotionPrincipalAxis.PlanarXZ => new Vector2(delta.x, delta.z).magnitude,
+            _ => Mathf.Abs(delta.z),
+        };
+    }
 
     public AnimationCurve GetLandingCurveOrDefault()
     {
@@ -152,9 +182,12 @@ public class MotionProfileSO : ScriptableObject
 #pragma warning restore 0618
     }
 
+    /// <summary>Curve 模式下按归一化 Motion 时间采样局部节奏倍率。</summary>
     public float SampleAnimSpeed(float t)
     {
-        if (SpeedOverTime == null || SpeedOverTime.length == 0)
+        if (AnimSpeedMode != AnimSpeedMode.Curve
+            || SpeedOverTime == null
+            || SpeedOverTime.length == 0)
         {
             return 1f;
         }
@@ -190,4 +223,13 @@ public class MotionProfileSO : ScriptableObject
         AxisCurves.ZCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
         AxisCurves.ZScale = Mathf.Max(0f, distanceMeters);
     }
+}
+
+/// <summary>Motion 局部轴映射到世界的参考空间（136.3+）。</summary>
+public enum MotionSpace : byte
+{
+    CharacterForward = 0,
+    CameraForward = 1,
+    LockTarget = 2,
+    WorldSpace = 3,
 }

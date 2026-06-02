@@ -20,18 +20,14 @@ public sealed class PlayerActionState : PlayerState
 
     MotionExecutor m_motionExecutor;
     PlayerMotorAdapter m_motorAdapter;
+    PlayerMotionStatsProvider m_statsProvider;
     bool m_useMotionProfile;
     Vector3 m_burstFaceDir;
-    float m_nextHeartbeatLogTime;
-
+    readonly ActionTimelinePlaybackState m_timelineState = new ActionTimelinePlaybackState();
     protected override void OnEnter(Player player)
     {
         if (!player.TryTakePendingAction(out m_kind, out m_action) || m_action == null)
         {
-            if (player.DebugSkillRoute)
-            {
-                Debug.LogWarning($"[ActionState] OnEnter ABORT: PendingAction=null → 退回 Locomotion", player);
-            }
             // 无 PendingAction：立即退回 Locomotion
             player.States.Change<PlayerLocomotionState>();
             return;
@@ -40,23 +36,11 @@ public sealed class PlayerActionState : PlayerState
         m_elapsed = 0f;
         m_prevNormalizedTime = 0f;
         m_lastHoldSeconds = 0f;
-        m_baseDuration = MotionDurationResolver.ResolveWithTimeSync(m_action).MotionDurationSeconds;
-        m_useMotionProfile = m_action.MotionProfile != null;
-        m_burstFaceDir = player.GetMovementDirectionOrForward();
-        m_nextHeartbeatLogTime = 0f;
-
-        if (player.DebugSkillRoute)
-        {
-            var activeRoute = player.SkillEntries?.ActiveRoute;
-            Debug.Log(
-                $"[ActionState] OnEnter | kind={m_kind} action={m_action.name} " +
-                $"baseDuration={m_baseDuration:F3}s windows={m_action.Windows?.Count ?? 0} " +
-                $"useMotion={m_useMotionProfile} activeRoute={activeRoute?.Definition?.name ?? "<null>"} " +
-                $"routeKind={activeRoute?.Kind} isActive={activeRoute?.IsActive}",
-                player);
-        }
-
+        m_timelineState.Reset();
         EnsureMotionPlumbing(player);
+        m_baseDuration = MotionDurationResolver.Resolve(m_action, m_statsProvider);
+        m_useMotionProfile = m_action.MotionProfile != null;
+        m_burstFaceDir = ResolveMotionFacingDirection(player, m_action.MotionProfile);
 
         // 标签：进入 Action — 写 State 轨
         player.Tags.Add(TagCategory.State, (ulong)StateTag.PhaseStartup);
@@ -70,15 +54,14 @@ public sealed class PlayerActionState : PlayerState
                 player.SuspendGravity();
             }
 
-            var timeSync = MotionDurationResolver.ResolveWithTimeSync(m_action);
-            var clipWall = MotionDurationResolver.ResolveClipWallClockSeconds(m_action);
+            var motionDuration = MotionDurationResolver.Resolve(m_action, m_statsProvider);
+            var animSpeed = Mathf.Max(0.01f, m_action.AnimSpeed);
             m_motionExecutor.Begin(
                 m_action.MotionProfile,
-                timeSync.MotionDurationSeconds,
+                motionDuration,
                 m_burstFaceDir,
                 player.transform.position,
-                baseAnimSpeed: Mathf.Max(0.01f, m_action.AnimSpeed * timeSync.AnimSpeedMultiplier),
-                clipWallClockSeconds: clipWall);
+                baseAnimSpeed: animSpeed);
         }
 
         player.BeginAttackWithManualCompletion();
@@ -93,9 +76,11 @@ public sealed class PlayerActionState : PlayerState
         m_action = action;
         m_elapsed = 0f;
         m_prevNormalizedTime = 0f;
-        m_baseDuration = MotionDurationResolver.ResolveWithTimeSync(action).MotionDurationSeconds;
+        m_timelineState.Reset();
+        EnsureMotionPlumbing(player);
+        m_baseDuration = MotionDurationResolver.Resolve(action, m_statsProvider);
         m_useMotionProfile = action.MotionProfile != null;
-        m_burstFaceDir = player.GetMovementDirectionOrForward();
+        m_burstFaceDir = ResolveMotionFacingDirection(player, action.MotionProfile);
 
         if (m_useMotionProfile && m_motionExecutor != null)
         {
@@ -105,15 +90,14 @@ public sealed class PlayerActionState : PlayerState
                 player.SuspendGravity();
             }
 
-            var timeSync = MotionDurationResolver.ResolveWithTimeSync(action);
-            var clipWall = MotionDurationResolver.ResolveClipWallClockSeconds(action);
+            var motionDuration = MotionDurationResolver.Resolve(action, m_statsProvider);
+            var animSpeed = Mathf.Max(0.01f, action.AnimSpeed);
             m_motionExecutor.Begin(
                 action.MotionProfile,
-                timeSync.MotionDurationSeconds,
+                motionDuration,
                 m_burstFaceDir,
                 player.transform.position,
-                baseAnimSpeed: Mathf.Max(0.01f, action.AnimSpeed * timeSync.AnimSpeedMultiplier),
-                clipWallClockSeconds: clipWall);
+                baseAnimSpeed: animSpeed);
         }
 
         player.RequestActionPresentation(m_kind, action);
@@ -134,11 +118,20 @@ public sealed class PlayerActionState : PlayerState
 
         var nt = m_baseDuration > 0.0001f ? Mathf.Clamp01(m_elapsed / m_baseDuration) : 1f;
 
-        // Action 内派发 ActionWindow 事件（HitFrame / 标签切片）
-        if (m_action != null && m_action.Windows != null)
+        if (m_action != null)
         {
-            // 走 ActionData 内部 EvaluatePhaseTags 写 Phase 位
-            m_action.EvaluatePhaseTags(nt, ref player.GameplayTags);
+            if (m_action.Windows != null)
+            {
+                m_action.EvaluatePhaseTags(nt, ref player.GameplayTags);
+            }
+
+            ActionTimelineRuntime.Tick(
+                player,
+                m_action,
+                m_prevNormalizedTime,
+                nt,
+                m_burstFaceDir,
+                m_timelineState);
         }
 
         // 推进 SkillEntries.ActiveRoute（Stage Transition / Charge 状态机等）
@@ -170,50 +163,14 @@ public sealed class PlayerActionState : PlayerState
         var routeEnded = route == null || !route.IsActive;
         var actionEnded = nt >= 0.9999f;
         var stageCompleted = route?.Stage?.Completed ?? false;
-        SkillRouteDebug.TryLogActionStuck(
-            player,
-            nt,
-            route != null && route.IsActive,
-            stageCompleted,
-            route?.Stage?.DurationSeconds ?? 0f);
-
-        // 心跳日志：每 0.5s 一次，便于看清"卡死时"的真实状态。
-        if (player.DebugSkillRoute && Time.time >= m_nextHeartbeatLogTime)
-        {
-            m_nextHeartbeatLogTime = Time.time + 0.5f;
-            var routeName = route?.Definition?.name ?? "<null>";
-            var stageName = route?.Stage?.Definition?.name ?? "<null>";
-            var stageDur = route?.Stage?.DurationSeconds ?? 0f;
-            var stageElapsed = route?.Stage?.Elapsed ?? 0f;
-            Debug.Log(
-                $"[ActionState][HB] nt={nt:F2}/1 elapsed={m_elapsed:F2}/{m_baseDuration:F2}s " +
-                $"| action={m_action?.name} | route={routeName} kind={route?.Kind} active={route?.IsActive} " +
-                $"| stage={stageName} idx={route?.CurrentStageIndex} stageNt={(stageDur > 0.0001f ? stageElapsed / stageDur : 0f):F2} completed={stageCompleted} " +
-                $"| actionEnded={actionEnded} routeEnded={routeEnded}",
-                player);
-        }
-
         if (actionEnded && routeEnded)
         {
-            if (player.DebugSkillRoute)
-            {
-                Debug.Log($"[ActionState] EXIT → Locomotion | nt={nt:F2} routeEnded={routeEnded}", player);
-            }
-            SkillRouteDebug.Log(
-                player,
-                SkillRouteDebug.CatAction,
-                $"ExitToLocomotion nt={nt:F2} routeEnded={routeEnded}");
             ExitToBaseline(player);
         }
     }
 
     protected override void OnExit(Player player)
     {
-        if (player.DebugSkillRoute)
-        {
-            Debug.Log($"[ActionState] OnExit | action={m_action?.name} elapsed={m_elapsed:F2}s", player);
-        }
-
         if (m_useMotionProfile && m_motionExecutor != null)
         {
             m_motionExecutor.End();
@@ -229,6 +186,12 @@ public sealed class PlayerActionState : PlayerState
         player.Tags.Remove(TagCategory.State, (ulong)StateTag.PhaseStartup);
         player.ForceEndAttackIfActive();
 
+        m_timelineState.OnActionExit(
+            GameModeManager.Instance != null
+                ? GameModeManager.Instance.ActiveCameraController as ActionCameraController
+                : null,
+            ActionTimeScaleDriver.Instance);
+
         m_action = null;
         m_useMotionProfile = false;
     }
@@ -241,26 +204,11 @@ public sealed class PlayerActionState : PlayerState
         }
 
         var incomingAction = IntentRouter.PeekActionDataForRouting(player, in intent);
-        if (!ActionInterruptResolver.CanInterrupt(m_action, m_prevNormalizedTime, in intent, incomingAction))
+        if (!ActionInterruptResolver.CanInterrupt(m_action, m_prevNormalizedTime, in intent, incomingAction, player))
         {
-            if (player.DebugSkillRoute)
-            {
-                var winCnt = m_action != null && m_action.Windows != null ? m_action.Windows.Count : 0;
-                Debug.Log(
-                    $"[ActionState][Interrupt] BLOCKED intent={intent.Kind} hold={intent.HoldDurationSeconds:F3} " +
-                    $"current={m_action?.name} nt={m_prevNormalizedTime:F2} windowCnt={winCnt} " +
-                    $"(无 ActionWindows 时本动作整段不可被打断 — 这也是卡死时 F/移动/再次触发 全失效的根因)",
-                    player);
-            }
-
             return false;
         }
 
-        // 通知 SkillEntries 当前 Route 被打断
-        SkillRouteDebug.Log(
-            player,
-            SkillRouteDebug.CatIntent,
-            $"Interrupt route → re-route intent={intent.Kind}");
         player.SkillEntries?.NotifyRouteExited(wasInterrupted: true);
 
         return IntentRouter.Route(player, in intent, forceActionReentry: true);
@@ -275,14 +223,30 @@ public sealed class PlayerActionState : PlayerState
             m_motorAdapter = new PlayerMotorAdapter(player);
         }
 
+        if (m_statsProvider == null)
+        {
+            m_statsProvider = new PlayerMotionStatsProvider(player);
+        }
+
         if (m_motionExecutor == null)
         {
             m_motionExecutor = new MotionExecutor(
                 m_motorAdapter,
                 new EventBusAnimSpeedControl(player),
-                new PlayerMotionStatsProvider(player),
+                m_statsProvider,
                 player);
         }
+    }
+
+    static Vector3 ResolveMotionFacingDirection(Player player, MotionProfileSO profile)
+    {
+        if (player == null)
+        {
+            return Vector3.forward;
+        }
+
+        var space = profile != null ? profile.MotionSpace : MotionSpace.CharacterForward;
+        return player.ResolveMotionPlanarForward(space);
     }
 
     static bool ShouldSuspendMotorGravity(MotionProfileSO profile)

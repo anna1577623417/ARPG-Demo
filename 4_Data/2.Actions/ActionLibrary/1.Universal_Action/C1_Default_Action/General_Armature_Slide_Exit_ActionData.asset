@@ -16,11 +16,53 @@ MonoBehaviour:
     type: 3}
   CrossfadeTime: 0.08
   AnimSpeed: 1.5
-  Duration: 0.3
-  Category: 2
-  InterruptPriority: 10
-  InterruptStability: 10
+  Duration: 0.4
+  Category: 1
+  InterruptPriority: 3
+  InterruptStability: 27
   AllowSelfInterrupt: 0
   MotionProfile: {fileID: 11400000, guid: 3b0763b5e7747224ca2597f5afb93dac, type: 2}
-  Windows: []
+  Windows:
+  - NormalizedStart: 0
+    NormalizedEnd: 0
+    WindowSlotMask: 0
+    RuntimeEvents: []
+    InterruptibleByCategories: 0
+    MinIncomingPriority: 14
+    AllowSelfInterrupt: 0
+    incomingAbilityGate: 0
+    _legacyDirectStateTagMask: 0
+  - NormalizedStart: 0
+    NormalizedEnd: 0.25
+    WindowSlotMask: 0
+    RuntimeEvents: []
+    InterruptibleByCategories: 0
+    MinIncomingPriority: 14
+    AllowSelfInterrupt: 0
+    incomingAbilityGate: 0
+    _legacyDirectStateTagMask: 0
+  - NormalizedStart: 0
+    NormalizedEnd: 0.25
+    WindowSlotMask: 0
+    RuntimeEvents: []
+    InterruptibleByCategories: 0
+    MinIncomingPriority: 14
+    AllowSelfInterrupt: 0
+    incomingAbilityGate: 0
+    _legacyDirectStateTagMask: 0
+  - NormalizedStart: 0.8
+    NormalizedEnd: 1
+    WindowSlotMask: 0
+    RuntimeEvents: []
+    InterruptibleByCategories: 1
+    MinIncomingPriority: 14
+    AllowSelfInterrupt: 0
+    incomingAbilityGate: 0
+    _legacyDirectStateTagMask: 0
   TeleportTriggers: []
+  TimelineMarkers:
+  - NormalizedTime: 0
+    Kind: 0
+    Payload: 
+    Duration: 0.12
+    Intensity: 0.6

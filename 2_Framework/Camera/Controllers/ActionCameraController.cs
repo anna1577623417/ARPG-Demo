@@ -57,7 +57,16 @@ public class ActionCameraController : CameraController
     private float _yaw;
     private float _pitch;
 
+    float _shakeTimer;
+    float _shakeDuration;
+    float _shakeIntensity;
+    float _pushPitchOffset;
+    float _pushTimer;
+    float _pushDuration;
+    bool _lookInputLocked;
+
     public override GameModeType Mode => GameModeType.Action;
+    public bool LookInputLocked => _lookInputLocked;
     public override bool IsCameraRelativeMovement => true;
 
     private void Awake()
@@ -107,20 +116,63 @@ public class ActionCameraController : CameraController
     {
         if (followTarget == null) return;
 
-        // 只在有鼠标/摇杆输入时更新偏航和俯仰
-        var look = inputReader.LookInput;
-        if (look.sqrMagnitude > 0.0001f)
+        if (!_lookInputLocked)
         {
-            _yaw += look.x * horizontalSensitivity * Time.deltaTime;
-            _pitch -= look.y * verticalSensitivity * Time.deltaTime;
-            _pitch = Mathf.Clamp(_pitch, verticalMinAngle, verticalMaxAngle);
+            var look = inputReader.LookInput;
+            if (look.sqrMagnitude > 0.0001f)
+            {
+                _yaw += look.x * horizontalSensitivity * Time.deltaTime;
+                _pitch -= look.y * verticalSensitivity * Time.deltaTime;
+                _pitch = Mathf.Clamp(_pitch, verticalMinAngle, verticalMaxAngle);
+            }
         }
+
+        ApplyImpulseOffsets();
 
         // ❗ 每帧都必须写 followTarget.rotation（世界旋转），
         // 否则 Player.LookAtDirection 旋转父物体时，
         // 子物体 followTarget 的世界朝向会被"拖走"，
         // 导致 Cinemachine 读到被污染的旋转 → 反馈死循环 → 原地转圈。
-        followTarget.rotation = Quaternion.Euler(_pitch, _yaw, 0f);
+        followTarget.rotation = Quaternion.Euler(_pitch + _pushPitchOffset, _yaw, 0f);
+    }
+
+    public void AddImpulseShake(float intensity, float durationSeconds)
+    {
+        _shakeIntensity = Mathf.Max(_shakeIntensity, intensity);
+        _shakeDuration = Mathf.Max(_shakeDuration, durationSeconds);
+        _shakeTimer = _shakeDuration;
+    }
+
+    public void AddImpulsePush(float pitchDeltaDegrees, float durationSeconds)
+    {
+        _pushPitchOffset = pitchDeltaDegrees;
+        _pushDuration = Mathf.Max(0.01f, durationSeconds);
+        _pushTimer = _pushDuration;
+    }
+
+    public void SetLookInputLocked(bool locked) => _lookInputLocked = locked;
+
+    void ApplyImpulseOffsets()
+    {
+        if (_shakeTimer > 0f)
+        {
+            _shakeTimer -= Time.unscaledDeltaTime;
+            var damp = _shakeDuration > 0.0001f ? Mathf.Clamp01(_shakeTimer / _shakeDuration) : 0f;
+            var n = Random.insideUnitSphere;
+            _yaw += n.x * _shakeIntensity * damp * 0.35f;
+            _pitch += n.y * _shakeIntensity * damp * 0.25f;
+        }
+
+        if (_pushTimer > 0f)
+        {
+            _pushTimer -= Time.unscaledDeltaTime;
+            var t = _pushDuration > 0.0001f ? 1f - Mathf.Clamp01(_pushTimer / _pushDuration) : 1f;
+            _pushPitchOffset = Mathf.Lerp(_pushPitchOffset, 0f, t);
+        }
+        else
+        {
+            _pushPitchOffset = 0f;
+        }
     }
 
     /// <summary>

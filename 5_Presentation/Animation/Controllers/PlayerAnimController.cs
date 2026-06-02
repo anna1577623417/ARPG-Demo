@@ -393,7 +393,11 @@ public class PlayerAnimController : EntityAnimController
 
         if (evt.Action != null && evt.Action.MainClip != null)
         {
-            Play(evt.Action.MainClip, evt.Action.CrossfadeTime, evt.Action.AnimSpeed, evt.Action.MainClip.isLooping);
+            Play(
+                evt.Action.MainClip,
+                evt.Action.CrossfadeTime,
+                Mathf.Max(0.01f, evt.Action.AnimSpeed),
+                evt.Action.MainClip.isLooping);
             return;
         }
 

@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5410cbf6ac4e29d498880cafe37efd86, type: 3}
+  m_Name: Group_Wuxia_Roll
+  m_EditorClassIdentifier: 
+  displayName: Standing Dodge
+  icon: {fileID: 21300000, guid: d1fbef1bd47eb074e939b2805c17e266, type: 3}
+  baseCooldownSeconds: 1
+  costs: []
+  requiredAbilityTags: 0
+  routes:
+  - {fileID: 11400000, guid: 006e34e0b37e5ae4ebb2ae0bb36431af, type: 2}
+  - {fileID: 11400000, guid: a46d4bf818530a94f866df9a9cec05e2, type: 2}
+  - {fileID: 11400000, guid: b7e8f2763fc08b54f9063f5c5e505214, type: 2}
+  - {fileID: 11400000, guid: a94085b8e4739ef48a46298053e82a62, type: 2}
+  forward: {fileID: 11400000, guid: 006e34e0b37e5ae4ebb2ae0bb36431af, type: 2}
+  backward: {fileID: 11400000, guid: a46d4bf818530a94f866df9a9cec05e2, type: 2}
+  left: {fileID: 11400000, guid: b7e8f2763fc08b54f9063f5c5e505214, type: 2}
+  right: {fileID: 11400000, guid: a94085b8e4739ef48a46298053e82a62, type: 2}
+  defaultToForwardWhenNeutral: 1
+  fallbackRoute: {fileID: 11400000, guid: 006e34e0b37e5ae4ebb2ae0bb36431af, type: 2}

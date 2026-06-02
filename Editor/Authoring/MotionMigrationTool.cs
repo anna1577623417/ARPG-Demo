@@ -24,8 +24,8 @@ public static class MotionMigrationTool
 
             var profile = ScriptableObject.CreateInstance<MotionProfileSO>();
             ApplyBaselineFromActionTiming(action, profile);
-            profile.SpeedOverTime = AnimationCurve.Constant(0f, 1f, 1f);
             profile.AnimSpeedMode = AnimSpeedMode.Constant;
+            profile.SpeedOverTime = AnimationCurve.Constant(0f, 1f, 1f);
 
             var profilePath = actionPath.Replace(".asset", "_MotionProfile.asset");
             AssetDatabase.CreateAsset(profile, profilePath);
@@ -65,17 +65,15 @@ public static class MotionMigrationTool
 
     static void ApplyBaselineFromActionTiming(ActionDataSO action, MotionProfileSO profile)
     {
-        var wall = action.ResolveAnimWallClockSeconds();
-
         if (!profile.UsesAxisCurves)
         {
             profile.ApplyDefaultForwardAxis(4f);
         }
 
-        var dist = profile.AxisCurves.ZScale > 0.001f ? profile.AxisCurves.ZScale : 4f;
-        profile.ReferenceSpeed = Mathf.Max(0.1f, dist / Mathf.Max(wall, 0.0001f));
-        profile.Duration_AuthoringReference = action.ResolveLogicalDurationSeconds();
-        profile.Distance_AuthoringReference = dist;
+        if (profile.AxisCurves.ZScale < 0.001f)
+        {
+            profile.ApplyDefaultForwardAxis(4f);
+        }
     }
 }
 #endif

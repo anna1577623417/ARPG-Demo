@@ -53,7 +53,18 @@ public static class ConditionEvaluator
                 return !ctx.CombatCtx.IsAirborne;
 
             case SkillTransitionConditionKind.WithMoveDirection:
-                return ctx.CombatCtx.MatchesMoveDirection(cond.RequiredMoveDirection);
+            {
+                var ok = ctx.CombatCtx.MatchesMoveDirection(cond.RequiredMoveDirection);
+                if (!ok && SkillRouteDebug.IsEnabled(ctx.Self as Player))
+                {
+                    SkillRouteDebug.LogDodge4(
+                        ctx.Self as Player,
+                        "Cond",
+                        $"FAIL WithMoveDirection need={cond.RequiredMoveDirection} have={ctx.CombatCtx.MoveDirection}");
+                }
+
+                return ok;
+            }
 
             case SkillTransitionConditionKind.RouteCdReady:
             {

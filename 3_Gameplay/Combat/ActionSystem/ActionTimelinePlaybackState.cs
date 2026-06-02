@@ -1,0 +1,40 @@
+using System.Collections.Generic;
+
+/// <summary>单次 Action 播放内的时间轴去重状态。</summary>
+public sealed class ActionTimelinePlaybackState
+{
+    readonly HashSet<int> _firedMarkerIndices = new HashSet<int>();
+    readonly HashSet<int> _firedTeleportIndices = new HashSet<int>();
+    readonly HashSet<int> _firedWindowEventKeys = new HashSet<int>();
+
+    internal bool CameraLockActive { get; set; }
+    internal bool TimeScaleZoneActive { get; set; }
+
+    public void Reset()
+    {
+        _firedMarkerIndices.Clear();
+        _firedTeleportIndices.Clear();
+        _firedWindowEventKeys.Clear();
+        CameraLockActive = false;
+        TimeScaleZoneActive = false;
+    }
+
+    public void OnActionExit(ActionCameraController camera, ActionTimeScaleDriver timeScale)
+    {
+        if (CameraLockActive)
+        {
+            camera?.SetLookInputLocked(false);
+            CameraLockActive = false;
+        }
+
+        if (TimeScaleZoneActive)
+        {
+            timeScale?.PopZoneScale();
+            TimeScaleZoneActive = false;
+        }
+    }
+
+    internal bool TryFireMarkerOnce(int index) => _firedMarkerIndices.Add(index);
+    internal bool TryFireTeleportOnce(int index) => _firedTeleportIndices.Add(index);
+    internal bool TryFireWindowEventOnce(int key) => _firedWindowEventKeys.Add(key);
+}

@@ -67,20 +67,7 @@ public static class RouteResolver
             return result;
         }
 
-        // 3) Directional — 方向缓冲有效且配置存在
-        if (entry.DirectionalRoute != null && input.MoveBufferValid)
-        {
-            var dir = InputChordResolver.Resolve(input.MoveBuffered);
-            var child = entry.DirectionalRoute.SelectByDirection(dir);
-            if (child != null)
-            {
-                result.Chosen = child;
-                result.ChosenKind = child.Kind;
-                result.DirectionUsed = dir;
-                result.DebugReason = "directional " + dir;
-                return result;
-            }
-        }
+        // 3) Directional — 136.1 L7 已移除；四向由 SkillGroupDefinition + SkillEntryService 承担。
 
         // 4) MultiStage — 显式存在则用
         if (entry.MultiStageRoute != null)

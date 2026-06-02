@@ -1,0 +1,134 @@
+---
+description: Unity Editor 工具开发规范（EditorWindow/Inspector/Scene 预览）；详述见 Output/Editor
+globs: Assets/GameMain/Scripts/Editor/**/*
+alwaysApply: false
+---
+
+# Unity 编辑器工具 Authoring 规范
+
+> **完整设计要点**：`6.AI/Cursor/Output/Editor/Unity编辑器工具设计要点_ActionTimeline实践总结.md`  
+> **SO Inspector 折叠**：`10-so-inspector-authoring-foldout.mdc`（与本 Rule 同时生效于 Inspector 工作）
+
+本 Rule 在编辑 `Assets/GameMain/Scripts/Editor/**` 时启用。新建或重构 `EditorWindow` / `CustomEditor` / Scene 预览时必须遵守。
+
+---
+
+## 1. 架构边界
+
+- Editor 代码仅在 `Editor/` 程序集；**禁止**运行时主循环依赖 Editor 类型。
+- 大工具拆 **partial class**：`.Layout.cs`（分栏/UI）、`.WindowInspector.cs`（属性）、`*EditorUI.cs`（常量+Splitter+Prefs）。
+- 共享 UI 抽静态类，**禁止**每个窗口复制一套 Splitter / EditorPrefs 键。
+
+---
+
+## 2. IDE 式布局（强制）
+
+推荐垂直结构：
+
+`Toolbar` → `[可选摘要 Foldout]` → `预览条` → `Timeline | Splitter | Property` → `StatusBar`
+
+| 项 | 要求 |
+|----|------|
+| Splitter | 可拖；Timeline min **600**；Property min **320**；**禁止**写死 Property max（如 380） |
+| ScrollView | `BeginScrollView(pos, false, true)` — **仅纵向**；帧末 `scroll.x = 0` |
+| 留白 | `ColumnContentPadding`（建议 8）包列内容与按钮行；`TimelineLabelLaneGap`（建议 6）分隔轨道名与 lane |
+| 属性宽 | `PropertyLayoutScope(columnWidth)`：`labelWidth ≈ 40%` 列宽，clamp 72–168 |
+| 持久化 | `OnEnable` 读 / `OnDisable` 写 `EditorPrefs`：列宽、Zoom、Scroll Y；键名 `{ToolName}.*` |
+
+**反模式**：属性区横向滚动 + 纵向滚动；字段贴窗口右缘无 padding。
+
+---
+
+## 3. Scene 预览（141.1 — 硬规则）
+
+| API | 允许位置 |
+|-----|----------|
+| `Handles.*` | `SceneView.duringSceneGui` / `OnSceneGUI` |
+| `Gizmos.*` | **仅** `OnDrawGizmos` / `OnDrawGizmosSelected` |
+
+**禁止**在 `OnSceneGUI` / `duringSceneGui` 调用 `Gizmos.Draw*`（会 `ArgumentException` + GUIClip 错乱）。
+
+标准链路：
+
+```text
+Build PreviewContext → PreviewController (AnimationMode.SampleAnimationClip) → SceneBridge (Handles only)
+```
+
+- `SampleAnimationClip` 签名：**`(GameObject, AnimationClip, float)`**。
+- 窗口 `OnDisable`：**必须** `AnimationMode.StopAnimationMode()`。
+- 多窗口：仅 **聚焦** 的 Editor 实例驱动预览（`OnFocus` 设 active）。
+- PreviewContext：**禁止** C# 9 `init`（用构造函数 + get-only 属性，兼容旧 Unity）。
+
+---
+
+## 4. 属性面板与 Foldout
+
+- 与 Rule **10** 一致：Runtime 必填常驻；迁移/调试/批处理 **FoldoutHeaderGroup 默认关**。
+- Timeline 专用 Inspector：**核心**（Phase、Interrupt、Hitbox 状态）默认展开；**Runtime Event / 窗内事件** 默认折叠。
+- 属性栏设 `CompactPropertyContext`，PropertyDrawer 内省略冗长 HelpBox。
+- 修改走 `SerializedObject` + `Undo.RecordObject`；**禁止**直接改 SO 字段不 Undo。
+
+---
+
+## 5. 时间轴类工具扩展
+
+新增 Track 时 checklist（不得只改一个巨型方法）：
+
+1. `TrackId` + 显示顺序数组  
+2. `DrawTrackRow` / 命中 / 双击创建  
+3. 属性 Inspector 或 Foldout  
+4. 可选 `SceneBridge` Handles 绘制  
+
+预览时间、Playhead、Scene 采样 **同一归一化时间**。
+
+---
+
+## 6. IMGUI 卫生
+
+- Toolbar 用 `EditorStyles.toolbar`；状态栏 `miniLabel` + 底栏背景色。
+- `[Tooltip]` / 多行说明：**禁止**内嵌未转义 `"` ；用 **【】** 或「」。
+- 单文件建议 **&lt; 500 行**；轨逻辑与 Layout 分离。
+- 菜单路径：`Tools/GameMain/...` 与现有工具一致。
+
+---
+
+## 7. 交付自检（PR / 会话结束前）
+
+**布局**
+
+- [ ] Splitter 可拖且尊重最小宽度  
+- [ ] 无属性区横向滚动条  
+- [ ] 左右留白、轨道名与 lane 有间隙  
+- [ ] EditorPrefs 重启后恢复  
+
+**Scene**
+
+- [ ] 仅 Handles，无 Gizmos 报错  
+- [ ] 关窗口后 AnimationMode 结束  
+- [ ] 拖预览条 Pose/Overlay 同步  
+
+**工程**
+
+- [ ] 无 Runtime→Editor 引用  
+- [ ] Undo / SetDirty 正确  
+
+---
+
+## 8. 参考实现（复制模式时优先读）
+
+| 能力 | 路径 |
+|------|------|
+| 双栏+Splitter+StatusBar | `Editor/Authoring/ActionDataTimelineEditor.Layout.cs` |
+| EditorPrefs / Scroll / Padding | `Editor/Authoring/ActionTimelineEditorUI.cs` |
+| Handles SceneBridge | `Editor/Authoring/ActionDataTimelineSceneBridge.cs` |
+| AnimationMode 采样 | `Editor/Authoring/ActionTimelinePreviewController.cs` |
+| 轨迹 Scene 线 | `Editor/Gizmos/MotionPathGizmoDrawer.cs` |
+
+---
+
+## 9. AI 写 Editor 代码时
+
+1. 先定：窗口骨架（Toolbar / 双栏 / StatusBar）还是 Inspector 折叠（Rule 10）。  
+2. Scene 需要预览 → 先建 Context + SceneBridge（Handles），再 IMGUI。  
+3. 常量进 `*EditorUI.cs`，Magic Number 不散落。  
+4. 完成后对照 **§7 自检**；布局类改动对照 Output 文档 **§九验收清单**。

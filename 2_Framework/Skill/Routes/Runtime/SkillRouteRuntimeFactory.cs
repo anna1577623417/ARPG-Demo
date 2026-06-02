@@ -1,6 +1,7 @@
+using UnityEngine;
+
 /// <summary>
-/// RouteRuntime 工厂 — 按 Definition.Kind 创建匹配子类。
-/// 集中此处便于以后引入对象池（每个 Kind 一个池）。
+/// RouteRuntime 工厂 — 按 Definition.Kind 创建匹配子类。/// 集中此处便于以后引入对象池（每个 Kind 一个池）。
 /// </summary>
 public static class SkillRouteRuntimeFactory
 {
@@ -19,7 +20,11 @@ public static class SkillRouteRuntimeFactory
             case RouteKind.Charge:      rt = new ChargeRouteRuntime();      break;
             case RouteKind.MultiStage:  rt = new MultiStageRouteRuntime();  break;
             case RouteKind.Derivative:  rt = new DerivativeRouteRuntime();  break;
-            case RouteKind.Directional: rt = new NormalRouteRuntime();      break; // Directional 自身不释放，子 Route 才释放
+            case RouteKind.Directional:
+                Debug.LogWarning(
+                    $"[SkillRoute] RouteKind.Directional 已废弃（{def.name}），请迁移为 SkillGroup；按 Normal 注册。");
+                rt = new NormalRouteRuntime();
+                break;
             default:                    rt = new NormalRouteRuntime();      break;
         }
 

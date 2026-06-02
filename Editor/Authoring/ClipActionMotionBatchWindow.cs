@@ -426,8 +426,8 @@ public sealed class ClipActionMotionBatchWindow : EditorWindow
 
         var profile = existing != null ? existing : ScriptableObject.CreateInstance<MotionProfileSO>();
         profile.ApplyDefaultForwardAxis(4f);
-        profile.SpeedOverTime = AnimationCurve.Constant(0f, 1f, 1f);
         profile.AnimSpeedMode = AnimSpeedMode.Constant;
+        profile.SpeedOverTime = AnimationCurve.Constant(0f, 1f, 1f);
         ApplyMotionBaselineFromClip(clip, profile);
 
         if (existing == null)
@@ -472,16 +472,15 @@ public sealed class ClipActionMotionBatchWindow : EditorWindow
 
     static void ApplyMotionBaselineFromClip(AnimationClip clip, MotionProfileSO profile)
     {
-        var wall = Mathf.Max(0.05f, clip.length);
         if (!profile.UsesAxisCurves)
         {
             profile.ApplyDefaultForwardAxis(4f);
         }
 
-        var dist = profile.AxisCurves.ZScale > 0.001f ? profile.AxisCurves.ZScale : 4f;
-        profile.ReferenceSpeed = Mathf.Max(0.1f, dist / wall);
-        profile.Duration_AuthoringReference = wall;
-        profile.Distance_AuthoringReference = dist;
+        if (profile.AxisCurves.ZScale < 0.001f)
+        {
+            profile.ApplyDefaultForwardAxis(4f);
+        }
     }
 
     string BuildCoreName(string clipFileName)

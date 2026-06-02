@@ -21,5 +21,15 @@ MonoBehaviour:
   InterruptStability: 10
   AllowSelfInterrupt: 0
   MotionProfile: {fileID: 11400000, guid: 19a4fda716630514492d467ba1cce541, type: 2}
-  Windows: []
+  Windows:
+  - NormalizedStart: 0
+    NormalizedEnd: 0
+    WindowSlotMask: 0
+    RuntimeEvents: []
+    InterruptibleByCategories: 0
+    MinIncomingPriority: 0
+    AllowSelfInterrupt: 0
+    incomingAbilityGate: 0
+    _legacyDirectStateTagMask: 0
   TeleportTriggers: []
+  TimelineMarkers: []

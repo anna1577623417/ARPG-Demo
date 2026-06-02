@@ -46,6 +46,11 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 36c6c7d1165e99c4a9c0443c25173078, type: 2}
   grantedStateTags: 0
   grantedAbilityTags: 0
+  ownerGroup: {fileID: 0}
+  overrideCooldown: 0
+  overrideIcon: 0
+  overrideCost: 0
+  abilityGateRules: []
   presentationMode: 0
   tapThreshold: 0.3
   chargeFullTime: 1
@@ -68,5 +73,5 @@ MonoBehaviour:
   cancelRefundMode: 1
   cancelRefundValue: 1
   refundResourceOnCancel: 1
-  enableTapFallback: 1
+  enableTapFallback: 0
   tapFallbackRoute: {fileID: 0}

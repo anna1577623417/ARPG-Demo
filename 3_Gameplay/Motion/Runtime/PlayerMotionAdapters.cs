@@ -13,9 +13,11 @@ public sealed class PlayerMotionStatsProvider : IStatsProvider
         _player = player;
     }
 
-    public float GetMotionScale(MotionScaleType type)
+    public float GetMotionScale(MotionScaleType type) => GetDurationScale(type);
+
+    public float GetDurationScale(MotionScaleType type)
     {
-        if (_player == null)
+        if (_player == null || type == MotionScaleType.None)
         {
             return 1f;
         }
@@ -25,10 +27,10 @@ public sealed class PlayerMotionStatsProvider : IStatsProvider
             case MotionScaleType.MoveSpeed:
             {
                 var baseSpeed = Mathf.Max(0.01f, _player.BaseMoveSpeed);
-                return Mathf.Max(0f, _player.RuntimeStats.RunSpeed / baseSpeed);
+                return Mathf.Max(0.01f, _player.RuntimeStats.RunSpeed / baseSpeed);
             }
             case MotionScaleType.AttackSpeed:
-                // 预留攻速系统接入点。
+                // 预留攻速系统接入点；与位移 Scale 共用倍率。
                 return 1f;
             case MotionScaleType.Custom:
                 return 1f;

@@ -79,6 +79,9 @@ public enum StateTag : ulong
     /// <summary>连招 / 输入缓冲开放区间（时间语义）。消费逻辑由 IntentBuffer / 连招状态机读取。</summary>
     ComboInput_Window = 1UL << 46,
 
+    /// <summary>受击碰撞体启用/切换（动作时间窗内的 Hurtbox 态）。</summary>
+    HurtboxActive_Window = 1UL << 47,
+
     // ─── Reserved (48–63) ───
     Dead = 1UL << 48,
 }

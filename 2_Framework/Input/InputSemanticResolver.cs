@@ -106,9 +106,11 @@ public sealed class InputSemanticResolver
         if ((uint)idx >= _configs.Length) return;
         _configs[idx] = cfg;
         var edgeCount = cfg.ComboEdgeTimings?.Length ?? 0;
-        SkillRouteDebug.Log(_owner, SkillRouteDebug.CatSemantic,
-            $"ConfigureSlot {slot}: tapThr={cfg.TapThreshold:F2}s sessionWin={cfg.ComboWindow:F2}s " +
-            $"chain={cfg.ComboChainLength} edges={edgeCount} directional={cfg.EnableDirectional}");
+        if (cfg.EnableDirectional)
+        {
+            SkillRouteDebug.LogDodge4(_owner, "Semantic",
+                $"ConfigureSlot {slot} directional=ON tapThr={cfg.TapThreshold:F2}s");
+        }
     }
 
     /// <summary>读配置（PressTracker / Controller 取阈值用）。</summary>
@@ -137,8 +139,6 @@ public sealed class InputSemanticResolver
         st.IsHolding = true;
         st.PressStartTime = now;
         st.ChargeDispatched = false;
-        SkillRouteDebug.Log(_owner, SkillRouteDebug.CatSemantic,
-            $"PRESS {slot} @ {now:F2} (tapThr={_configs[idx].TapThreshold:F2})");
     }
 
     /// <summary>持续帧：检测是否已越过 TapThreshold，若是则立即派发 Charge intent（按下即蓄力）。</summary>
@@ -157,8 +157,6 @@ public sealed class InputSemanticResolver
         {
             st.ChargeDispatched = true;
             EnqueueSemantic(slot, now, InputSemanticType.Charge, hold, comboIndex: 0);
-            SkillRouteDebug.Log(_owner, SkillRouteDebug.CatSemantic,
-                $"CHARGE dispatched {slot} hold={hold:F2}s ≥ tapThr={cfg.TapThreshold:F2}");
         }
     }
 
@@ -182,8 +180,6 @@ public sealed class InputSemanticResolver
         {
             st.ChargeDispatched = false;
             EnqueueSemantic(slot, now, InputSemanticType.Release, hold, comboIndex: 0);
-            SkillRouteDebug.Log(_owner, SkillRouteDebug.CatSemantic,
-                $"RELEASE {slot} hold={hold:F2}s (charge already dispatched on press)");
             return;
         }
 
@@ -235,8 +231,9 @@ public sealed class InputSemanticResolver
         {
             EnqueueSemantic(slot, now, InputSemanticType.Directional, holdSeconds, comboIndex: 0,
                 directionAxis: moveBuffered, moveBuffered: moveBuffered, moveBufferValid: true);
-            SkillRouteDebug.Log(_owner, SkillRouteDebug.CatSemantic,
-                $"DIRECTIONAL {slot} axis={moveBuffered} hold={holdSeconds:F2}");
+            var chord = InputChordResolver.Resolve(moveBuffered);
+            SkillRouteDebug.LogDodge4(_owner, "Semantic",
+                $"ENQUEUE Directional slot={slot} axis={moveBuffered} chord={chord} hold={holdSeconds:F2}s bufferValid={moveBufferValid}");
             return;
         }
 
@@ -417,8 +414,6 @@ public sealed class InputSemanticResolver
 
         if (outcome == ComboAdvanceOutcome.Suppress)
         {
-            SkillRouteDebug.Log(_owner, SkillRouteDebug.CatSemantic,
-                $"DROP {slot} hold={hold:F2}s comboIdx={st.ComboIndex} linkGap={linkGap:F2}s REJECT={detail}");
             return false;
         }
 
@@ -427,10 +422,6 @@ public sealed class InputSemanticResolver
         EnqueueSemantic(slot, now, semantic, hold, st.ComboIndex,
             directionAxis: default, moveBuffered: moveBuffered, moveBufferValid: moveBufferValid);
 
-        var tag = outcome == ComboAdvanceOutcome.EnqueueAdvance ? "Combo" : "Tap";
-        SkillRouteDebug.Log(_owner, SkillRouteDebug.CatSemantic,
-            $"{tag} {slot} hold={hold:F2}s comboIdx={st.ComboIndex} linkGap={linkGap:F2}s " +
-            $"(sessionWin={cfg.ComboWindow:F2}){(detail != null ? " " + detail : "")}");
         return true;
     }
 
@@ -471,8 +462,6 @@ public sealed class InputSemanticResolver
         if ((uint)idx >= _states.Length) return;
         _states[idx].ComboIndex = 0;
         _states[idx].LastTapReleaseTime = 0f;
-        SkillRouteDebug.Log(_owner, SkillRouteDebug.CatSemantic,
-            $"NotifyComboEnded {slot} → ComboIndex=0 / LastTapReleaseTime=0");
     }
 
     public void ResetAll()

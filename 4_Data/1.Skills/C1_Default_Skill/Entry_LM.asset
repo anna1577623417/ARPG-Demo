@@ -19,7 +19,6 @@ MonoBehaviour:
   comboRoute: {fileID: 11400000, guid: 4f6023870e04df14da419ff4f69a6043, type: 2}
   extendedComboRoute: {fileID: 11400000, guid: 62069fbc9f654794b8ece155748bc927, type: 2}
   airComboRoute: {fileID: 0}
-  directionalRoute: {fileID: 0}
   multiStageRoute: {fileID: 0}
   normalRoute: {fileID: 0}
   extendedHandoffWindowSeconds: 1.2

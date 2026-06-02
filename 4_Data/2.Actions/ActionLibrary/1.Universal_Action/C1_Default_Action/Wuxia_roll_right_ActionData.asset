@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: dc44221e6d158b148ad988016a948ef4, type: 3}
   m_Name: Wuxia_roll_right_ActionData
   m_EditorClassIdentifier: 
-  MainClip: {fileID: 7400000, guid: 0622a7fa85ded3d4098f4d141210cb7b, type: 3}
+  MainClip: {fileID: 7400000, guid: b0a1629d1130ed74290a7e076a59bd21, type: 3}
   CrossfadeTime: 0.08
   AnimSpeed: 1
   Duration: 0.86666673

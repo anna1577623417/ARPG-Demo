@@ -2,13 +2,10 @@ using UnityEngine;
 
 /// <summary>
 /// Motion 运行时执行器（时间意图 -> 期望速度 / MotionContribution）。
+/// Clip 墙钟由 Action.AnimSpeed 负责；Profile 的 SpeedOverTime 仅作 motionT 上的局部节奏倍率。
 /// </summary>
 public sealed class MotionExecutor
 {
-    private const float AnimSpeedLerp = 0.15f;
-    private const float AnimSpeedMin = 0.7f;
-    private const float AnimSpeedMax = 1.3f;
-
     private readonly IMotorAdapter _motor;
     private readonly IAnimSpeedControl _animSpeed;
     private readonly IStatsProvider _stats;
@@ -53,8 +50,7 @@ public sealed class MotionExecutor
         float baseDuration,
         Vector3 direction,
         Vector3 startPos,
-        float baseAnimSpeed = 1f,
-        float clipWallClockSeconds = 0f)
+        float baseAnimSpeed = 1f)
     {
         _playback = default;
         _profile = profile;
@@ -78,12 +74,7 @@ public sealed class MotionExecutor
             _groundPrevWorldY = startPos.y;
             _landingCurve = profile.GetLandingCurveOrDefault();
             MotionXYZDebug.Log(_debugOwner, MotionXYZDebug.CatMotion,
-                $"GroundTargeted startY={_groundStartY:F2} endY={_groundEndY:F2} dist={(_groundStartY - _groundEndY):F2}m dur={_baseDuration:F2}s timeSync={profile.TimeSync}");
-        }
-
-        if (_active)
-        {
-            LogTimeSync(clipWallClockSeconds);
+                $"GroundTargeted startY={_groundStartY:F2} endY={_groundEndY:F2} dist={(_groundStartY - _groundEndY):F2}m dur={_baseDuration:F2}s");
         }
 
         if (_active && !_profile.UsesAxisCurves && !_groundTargetedActive)
@@ -111,7 +102,7 @@ public sealed class MotionExecutor
 
             _motor?.SetDesiredVelocity(Vector3.zero);
             _motor?.SetMotionComposeContext(_profile.GetYAxisConfig());
-            TickAnimSpeed(NormalizedTime, deltaTime);
+            TickAnimSpeed(NormalizedTime);
             return;
         }
 
@@ -124,23 +115,10 @@ public sealed class MotionExecutor
         var prevT = _baseDuration > 0.0001f ? Mathf.Clamp01(prevElapsed / _baseDuration) : 0f;
         var t = NormalizedTime;
         TickAxisCurves(prevT, t, deltaTime);
-        TickAnimSpeed(t, deltaTime);
+        TickAnimSpeed(t);
     }
 
-    void LogTimeSync(float clipWallClockSeconds)
-    {
-        if (_profile == null || _profile.TimeSync == MotionTimeSyncMode.None)
-        {
-            return;
-        }
-
-        MotionXYZDebug.Log(_debugOwner, MotionXYZDebug.CatMotion,
-            _profile.TimeSync == MotionTimeSyncMode.MatchAnimation
-                ? $"TimeSync MatchAnimation motionDur={_baseDuration:F2}s clipWall={clipWallClockSeconds:F2}s (Logic 已拉伸)"
-                : $"TimeSync MatchMotion motionDur={_baseDuration:F2}s animSpeed={_baseAnimSpeed:F2} clipWall={clipWallClockSeconds:F2}s");
-    }
-
-    void TickAxisCurves(float prevT, float t, float deltaTime)
+    void TickAxisCurves(float prevT, float currT, float deltaTime)
     {
         Vector3 localDelta;
         var yAxisConfig = _profile.GetYAxisConfig();
@@ -148,12 +126,12 @@ public sealed class MotionExecutor
         if (_groundTargetedActive)
         {
             localDelta = _profile.UsesAxisCurves
-                ? _profile.AxisCurves.SampleLocalDelta(prevT, t, _motionScale)
+                ? _profile.AxisCurves.SampleLocalDelta(prevT, currT, _motionScale)
                 : Vector3.zero;
             localDelta.y = 0f;
 
             var targetWorldY = MotionGroundLanding.SampleTargetWorldY(
-                _groundStartY, _groundEndY, _landingCurve, t);
+                _groundStartY, _groundEndY, _landingCurve, currT);
             var worldDeltaY = targetWorldY - _groundPrevWorldY;
             _groundPrevWorldY = targetWorldY;
             localDelta.y = worldDeltaY;
@@ -164,7 +142,7 @@ public sealed class MotionExecutor
         }
         else
         {
-            localDelta = _profile.AxisCurves.SampleLocalDelta(prevT, t, _motionScale);
+            localDelta = _profile.AxisCurves.SampleLocalDelta(prevT, currT, _motionScale);
             if (yAxisConfig.YMotion == YMotionMode.None)
             {
                 localDelta.y = 0f;
@@ -187,42 +165,14 @@ public sealed class MotionExecutor
         {
             MotionXYZDebug.MarkMotionSampleLogged();
             MotionXYZDebug.Log(_debugOwner, MotionXYZDebug.CatMotion,
-                $"sample t={t:F2} deltaLocal=({localDelta.x:F2},{localDelta.y:F2},{localDelta.z:F2}) " +
+                $"sample motionT={currT:F2} deltaLocal=({localDelta.x:F2},{localDelta.y:F2},{localDelta.z:F2}) " +
                 $"yMotion={yAxisConfig.YMotion} gravity={yAxisConfig.Gravity} ground={yAxisConfig.GroundConstraint}");
         }
     }
 
-    void TickAnimSpeed(float t, float deltaTime)
+    void TickAnimSpeed(float motionT)
     {
-        float profileFactor;
-        switch (_profile.AnimSpeedMode)
-        {
-            case AnimSpeedMode.StrideMatch:
-                if (_profile.ReferenceSpeed > 0.001f)
-                {
-                    var actualSpeed = _motor != null ? _motor.GetActualSpeed() : 0f;
-                    var raw = actualSpeed / _profile.ReferenceSpeed;
-                    var smoothedFactor = Mathf.Lerp(_smoothedAnimSpeed / Mathf.Max(0.01f, _baseAnimSpeed),
-                        raw, AnimSpeedLerp);
-                    smoothedFactor = Mathf.Clamp(smoothedFactor, AnimSpeedMin, AnimSpeedMax);
-                    profileFactor = smoothedFactor;
-                }
-                else
-                {
-                    profileFactor = 1f;
-                }
-                break;
-
-            case AnimSpeedMode.Curve:
-                profileFactor = _profile.SampleAnimSpeed(t);
-                break;
-
-            case AnimSpeedMode.Constant:
-            default:
-                profileFactor = 1f;
-                break;
-        }
-
+        var profileFactor = _profile != null ? _profile.SampleAnimSpeed(motionT) : 1f;
         var finalSpeed = _baseAnimSpeed * Mathf.Max(0f, profileFactor);
         if (_playback.HasAnimatorSpeedOverride)
         {

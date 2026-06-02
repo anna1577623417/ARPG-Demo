@@ -5,4 +5,7 @@
 public interface IStatsProvider
 {
     float GetMotionScale(MotionScaleType type);
+
+    /// <summary>逻辑时长除数：&gt;1 缩短动作（如攻速），&lt;1 拉长。</summary>
+    float GetDurationScale(MotionScaleType type);
 }

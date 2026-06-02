@@ -18,7 +18,6 @@ MonoBehaviour:
   chargeRoute: {fileID: 0}
   comboRoute: {fileID: 0}
   airComboRoute: {fileID: 0}
-  directionalRoute: {fileID: 0}
   multiStageRoute: {fileID: 11400000, guid: 4d14644ba667a2146be72b184c7d4e43, type: 2}
   normalRoute: {fileID: 0}
   derivativeRoutes: []

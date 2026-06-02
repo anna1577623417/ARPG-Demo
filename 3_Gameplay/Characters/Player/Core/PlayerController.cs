@@ -184,7 +184,7 @@ public class PlayerController : EntityController
         if (inputReader.ConsumeJumpPressed())
         {
             player.EnqueueGameplayIntent(SkillEntryIntentFactory.ForJump(Time.time));
-            if (player.DebugSkillRoute || player.DebugInterruptFlow)
+            if (player.DebugInterruptFlow)
             {
                 Debug.Log($"[Input] JumpPressed → Jump intent enqueued | currentState={player.States?.Current?.StateId}", this);
             }

@@ -13,6 +13,9 @@ public enum SkillEntrySlot : byte
     /// <summary>数字键 0 — InputAction <c>SlotAbility_18</c>。</summary>
     Key0 = 1,
 
+    /// <summary>配置语义：不限制入口槽位（ContextGroup 等）。非 InputReader 物理键；运行时 orphan idx=2 仍归并 LM。</summary>
+    Any = 2,
+
     RM = 3,
     R = 4,
     Q = 5,

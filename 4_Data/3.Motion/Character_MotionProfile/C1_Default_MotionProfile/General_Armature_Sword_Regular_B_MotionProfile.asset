@@ -16,13 +16,76 @@ MonoBehaviour:
   AxisCurves:
     XCurve:
       serializedVersion: 2
-      m_Curve: []
+      m_Curve:
+      - serializedVersion: 3
+        time: 0
+        value: 0
+        inSlope: 2
+        outSlope: 0
+        tangentMode: 1
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      - serializedVersion: 3
+        time: 0.25
+        value: -1
+        inSlope: -1.5015014
+        outSlope: -1.5015014
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0.33333334
+        outWeight: 0.33333334
+      - serializedVersion: 3
+        time: 0.5
+        value: 0
+        inSlope: 3.3406608
+        outSlope: 3.3406608
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0.33333334
+        outWeight: 0.33333334
+      - serializedVersion: 3
+        time: 0.75
+        value: 1
+        inSlope: 2.9985075
+        outSlope: 2.9985075
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0.33333334
+        outWeight: 0.33333334
+      - serializedVersion: 3
+        time: 1
+        value: 0
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 1
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
       m_PreInfinity: 2
       m_PostInfinity: 2
       m_RotationOrder: 4
     YCurve:
       serializedVersion: 2
-      m_Curve: []
+      m_Curve:
+      - serializedVersion: 3
+        time: 0
+        value: 1
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 34
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      - serializedVersion: 3
+        time: 1
+        value: 1
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 34
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
       m_PreInfinity: 2
       m_PostInfinity: 2
       m_RotationOrder: 4
@@ -53,7 +116,11 @@ MonoBehaviour:
     XScale: 0
     YScale: 0
     ZScale: 2
-  YPolicy: 1
+  YMotion: 1
+  Gravity: 0
+  GroundConstraint: 1
+  yAxisV2Configured: 0
+  legacyYPolicy: 1
   LandingOffset: 0
   LandingCurve:
     serializedVersion: 2
@@ -80,10 +147,10 @@ MonoBehaviour:
     m_PostInfinity: 2
     m_RotationOrder: 4
   LandingDetectionRadius: 20
-  LandingSync: 0
   UseActionDuration: 1
-  AuthoringReferenceDuration: 0.8
-  AuthoringReferenceDistance: 4
+  TimeSync: 0
+  Duration_AuthoringReference: 0.8
+  Distance_AuthoringReference: 4
   AuthoringReferenceAnimSpeed: 1
   AnimSpeedMode: 0
   SpeedOverTime:
@@ -113,6 +180,7 @@ MonoBehaviour:
   ReferenceSpeed: 4.615384
   MatchAnimationSpeed: 1
   ScaleType: 0
+  MotionSpace: 0
   BurstDurationSeconds: 0.43333337
   LegacyConstantPlanarSpeed: 4.615384
   UsePlanarVelocityShape: 0

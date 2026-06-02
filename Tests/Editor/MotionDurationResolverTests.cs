@@ -4,13 +4,12 @@ using UnityEngine;
 public sealed class MotionDurationResolverTests
 {
     [Test]
-    public void Resolve_PrefersActionDurationWhenUseActionDuration()
+    public void Resolve_UsesActionDuration()
     {
         var action = ScriptableObject.CreateInstance<ActionDataSO>();
         var profile = ScriptableObject.CreateInstance<MotionProfileSO>();
         action.Duration = 0.55f;
         action.MotionProfile = profile;
-        profile.UseActionDuration = true;
 
         Assert.AreEqual(0.55f, MotionDurationResolver.Resolve(action), 0.001f);
 
@@ -36,18 +35,17 @@ public sealed class MotionDurationResolverTests
     }
 
     [Test]
-    public void ResolveWithTimeSync_MatchAnimation_WithoutClip_Unchanged()
+    public void ResolveClipWallClockSeconds_UsesActionAnimSpeed()
     {
         var action = ScriptableObject.CreateInstance<ActionDataSO>();
-        var profile = ScriptableObject.CreateInstance<MotionProfileSO>();
-        action.Duration = 0.4f;
-        action.MotionProfile = profile;
-        profile.TimeSync = MotionTimeSyncMode.MatchAnimation;
+        var clip = new AnimationClip();
+        clip.SetCurve("", typeof(Transform), "localPosition.x", AnimationCurve.Linear(0f, 0f, 1f, 0f));
+        action.MainClip = clip;
+        action.AnimSpeed = 2f;
 
-        var sync = MotionDurationResolver.ResolveWithTimeSync(action);
-        Assert.AreEqual(0.4f, sync.MotionDurationSeconds, 0.001f);
+        Assert.AreEqual(clip.length / 2f, MotionDurationResolver.ResolveClipWallClockSeconds(action), 0.001f);
 
         Object.DestroyImmediate(action);
-        Object.DestroyImmediate(profile);
+        Object.DestroyImmediate(clip);
     }
 }

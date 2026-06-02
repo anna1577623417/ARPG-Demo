@@ -16,7 +16,10 @@ MonoBehaviour:
     type: 3}
   CrossfadeTime: 0.08
   AnimSpeed: 1
-  Duration: 0.5
+  Duration: 0
+  AnimationEndRatio: 1
+  DurationStatScaling: 2
+  PrincipalAxis: 2
   Category: 2
   InterruptPriority: 10
   InterruptStability: 10
@@ -24,3 +27,4 @@ MonoBehaviour:
   MotionProfile: {fileID: 11400000, guid: eda1d69dadb14364cbf47cc695af3a83, type: 2}
   Windows: []
   TeleportTriggers: []
+  TimelineMarkers: []

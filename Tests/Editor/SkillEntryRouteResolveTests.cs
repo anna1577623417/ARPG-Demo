@@ -135,6 +135,252 @@ public sealed class SkillEntryRouteResolveTests
         Assert.AreEqual(RouteKind.Combo, rr.ChosenKind);
     }
 
+    [Test]
+    public void DirectionalIntent_PicksGroupChildByChord()
+    {
+        var fwd = CreateNormalRoute("fwd");
+        var back = CreateNormalRoute("back");
+        var left = CreateNormalRoute("left");
+        var right = CreateNormalRoute("right");
+
+        var group = ScriptableObject.CreateInstance<SkillGroupDefinition>();
+        SetPrivateField(group, "forward", fwd);
+        SetPrivateField(group, "backward", back);
+        SetPrivateField(group, "left", left);
+        SetPrivateField(group, "right", right);
+        SetPrivateField(group, "fallbackRoute", fwd);
+        SetPrivateField(group, "routes", new[] { fwd, back, left, right });
+
+        var entry = ScriptableObject.CreateInstance<SkillEntryDefinition>();
+        SetPrivateField(entry, "slot", SkillEntrySlot.Space);
+        SetPrivateField(entry, "primaryUnit", group);
+
+        var loadout = ScriptableObject.CreateInstance<SkillEntryLoadoutSO>();
+        var bindings = new SkillEntryLoadoutSO.EntryBinding[1];
+        SetPrivateField(ref bindings[0], "slot", SkillEntrySlot.Space);
+        SetPrivateField(ref bindings[0], "entry", entry);
+        SetPrivateField(loadout, "bindings", bindings);
+
+        var service = new SkillEntryService(owner: null);
+        service.Rebuild(loadout);
+
+        Assert.AreEqual(fwd, ResolveDirectional(service, Vector2.up));
+        Assert.AreEqual(back, ResolveDirectional(service, Vector2.down));
+        Assert.AreEqual(left, ResolveDirectional(service, Vector2.left));
+        Assert.AreEqual(right, ResolveDirectional(service, Vector2.right));
+    }
+
+    [Test]
+    public void DirectionalIntent_DoesNotFallbackToNormalRoute()
+    {
+        var group = ScriptableObject.CreateInstance<SkillGroupDefinition>();
+        var fwd = CreateNormalRoute("fwd");
+        SetPrivateField(group, "forward", fwd);
+        SetPrivateField(group, "baseCooldownSeconds", 1f);
+        SetPrivateField(group, "routes", new[] { fwd });
+        SetPrivateField(fwd, "ownerGroup", group);
+
+        var normal = CreateNormalRoute("normal-fallback");
+        var entry = ScriptableObject.CreateInstance<SkillEntryDefinition>();
+        SetPrivateField(entry, "slot", SkillEntrySlot.Space);
+        SetPrivateField(entry, "primaryUnit", group);
+        SetPrivateField(entry, "normalRoute", normal);
+
+        var loadout = ScriptableObject.CreateInstance<SkillEntryLoadoutSO>();
+        var bindings = new SkillEntryLoadoutSO.EntryBinding[1];
+        SetPrivateField(ref bindings[0], "slot", SkillEntrySlot.Space);
+        SetPrivateField(ref bindings[0], "entry", entry);
+        SetPrivateField(loadout, "bindings", bindings);
+
+        var service = new SkillEntryService(owner: null);
+        service.Rebuild(loadout);
+
+        var ctx = default(SkillRouteContext);
+        ctx.EntryService = service;
+        Assert.IsTrue(service.TryApplyGroupCooldown(fwd, in ctx));
+
+        var intent = BuildDirectionalIntent(SkillEntrySlot.Space, Vector2.up);
+        InputSnapshot snap = default;
+        snap.TriggerSlot = SkillEntrySlot.Space;
+        snap.MoveBuffered = Vector2.up;
+        var resolved = service.TryResolveForIntent(in intent, in snap, now: 1f);
+
+        Assert.IsNull(resolved, "Directional 语义禁止回落 NormalRoute");
+    }
+
+    [Test]
+    public void FlowGate_DeniesMobilityWhenGroundedBlocked()
+    {
+        var rule = ScriptableObject.CreateInstance<AbilityGateRuleSO>();
+        SetPrivateField(rule, "ability", AbilitySemantic.Mobility);
+        SetPrivateField(rule, "allowWhenGrounded", false);
+        SetPrivateField(rule, "allowWhenAirborne", true);
+
+        var map = ScriptableObject.CreateInstance<AbilityMapSO>();
+        var bindings = new AbilityMapSO.Binding[1];
+        bindings[0] = new AbilityMapSO.Binding
+        {
+            slot = SkillEntrySlot.Space,
+            ability = AbilitySemantic.Mobility,
+            rule = rule,
+            enabled = true,
+        };
+        SetPrivateField(map, "bindings", bindings);
+
+        var loadout = ScriptableObject.CreateInstance<SkillEntryLoadoutSO>();
+        SetPrivateField(loadout, "abilityMap", map);
+
+        var ctx = new CombatContextSnapshot { IsAirborne = false };
+        Assert.IsFalse(AbilityGateService.CanActivateFlow(
+            loadout,
+            SkillEntrySlot.Space,
+            AbilitySemantic.Mobility,
+            in ctx,
+            out var reason));
+        Assert.AreEqual("state gate", reason);
+    }
+
+    [Test]
+    public void RouteAbilityGate_DeniesAirborneWhenRequireGrounded()
+    {
+        var rule = ScriptableObject.CreateInstance<AbilityGateRuleSO>();
+        SetPrivateField(rule, "requireGrounded", true);
+
+        var route = CreateNormalRoute("fwd");
+        SetPrivateField(route, "abilityGateRules", new[] { rule });
+
+        var airborne = new CombatContextSnapshot { IsAirborne = true };
+        Assert.IsFalse(AbilityGateService.CanActivateRoute(route, in airborne, out var reason));
+        Assert.AreEqual("require grounded", reason);
+
+        var grounded = new CombatContextSnapshot { IsAirborne = false };
+        Assert.IsTrue(AbilityGateService.CanActivateRoute(route, in grounded, out _));
+    }
+
+    [Test]
+    public void MultiStageRouteAbilityGate_UsesSameRouteGatePathAsNormal()
+    {
+        var rule = ScriptableObject.CreateInstance<AbilityGateRuleSO>();
+        SetPrivateField(rule, "allowWhenGrounded", true);
+        SetPrivateField(rule, "allowWhenAirborne", false);
+
+        var route = ScriptableObject.CreateInstance<MultiStageRouteDefinition>();
+        var stage = ScriptableObject.CreateInstance<SkillStageDefinition>();
+        var action = ScriptableObject.CreateInstance<ActionDataSO>();
+        action.Duration = 0.2f;
+        SetPrivateField(stage, "action", action);
+        SetPrivateField(route, "stages", new[] { stage });
+        SetPrivateField(route, "abilityGateRules", new[] { rule });
+
+        var airborne = new CombatContextSnapshot { IsAirborne = true };
+        Assert.IsFalse(AbilityGateService.CanActivateRoute(route, in airborne, out _));
+
+        var grounded = new CombatContextSnapshot { IsAirborne = false };
+        Assert.IsTrue(AbilityGateService.CanActivateRoute(route, in grounded, out _));
+    }
+
+    [Test]
+    public void ContextGroup_MatchesTapSemanticForGroundedChord()
+    {
+        var group = ScriptableObject.CreateInstance<SkillGroupDefinition>();
+        var ctxDef = ScriptableObject.CreateInstance<SkillContextGroupDefinition>();
+        SetPrivateField(ctxDef, "targetGroup", group);
+        SetPrivateField(ctxDef, "requiredSlot", SkillEntrySlot.Space);
+        SetPrivateField(ctxDef, "requireDirectional", false);
+        SetPrivateField(ctxDef, "requireGrounded", true);
+
+        var grounded = new CombatContextSnapshot { IsAirborne = false };
+        Assert.IsTrue(ctxDef.Matches(SkillEntrySlot.Space, InputSemanticType.Tap, in grounded));
+
+        var airborne = new CombatContextSnapshot { IsAirborne = true };
+        Assert.IsFalse(ctxDef.Matches(SkillEntrySlot.Space, InputSemanticType.Tap, in airborne));
+    }
+
+    [Test]
+    public void InterruptWindow_AllowsWhenCategoryMatches()
+    {
+        var current = ScriptableObject.CreateInstance<ActionDataSO>();
+        current.InterruptStability = 5;
+        current.Windows = new System.Collections.Generic.List<ActionWindow>
+        {
+            new ActionWindow
+            {
+                NormalizedStart = 0f,
+                NormalizedEnd = 1f,
+                InterruptibleByCategories = ActionCategory.Movement,
+            },
+        };
+
+        var incoming = ScriptableObject.CreateInstance<ActionDataSO>();
+        incoming.Category = ActionCategory.Movement;
+        incoming.InterruptPriority = 10;
+
+        var intent = BuildDirectionalIntent(SkillEntrySlot.Space, Vector2.up);
+        Assert.IsTrue(ActionInterruptResolver.CanInterrupt(
+            current, 0.5f, in intent, incoming));
+    }
+
+    [Test]
+    public void InterruptWindow_DeniesWhenCategoryMismatch()
+    {
+        var current = ScriptableObject.CreateInstance<ActionDataSO>();
+        current.Windows = new System.Collections.Generic.List<ActionWindow>
+        {
+            new ActionWindow
+            {
+                NormalizedStart = 0f,
+                NormalizedEnd = 1f,
+                InterruptibleByCategories = ActionCategory.Offense,
+            },
+        };
+
+        var incoming = ScriptableObject.CreateInstance<ActionDataSO>();
+        incoming.Category = ActionCategory.Movement;
+
+        var intent = BuildDirectionalIntent(SkillEntrySlot.Space, Vector2.up);
+        Assert.IsFalse(ActionInterruptResolver.CanInterrupt(
+            current, 0.5f, in intent, incoming));
+    }
+
+    static NormalRouteDefinition CreateNormalRoute(string suffix)
+    {
+        var route = ScriptableObject.CreateInstance<NormalRouteDefinition>();
+        route.name = suffix;
+        var stage = ScriptableObject.CreateInstance<SkillStageDefinition>();
+        var action = ScriptableObject.CreateInstance<ActionDataSO>();
+        action.Duration = 0.2f;
+        SetPrivateField(stage, "action", action);
+        SetPrivateField(route, "stages", new[] { stage });
+        return route;
+    }
+
+    static SkillRouteDefinition ResolveDirectional(SkillEntryService service, Vector2 axis)
+    {
+        var intent = BuildDirectionalIntent(SkillEntrySlot.Space, axis);
+        InputSnapshot snap = default;
+        snap.TriggerSlot = SkillEntrySlot.Space;
+        snap.MoveBuffered = axis;
+        var rt = service.TryResolveForIntent(in intent, in snap, now: 1f);
+        Assert.IsNotNull(rt, $"axis={axis}");
+        return rt.Definition;
+    }
+
+    static GameplayIntent BuildDirectionalIntent(SkillEntrySlot slot, Vector2 axis)
+    {
+        var intent = GameplayIntent.ForEntry(
+            slot,
+            time: 1f,
+            bufferSeconds: 0.18f,
+            requiredAll: 0UL,
+            requiredAny: 0UL,
+            forbidden: 0UL,
+            moveBuffered: axis,
+            moveBufferValid: true);
+        intent.Semantic = InputSemanticType.Directional;
+        intent.DirectionAxis = axis;
+        return intent;
+    }
+
     static void SetPrivateField<TObj, TValue>(TObj obj, string fieldName, TValue value)
     {
         var f = FindField(typeof(TObj), fieldName);

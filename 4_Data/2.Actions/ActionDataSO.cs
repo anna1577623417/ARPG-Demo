@@ -45,12 +45,22 @@ public class ActionDataSO : ScriptableObject
     [Range(0f, 0.5f)]
     public float CrossfadeTime = 0.08f;
 
-    [Tooltip("动画播放速度倍率。")]
+    [Tooltip("Clip 播放倍率。(Clip×Ratio)÷Duration；Inspector「按 Duration 匹配 Clip 速率」写入，可手调。")]
     [Range(0.1f, 20f)]
     public float AnimSpeed = 1f;
 
     [Tooltip("逻辑时长（秒）。与动画长度可不同，用于先行手感调参。")]
     public float Duration = 0.4f;
+
+    [Tooltip("Clip 完成比例（仅动画）：Action 结束时 Clip 进度 = nt×Ratio。不裁 Motion 位移。")]
+    [Range(0.05f, 2f)]
+    public float AnimationEndRatio = 1f;
+
+    [Tooltip("属性缩放逻辑时长：FinalDuration = Duration ÷ GetDurationScale。None = 不缩放。")]
+    public MotionScaleType DurationStatScaling = MotionScaleType.None;
+
+    [Tooltip("编舞/速率计算用的主轴位移（米），取自 MotionProfile.AxisCurves t=0→1。")]
+    public MotionPrincipalAxis PrincipalAxis = MotionPrincipalAxis.Z;
 
     [Header("Interrupt Semantics (abstract)")]
     [Tooltip("Identity：该动作属于哪类语义（Movement / Offense / Defensive / Utility）。")]
@@ -77,6 +87,10 @@ public class ActionDataSO : ScriptableObject
     [Tooltip("离散瞬移触发点；仅在归一化时间跨过触发点时执行一次。")]
     public List<TeleportTrigger> TeleportTriggers = new List<TeleportTrigger>();
 
+    [Header("Presentation Timeline (139.2 P2/P3)")]
+    [Tooltip("FX / Audio / Camera / TimeScale 标记；在时间轴编辑器中配置。")]
+    public List<ActionTimelineMarker> TimelineMarkers = new List<ActionTimelineMarker>();
+
     /// <summary>
     /// Dodge/SwordDash 等「无 MotionProfile」时：<strong>不与 Duration 争抢</strong>，优先 MainClip 墙钟，语义为按动画实况播完再走逻辑。
     /// </summary>
@@ -84,27 +98,20 @@ public class ActionDataSO : ScriptableObject
     {
         if (MainClip != null)
         {
+            if (Duration > 0.001f)
+            {
+                return MainClip.length / Mathf.Max(0.01f, AnimSpeed);
+            }
+
             return MainClip.length / Mathf.Max(0.01f, AnimSpeed);
         }
 
-        return ResolveLogicalDurationSeconds();
+        return ActionTimeAuthority.ResolveAuthoredLogicDurationSeconds(this);
     }
 
-    /// <summary>普攻等逻辑用：优先 <see cref="Duration"/>，否则按 Clip 墙钟。</summary>
-    public float ResolveLogicalDurationSeconds()
-    {
-        if (Duration > 0.001f)
-        {
-            return Duration;
-        }
-
-        if (MainClip != null)
-        {
-            return MainClip.length / Mathf.Max(0.01f, AnimSpeed);
-        }
-
-        return 0.4f;
-    }
+    /// <summary>普攻等逻辑用：优先 <see cref="Duration"/>，否则 Clip÷AnimSpeed。</summary>
+    public float ResolveLogicalDurationSeconds() =>
+        ActionTimeAuthority.ResolveAuthoredLogicDurationSeconds(this);
 
     /// <summary>MotionExecutor 时钟：优先 <see cref="Duration"/>，否则主 Clip 墙钟。</summary>
     public float ResolveMotionDurationSeconds()

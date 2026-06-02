@@ -82,6 +82,10 @@ public abstract class SkillRouteDefinition : ScriptableObject, ISkillUnit
     [SerializeField, Tooltip("为 true 时使用本 Route 的 Cost。")]
     bool overrideCost;
 
+    [Header("Ability Gate (136.3)")]
+    [SerializeField, Tooltip("起手闸门：Intent→Route 施放前须全部通过；空 = 不校验。CombatFlow 流转见 Loadout.AbilityMap，不经此字段。")]
+    AbilityGateRuleSO[] abilityGateRules;
+
     // ── 公有只读暴露 ──
     public string RouteId => routeId;
     public Sprite Icon => icon;
@@ -102,6 +106,39 @@ public abstract class SkillRouteDefinition : ScriptableObject, ISkillUnit
     public bool OverrideGroupCooldown => overrideCooldown;
     public bool OverrideGroupIcon => overrideIcon;
     public bool OverrideGroupCost => overrideCost;
+    public AbilityGateRuleSO[] AbilityGateRules => abilityGateRules;
+
+    /// <summary>Route 级能力准入；无规则时恒通过。</summary>
+    public bool PassesAbilityGates(in CombatContextSnapshot ctx, out string denyReason)
+    {
+        if (abilityGateRules == null || abilityGateRules.Length == 0)
+        {
+            denyReason = null;
+            return true;
+        }
+
+        for (var i = 0; i < abilityGateRules.Length; i++)
+        {
+            var rule = abilityGateRules[i];
+            if (rule == null)
+            {
+                continue;
+            }
+
+            if (!rule.Pass(in ctx))
+            {
+                denyReason = rule.RequireGrounded
+                    ? "require grounded"
+                    : rule.RequireAirborne
+                        ? "require airborne"
+                        : "state gate";
+                return false;
+            }
+        }
+
+        denyReason = null;
+        return true;
+    }
 
     string ISkillUnit.DisplayName => GetEffectiveDisplayName();
     Sprite ISkillUnit.Icon => GetEffectiveIcon();
@@ -196,5 +233,5 @@ public enum RouteKind : byte
     Charge     = 2,
     MultiStage = 3,
     Derivative = 4,
-    Directional= 5,   // DirectionalRouteSet（聚合多个子 Route 按方向选）
+    Directional= 5,   // 已废弃（原 DirectionalRouteSet）；勿新建此 Kind 的资产
 }

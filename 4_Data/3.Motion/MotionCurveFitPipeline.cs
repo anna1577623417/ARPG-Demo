@@ -9,6 +9,12 @@ public enum MotionCurveFitMode : byte
     Raw = 0,
     Smooth = 1,
     AggressiveSmooth = 2,
+    /// <summary>滤波 + Key 约简 + Catmull-Rom 切线（Dash/Roll 推荐，143.1 P2）。</summary>
+    CatmullRom = 3,
+    /// <summary>滤波 + 约简 + 有限差分 Hermite 切线（Boss 冲锋等可控段，143.1 P4）。</summary>
+    Hermite = 4,
+    /// <summary>滤波 + 约简 + 1/3 弦长 Bezier 风格切线（策划手调友好，143.1 P4）。</summary>
+    Bezier = 5,
 }
 
 public enum MotionCurveFilterMode : byte
@@ -52,6 +58,8 @@ public static class MotionCurveFitPipeline
         public int RawSampleCount;
         public int OutputKeyCount;
         public float CompressionRatio;
+        /// <summary>0~1，拟合曲线对原始采样均方误差的近似质量。</summary>
+        public float ApproximationQuality;
     }
 
     public static AnimationCurve BuildCurve(float[] times, float[] values, in Settings settings, out Result result)
@@ -92,17 +100,73 @@ public static class MotionCurveFitPipeline
             keys[i] = new Keyframe(t[idx], v[idx]);
         }
 
-        if (settings.FitMode == MotionCurveFitMode.AggressiveSmooth && keys.Length >= 3)
-        {
-            ApplyCatmullRomTangents(keys, t, v, keep);
-        }
+        ApplyTangentMode(keys, t, v, keep, settings.FitMode);
 
+        var built = new AnimationCurve(keys);
         result.OutputKeyCount = keys.Length;
         result.CompressionRatio = result.RawSampleCount > 0
             ? 1f - (float)result.OutputKeyCount / result.RawSampleCount
             : 0f;
+        result.ApproximationQuality = ComputeApproximationQuality(t, v, built);
 
-        return new AnimationCurve(keys);
+        return built;
+    }
+
+    static void ApplyTangentMode(Keyframe[] keys, float[] t, float[] v, List<int> keep, MotionCurveFitMode mode)
+    {
+        if (keys.Length < 2)
+        {
+            return;
+        }
+
+        switch (mode)
+        {
+            case MotionCurveFitMode.AggressiveSmooth:
+            case MotionCurveFitMode.CatmullRom:
+                if (keys.Length >= 3)
+                {
+                    ApplyCatmullRomTangents(keys, t, v, keep);
+                }
+
+                break;
+            case MotionCurveFitMode.Hermite:
+                ApplyHermiteTangents(keys, t, v, keep);
+                break;
+            case MotionCurveFitMode.Bezier:
+                ApplyBezierStyleTangents(keys, t, v, keep);
+                break;
+        }
+    }
+
+    /// <summary>原始采样 vs 拟合曲线（归一化 t，值同域）的 1 - 相对 RMSE。</summary>
+    public static float ComputeApproximationQuality(float[] times, float[] rawValues, AnimationCurve fitted)
+    {
+        if (times == null || rawValues == null || fitted == null
+            || times.Length == 0 || times.Length != rawValues.Length)
+        {
+            return 0f;
+        }
+
+        var range = 0f;
+        for (var i = 0; i < rawValues.Length; i++)
+        {
+            range = Mathf.Max(range, Mathf.Abs(rawValues[i]));
+        }
+
+        if (range < 1e-6f)
+        {
+            return 1f;
+        }
+
+        var sumSq = 0f;
+        for (var i = 0; i < times.Length; i++)
+        {
+            var err = rawValues[i] - fitted.Evaluate(Mathf.Clamp01(times[i]));
+            sumSq += err * err;
+        }
+
+        var rmse = Mathf.Sqrt(sumSq / times.Length);
+        return Mathf.Clamp01(1f - rmse / range);
     }
 
     static List<int> BuildIndexList(int count)
@@ -327,11 +391,8 @@ public static class MotionCurveFitPipeline
     {
         for (var i = 0; i < keys.Length; i++)
         {
-            var i0 = Mathf.Max(0, i - 1);
             var i1 = i;
             var i2 = Mathf.Min(keys.Length - 1, i + 1);
-            var i3 = Mathf.Min(keys.Length - 1, i + 2);
-
             var t1 = t[keep[i1]];
             var t2 = t[keep[i2]];
             var dt = t2 - t1;
@@ -345,6 +406,91 @@ public static class MotionCurveFitPipeline
             k.inTangent = i > 0 ? slope : k.inTangent;
             k.outTangent = i < keys.Length - 1 ? slope : k.outTangent;
             keys[i1] = k;
+        }
+    }
+
+    static void ApplyHermiteTangents(Keyframe[] keys, float[] t, float[] v, List<int> keep)
+    {
+        for (var i = 0; i < keys.Length; i++)
+        {
+            var idx = keep[i];
+            var k = keys[i];
+            var ti = t[idx];
+            var vi = v[idx];
+
+            float inSlope = 0f;
+            float outSlope = 0f;
+
+            if (i > 0)
+            {
+                var iPrev = keep[i - 1];
+                var dt = ti - t[iPrev];
+                if (Mathf.Abs(dt) > 1e-6f)
+                {
+                    inSlope = (vi - v[iPrev]) / dt;
+                }
+            }
+
+            if (i < keys.Length - 1)
+            {
+                var iNext = keep[i + 1];
+                var dt = t[iNext] - ti;
+                if (Mathf.Abs(dt) > 1e-6f)
+                {
+                    outSlope = (v[iNext] - vi) / dt;
+                }
+            }
+
+            if (i > 0 && i < keys.Length - 1)
+            {
+                var iPrev = keep[i - 1];
+                var iNext = keep[i + 1];
+                var dt = t[iNext] - t[iPrev];
+                if (Mathf.Abs(dt) > 1e-6f)
+                {
+                    var central = (v[iNext] - v[iPrev]) / dt;
+                    inSlope = central;
+                    outSlope = central;
+                }
+            }
+
+            k.inTangent = inSlope;
+            k.outTangent = outSlope;
+            keys[i] = k;
+        }
+    }
+
+    static void ApplyBezierStyleTangents(Keyframe[] keys, float[] t, float[] v, List<int> keep)
+    {
+        const float tension = 1f / 3f;
+        for (var i = 0; i < keys.Length; i++)
+        {
+            var idx = keep[i];
+            var k = keys[i];
+            var ti = t[idx];
+            var vi = v[idx];
+
+            if (i > 0)
+            {
+                var iPrev = keep[i - 1];
+                var dt = ti - t[iPrev];
+                if (Mathf.Abs(dt) > 1e-6f)
+                {
+                    k.inTangent = tension * (vi - v[iPrev]) / dt;
+                }
+            }
+
+            if (i < keys.Length - 1)
+            {
+                var iNext = keep[i + 1];
+                var dt = t[iNext] - ti;
+                if (Mathf.Abs(dt) > 1e-6f)
+                {
+                    k.outTangent = tension * (v[iNext] - vi) / dt;
+                }
+            }
+
+            keys[i] = k;
         }
     }
 }

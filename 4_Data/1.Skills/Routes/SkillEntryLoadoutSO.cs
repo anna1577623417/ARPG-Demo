@@ -31,7 +31,23 @@ public class SkillEntryLoadoutSO : ScriptableObject
     [SerializeField, Tooltip("逐项绑定；同一槽位多次出现以第一项为准。")]
     private EntryBinding[] bindings;
 
+    [Header("Combat Flow & Context (136.1)")]
+    [SerializeField, Tooltip("本 Loadout 的战斗流转图；不再挂 Player 上。")]
+    CombatGraphAsset combatFlow;
+
+    [SerializeField, Tooltip("上下文语义组（Directional/地面/滞空等 → Group）。")]
+    SkillContextGroupDefinition[] contextGroups;
+
+    [Header("Combat Flow Gate (138)")]
+    [SerializeField, Tooltip(
+        "CombatGraph 边流转准入：TriggerSlot + Ability 语义 → AbilityGateRule。\n" +
+        "技能起手见各 Route.abilityGateRules；Action 打断见 ActionWindow.InterruptibleByCategories。")]
+    AbilityMapSO abilityMap;
+
     public EntryBinding[] Bindings => bindings;
+    public CombatGraphAsset CombatFlow => combatFlow;
+    public SkillContextGroupDefinition[] ContextGroups => contextGroups;
+    public AbilityMapSO AbilityMap => abilityMap;
 
     /// <summary>查询 — 0-GC 路径，运行时安全。未找到返回 null。</summary>
     public SkillEntryDefinition Resolve(SkillEntrySlot slot)

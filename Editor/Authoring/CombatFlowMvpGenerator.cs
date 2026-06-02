@@ -270,36 +270,34 @@ public static class CombatFlowMvpGenerator
     }
 
     static SkillEntryDefinition BindEntryDirectional(
-        string path,
+        string entryPath,
         NormalRouteDefinition fwd,
         NormalRouteDefinition back,
         NormalRouteDefinition left,
         NormalRouteDefinition right)
     {
-        var dirPath = path.Replace("/Entries/", "/Routes/").Replace("Entry_Space", "Route_Directional_Space");
-        var dir = AssetDatabase.LoadAssetAtPath<DirectionalRouteSet>(dirPath);
-        if (dir == null)
-        {
-            dir = ScriptableObject.CreateInstance<DirectionalRouteSet>();
-            AssetDatabase.CreateAsset(dir, dirPath);
-        }
-        var dso = new SerializedObject(dir);
-        dso.FindProperty("forward").objectReferenceValue = fwd;
-        dso.FindProperty("backward").objectReferenceValue = back;
-        dso.FindProperty("left").objectReferenceValue = left;
-        dso.FindProperty("right").objectReferenceValue = right;
-        dso.ApplyModifiedPropertiesWithoutUndo();
+        var groupPath = $"{C1Root}/SkillUnit/Group_Space_CombatFlow_MVP.asset";
+        EnsureDir($"{C1Root}/SkillUnit");
+        var group = SkillGroupFourDirEditorUtil.CreateOrUpdateFourDirGroup(
+            groupPath,
+            "Space Dodge",
+            1f,
+            fwd,
+            back,
+            left,
+            right);
 
-        var e = AssetDatabase.LoadAssetAtPath<SkillEntryDefinition>(path);
+        var e = AssetDatabase.LoadAssetAtPath<SkillEntryDefinition>(entryPath);
         if (e == null)
         {
             e = ScriptableObject.CreateInstance<SkillEntryDefinition>();
-            AssetDatabase.CreateAsset(e, path);
+            AssetDatabase.CreateAsset(e, entryPath);
         }
+
         var so = new SerializedObject(e);
         so.FindProperty("slot").enumValueIndex = (int)SkillEntrySlot.Space;
-        so.FindProperty("directionalRoute").objectReferenceValue = dir;
         so.ApplyModifiedPropertiesWithoutUndo();
+        SkillGroupFourDirEditorUtil.BindEntryPrimaryGroup(e, group);
         return e;
     }
 

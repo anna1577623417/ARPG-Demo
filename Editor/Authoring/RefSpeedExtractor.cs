@@ -18,23 +18,10 @@ public static class RefSpeedExtractor
         }
 
         var totalDisplacement = 0f;
-        var bindings = AnimationUtility.GetCurveBindings(clip);
-        for (var i = 0; i < bindings.Length; i++)
+        if (ClipMotionRootTSampling.TryGetRootTCurves(clip, out var curves))
         {
-            var b = bindings[i];
-            if (b.propertyName != "RootT.z")
-            {
-                continue;
-            }
-
-            var curve = AnimationUtility.GetEditorCurve(clip, b);
-            if (curve == null)
-            {
-                continue;
-            }
-
-            totalDisplacement = Mathf.Abs(curve.Evaluate(clip.length) - curve.Evaluate(0f));
-            break;
+            totalDisplacement = Mathf.Abs(ClipMotionRootTSampling.Evaluate(in curves, clip.length).z
+                - ClipMotionRootTSampling.Evaluate(in curves, 0f).z);
         }
 
         var refSpeed = totalDisplacement / Mathf.Max(0.0001f, clip.length);

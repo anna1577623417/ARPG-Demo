@@ -3,65 +3,71 @@ using UnityEditor;
 using UnityEngine;
 
 [CustomEditor(typeof(ActionDataSO))]
-public sealed class ActionDataInspector : Editor
+public sealed partial class ActionDataInspector : Editor
 {
     static bool s_timeFoldout;
     static bool s_extractFoldout;
+    static bool s_timelineFoldout = true;
+
+    static readonly string[] HiddenInDefaultInspector =
+    {
+        "m_Script",
+        nameof(ActionDataSO.Duration),
+        nameof(ActionDataSO.AnimationEndRatio),
+        nameof(ActionDataSO.AnimSpeed),
+        nameof(ActionDataSO.DurationStatScaling),
+        nameof(ActionDataSO.PrincipalAxis),
+        nameof(ActionDataSO.Windows),
+        nameof(ActionDataSO.TeleportTriggers),
+        nameof(ActionDataSO.TimelineMarkers),
+    };
 
     public override void OnInspectorGUI()
     {
-        DrawDefaultInspector();
         var action = (ActionDataSO)target;
         if (action == null)
         {
             return;
         }
 
+        serializedObject.Update();
+        DrawPropertiesExcluding(serializedObject, HiddenInDefaultInspector);
+        DrawTimelineSection(action);
+        serializedObject.ApplyModifiedProperties();
+
         DrawTimeAuthoritySection(action);
         DrawMotionPassSection(action);
     }
 
-    void DrawTimeAuthoritySection(ActionDataSO action)
+    void DrawTimelineSection(ActionDataSO action)
     {
-        EditorGUILayout.Space(6f);
-        s_timeFoldout = EditorGUILayout.BeginFoldoutHeaderGroup(
-            s_timeFoldout,
-            "Time Authority（可选）");
-        if (!s_timeFoldout)
+        EditorGUILayout.Space(8f);
+        s_timelineFoldout = EditorGUILayout.BeginFoldoutHeaderGroup(
+            s_timelineFoldout,
+            "Timeline（139.2 · Interrupt + Combat）");
+
+        if (!s_timelineFoldout)
         {
             EditorGUILayout.EndFoldoutHeaderGroup();
             return;
         }
 
-        EditorGUILayout.LabelField("Logic Duration", $"{action.Duration:F4}s");
-        if (action.MainClip != null)
-        {
-            EditorGUILayout.LabelField("Clip Length", $"{action.MainClip.length:F4}s");
-            EditorGUILayout.LabelField(
-                "Clip Wall @ AnimSpeed",
-                $"{MotionDurationResolver.ResolveClipWallClockSeconds(action):F4}s");
-        }
-
-        using (new EditorGUI.DisabledScope(action.MainClip == null))
-        {
-            if (GUILayout.Button("Import Clip Length → Logic Duration"))
-            {
-                Undo.RecordObject(action, "Import Clip Length");
-                action.Duration = action.MainClip.length;
-                if (action.MotionProfile != null)
-                {
-                    Undo.RecordObject(action.MotionProfile, "Sync Reference Duration");
-                    action.MotionProfile.Duration_AuthoringReference = action.Duration;
-                    EditorUtility.SetDirty(action.MotionProfile);
-                }
-
-                EditorUtility.SetDirty(action);
-            }
-        }
+        var winCount = action.Windows != null ? action.Windows.Count : 0;
+        var tpCount = action.TeleportTriggers != null ? action.TeleportTriggers.Count : 0;
+        var mkCount = action.TimelineMarkers != null ? action.TimelineMarkers.Count : 0;
+        EditorGUILayout.LabelField("Windows", winCount.ToString());
+        EditorGUILayout.LabelField("Teleport Triggers", tpCount.ToString());
+        EditorGUILayout.LabelField("Timeline Markers", mkCount.ToString());
 
         EditorGUILayout.HelpBox(
-            "Motion Runtime 以 Action.LogicDuration 为唯一时间源；MotionProfile.UseActionDuration 默认 ON。",
+            "推荐用「打开 Action 时间轴编辑器」：左右分栏，属性不再与时间轴纵向堆叠。",
             MessageType.None);
+
+        if (GUILayout.Button("打开 Action 时间轴编辑器", GUILayout.Height(26f)))
+        {
+            ActionDataTimelineEditor.Open(action);
+        }
+
         EditorGUILayout.EndFoldoutHeaderGroup();
     }
 

@@ -5,15 +5,15 @@ using UnityEngine;
 ///
 /// ═══ 数据模型 ═══
 ///   SkillEntryDefinition (槽位入口，1 个)
-///     ├─ NormalRoute      (可空)
+///     ├─ PrimaryUnit (SkillGroup / Route) — 四向在 Group 内配置
+///     ├─ NormalRoute      (可空，非 Directional 回退)
 ///     ├─ ComboRoute       (可空)
 ///     ├─ ChargeRoute      (可空)
 ///     ├─ MultiStageRoute  (可空)
-///     ├─ DirectionalSet   (可空)
 ///     └─ Derivatives[]    (派生招，可空)
 ///
 /// ═══ Resolver 选择优先级 ═══
-///   按 RoutePriority 从小到大求值：Charge → Combo → Directional → Derivative → MultiStage → Normal。
+///   按 RoutePriority 从小到大求值：Charge → Combo → PrimaryGroup(四向) → Derivative → MultiStage → Normal。
 ///   首条命中即出（短路）。
 /// </summary>
 [CreateAssetMenu(menuName = "GameMain/SkillRoute/Entry/Skill Entry Definition", fileName = "Entry_")]
@@ -44,9 +44,6 @@ public class SkillEntryDefinition : ScriptableObject
 
     [SerializeField, Tooltip("空中连段（IsAirborne 时替代 comboRoute）。")]
     private ComboRouteDefinition airComboRoute;
-
-    [SerializeField, Tooltip("方向化路由集（WASD modifier + Trigger 时启用）。")]
-    private DirectionalRouteSet directionalRoute;
 
     [SerializeField, Tooltip("多段路由（同 Route 内 Stage 推进型，如盲僧 Q1→Q2）。")]
     private MultiStageRouteDefinition multiStageRoute;
@@ -85,7 +82,6 @@ public class SkillEntryDefinition : ScriptableObject
     public ComboRouteDefinition ComboRoute => comboRoute;
     public ComboRouteDefinition ExtendedComboRoute => extendedComboRoute;
     public ComboRouteDefinition AirComboRoute => airComboRoute;
-    public DirectionalRouteSet DirectionalRoute => directionalRoute;
     public MultiStageRouteDefinition MultiStageRoute => multiStageRoute;
     public NormalRouteDefinition NormalRoute => normalRoute;
     public float ExtendedHandoffWindowSeconds => extendedHandoffWindowSeconds;
@@ -106,6 +102,11 @@ public class SkillEntryDefinition : ScriptableObject
 
         if (PrimaryGroup != null)
         {
+            AddIfNotNull(buffer, PrimaryGroup.Forward);
+            AddIfNotNull(buffer, PrimaryGroup.Backward);
+            AddIfNotNull(buffer, PrimaryGroup.Left);
+            AddIfNotNull(buffer, PrimaryGroup.Right);
+
             var routes = PrimaryGroup.Routes;
             if (routes != null)
             {
@@ -132,7 +133,6 @@ public class SkillEntryDefinition : ScriptableObject
         if (comboRoute != null) buffer.Add(comboRoute);
         if (extendedComboRoute != null) buffer.Add(extendedComboRoute);
         if (airComboRoute != null) buffer.Add(airComboRoute);
-        if (directionalRoute != null) buffer.Add(directionalRoute);
         if (multiStageRoute != null) buffer.Add(multiStageRoute);
         if (normalRoute != null) buffer.Add(normalRoute);
         if (derivativeRoutes != null)
@@ -145,6 +145,24 @@ public class SkillEntryDefinition : ScriptableObject
                 }
             }
         }
+    }
+
+    static void AddIfNotNull(System.Collections.Generic.List<SkillRouteDefinition> buffer, SkillRouteDefinition route)
+    {
+        if (route == null)
+        {
+            return;
+        }
+
+        for (var i = 0; i < buffer.Count; i++)
+        {
+            if (buffer[i] == route)
+            {
+                return;
+            }
+        }
+
+        buffer.Add(route);
     }
 
     /// <summary>B1 后等候 Combo2 的总窗口（秒）。0 = Combo1.ComboSessionResetTime。</summary>
@@ -210,7 +228,6 @@ public class SkillEntryDefinition : ScriptableObject
         if (comboRoute      != null && comboRoute.ShowOnHud      && n < buffer.Length) buffer[n++] = comboRoute;
         if (extendedComboRoute != null && extendedComboRoute.ShowOnHud && n < buffer.Length) buffer[n++] = extendedComboRoute;
         if (airComboRoute   != null && airComboRoute.ShowOnHud   && n < buffer.Length) buffer[n++] = airComboRoute;
-        if (directionalRoute!= null && directionalRoute.ShowOnHud&& n < buffer.Length) buffer[n++] = directionalRoute;
         if (multiStageRoute != null && multiStageRoute.ShowOnHud && n < buffer.Length) buffer[n++] = multiStageRoute;
         if (normalRoute     != null && normalRoute.ShowOnHud     && n < buffer.Length) buffer[n++] = normalRoute;
 

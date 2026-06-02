@@ -592,9 +592,44 @@ MonoBehaviour:
       m_PostInfinity: 2
       m_RotationOrder: 4
     XScale: 0
-    YScale: 0.11835569
+    YScale: 0.118
     ZScale: 3
-  YPolicy: 2
+  YMotion: 1
+  Gravity: 0
+  GroundConstraint: 1
+  yAxisV2Configured: 0
+  legacyYPolicy: 2
+  LandingOffset: 0
+  LandingCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  LandingDetectionRadius: 20
+  UseActionDuration: 1
+  TimeSync: 0
+  Duration_AuthoringReference: 0.8
+  Distance_AuthoringReference: 4
+  AuthoringReferenceAnimSpeed: 1
   AnimSpeedMode: 0
   SpeedOverTime:
     serializedVersion: 2
@@ -623,6 +658,7 @@ MonoBehaviour:
   ReferenceSpeed: 4.067796
   MatchAnimationSpeed: 1
   ScaleType: 1
+  MotionSpace: 0
   BurstDurationSeconds: 0.9833334
   LegacyConstantPlanarSpeed: 4.067796
   UsePlanarVelocityShape: 0

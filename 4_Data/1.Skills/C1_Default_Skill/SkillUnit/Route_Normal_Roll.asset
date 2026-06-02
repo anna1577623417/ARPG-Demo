@@ -43,3 +43,5 @@ MonoBehaviour:
   overrideCooldown: 0
   overrideIcon: 0
   overrideCost: 0
+  abilityGateRules:
+  - {fileID: 11400000, guid: f1a2b3c4d5e6789012345678abcdef01, type: 2}

@@ -14,8 +14,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   MainClip: {fileID: 938527645004508068, guid: 30e0c6f0ba714704faaf6b4df5acca56, type: 3}
   CrossfadeTime: 0.08
-  AnimSpeed: 1
-  Duration: 1.5666667
+  AnimSpeed: 3.1333334
+  Duration: 0.5
+  AnimationEndRatio: 1
+  DurationStatScaling: 0
+  PrincipalAxis: 2
   Category: 2
   InterruptPriority: 10
   InterruptStability: 10
@@ -23,3 +26,4 @@ MonoBehaviour:
   MotionProfile: {fileID: 11400000, guid: 92781da5b5d6dc44a9226a0a64660e72, type: 2}
   Windows: []
   TeleportTriggers: []
+  TimelineMarkers: []
