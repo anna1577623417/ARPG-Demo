@@ -32,7 +32,7 @@ public class SkillEntryLoadoutSO : ScriptableObject
     private EntryBinding[] bindings;
 
     [Header("Combat Flow & Context (136.1)")]
-    [SerializeField, Tooltip("本 Loadout 的战斗流转图；不再挂 Player 上。")]
+    [SerializeField, Tooltip("147.1 战斗流转图模板；运行时读 CompiledData，非 SkillEntry 输入入口。")]
     CombatGraphAsset combatFlow;
 
     [SerializeField, Tooltip("上下文语义组（Directional/地面/滞空等 → Group）。")]
@@ -40,8 +40,8 @@ public class SkillEntryLoadoutSO : ScriptableObject
 
     [Header("Combat Flow Gate (138)")]
     [SerializeField, Tooltip(
-        "CombatGraph 边流转准入：TriggerSlot + Ability 语义 → AbilityGateRule。\n" +
-        "技能起手见各 Route.abilityGateRules；Action 打断见 ActionWindow.InterruptibleByCategories。")]
+        "147.1 Flow 边 OnInput 流转时的 Ability 准入（Slot→Ability→Rule）。\n" +
+        "技能起手见 Route.abilityGateRules；Action 打断见 ActionWindow。")]
     AbilityMapSO abilityMap;
 
     public EntryBinding[] Bindings => bindings;

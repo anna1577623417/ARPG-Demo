@@ -9,7 +9,7 @@ public sealed partial class ActionDataTimelineEditor
 
     void AddMarkerAtPreview(ActionTimelineMarkerKind kind)
     {
-        if (_markers == null)
+        if (_markers == null || kind == ActionTimelineMarkerKind.None)
         {
             return;
         }
@@ -18,12 +18,18 @@ public sealed partial class ActionDataTimelineEditor
         _markers.arraySize++;
         var elem = _markers.GetArrayElementAtIndex(_markers.arraySize - 1);
         elem.FindPropertyRelative(nameof(ActionTimelineMarker.NormalizedTime)).floatValue = Snap(_previewTime);
-        elem.FindPropertyRelative(nameof(ActionTimelineMarker.Kind)).enumValueIndex = (int)kind;
+        WriteMarkerKind(elem, kind);
         ApplyMarkerDefaults(elem, kind);
         _selectedMarker = _markers.arraySize - 1;
         _selectedWindow = -1;
         _selectedTeleport = -1;
     }
+
+    static ActionTimelineMarkerKind ReadMarkerKind(SerializedProperty elem) =>
+        (ActionTimelineMarkerKind)elem.FindPropertyRelative(nameof(ActionTimelineMarker.Kind)).intValue;
+
+    static void WriteMarkerKind(SerializedProperty elem, ActionTimelineMarkerKind kind) =>
+        elem.FindPropertyRelative(nameof(ActionTimelineMarker.Kind)).intValue = (int)kind;
 
     static void ApplyMarkerDefaults(SerializedProperty elem, ActionTimelineMarkerKind kind)
     {
@@ -63,7 +69,7 @@ public sealed partial class ActionDataTimelineEditor
         for (var i = 0; i < _markers.arraySize; i++)
         {
             var elem = _markers.GetArrayElementAtIndex(i);
-            var kind = (ActionTimelineMarkerKind)elem.FindPropertyRelative(nameof(ActionTimelineMarker.Kind)).enumValueIndex;
+            var kind = ReadMarkerKind(elem);
             if (!MarkerMatchesTrack(kind, track))
             {
                 continue;
@@ -95,7 +101,7 @@ public sealed partial class ActionDataTimelineEditor
         for (var i = 0; i < _markers.arraySize; i++)
         {
             var elem = _markers.GetArrayElementAtIndex(i);
-            var kind = (ActionTimelineMarkerKind)elem.FindPropertyRelative(nameof(ActionTimelineMarker.Kind)).enumValueIndex;
+            var kind = ReadMarkerKind(elem);
             if (!MarkerMatchesTrack(kind, track))
             {
                 continue;
@@ -124,7 +130,7 @@ public sealed partial class ActionDataTimelineEditor
         for (var i = 0; i < _markers.arraySize; i++)
         {
             var elem = _markers.GetArrayElementAtIndex(i);
-            var kind = (ActionTimelineMarkerKind)elem.FindPropertyRelative(nameof(ActionTimelineMarker.Kind)).enumValueIndex;
+            var kind = ReadMarkerKind(elem);
             if (!MarkerMatchesTrack(kind, track))
             {
                 continue;
@@ -171,7 +177,17 @@ public sealed partial class ActionDataTimelineEditor
         }
 
         var kind = TrackToDefaultMarkerKind(track);
+        if (kind == ActionTimelineMarkerKind.None)
+        {
+            return false;
+        }
+
         AddMarkerAtPreview(kind);
+        if (_selectedMarker < 0 || _markers == null || _selectedMarker >= _markers.arraySize)
+        {
+            return false;
+        }
+
         var elem = _markers.GetArrayElementAtIndex(_selectedMarker);
         elem.FindPropertyRelative(nameof(ActionTimelineMarker.NormalizedTime)).floatValue = norm;
         return true;
@@ -325,7 +341,7 @@ public sealed partial class ActionDataTimelineEditor
     void DrawMarkerInspector(SerializedProperty elem)
     {
         var pKind = elem.FindPropertyRelative(nameof(ActionTimelineMarker.Kind));
-        var kind = (ActionTimelineMarkerKind)pKind.enumValueIndex;
+        var kind = ReadMarkerKind(elem);
 
         EditorGUILayout.LabelField($"Marker [{_selectedMarker}] · {kind}", EditorStyles.boldLabel);
 
@@ -374,7 +390,7 @@ public sealed partial class ActionDataTimelineEditor
         GUIStyle style)
     {
         var current = elem != null
-            ? (ActionTimelineMarkerKind)elem.FindPropertyRelative(nameof(ActionTimelineMarker.Kind)).enumValueIndex
+            ? ReadMarkerKind(elem)
             : _preferredCameraKind;
         var on = current == kind;
         var prevBg = GUI.backgroundColor;
@@ -434,7 +450,7 @@ public sealed partial class ActionDataTimelineEditor
         GUIStyle style)
     {
         var pKind = elem.FindPropertyRelative(nameof(ActionTimelineMarker.Kind));
-        var current = (ActionTimelineMarkerKind)pKind.enumValueIndex;
+        var current = ReadMarkerKind(elem);
         var on = current == kind;
         var prevBg = GUI.backgroundColor;
         if (on)
@@ -454,7 +470,7 @@ public sealed partial class ActionDataTimelineEditor
 
     void SetMarkerKind(SerializedProperty elem, ActionTimelineMarkerKind kind)
     {
-        elem.FindPropertyRelative(nameof(ActionTimelineMarker.Kind)).enumValueIndex = (int)kind;
+        WriteMarkerKind(elem, kind);
         ApplyMarkerDefaults(elem, kind);
     }
 
@@ -523,7 +539,7 @@ public sealed partial class ActionDataTimelineEditor
         for (var i = 0; i < _markers.arraySize; i++)
         {
             var elem = _markers.GetArrayElementAtIndex(i);
-            if ((ActionTimelineMarkerKind)elem.FindPropertyRelative(nameof(ActionTimelineMarker.Kind)).enumValueIndex != kind)
+            if (ReadMarkerKind(elem) != kind)
             {
                 continue;
             }

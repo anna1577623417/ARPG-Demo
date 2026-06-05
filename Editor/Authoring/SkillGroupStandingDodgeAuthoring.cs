@@ -10,7 +10,6 @@ public static class SkillGroupStandingDodgeAuthoring
     const string GroupPath = "Assets/GameMain/Scripts/4_Data/1.Skills/C1_Default_Skill/SkillUnit/Group_Standing_Dodge.asset";
     const string EntryPath = "Assets/GameMain/Scripts/4_Data/1.Skills/C1_Default_Skill/Entry_Space.asset";
     const string LoadoutPath = "Assets/GameMain/Scripts/4_Data/1.Skills/C1_Default_Skill/Loadout_Skill_C1.asset";
-    const string CombatFlowPath = "Assets/GameMain/Scripts/4_Data/1.Skills/C1_Default_Skill/Combat_Graph_4dir_Roll_Space.asset";
 
     const string FwdPath = "Assets/GameMain/Scripts/4_Data/1.Skills/C1_Default_Skill/SkillUnit/Route_Normal_Standing Dodge Forward.asset";
     const string BackPath = "Assets/GameMain/Scripts/4_Data/1.Skills/C1_Default_Skill/SkillUnit/Route_Normal_Standing Dodge Backward.asset";
@@ -29,7 +28,7 @@ public static class SkillGroupStandingDodgeAuthoring
             LeftPath,
             RightPath,
             bindEntry: true,
-            wireLoadoutFlow: true);
+            wireLoadoutFlow: false);
         AssetDatabase.Refresh();
     }
 
@@ -112,14 +111,7 @@ public static class SkillGroupStandingDodgeAuthoring
 
         if (wireLoadoutFlow)
         {
-            var loadout = AssetDatabase.LoadAssetAtPath<SkillEntryLoadoutSO>(LoadoutPath);
-            var flow = AssetDatabase.LoadAssetAtPath<CombatGraphAsset>(CombatFlowPath);
-            if (loadout != null && flow != null)
-            {
-                var soLoadout = new SerializedObject(loadout);
-                soLoadout.FindProperty("combatFlow").objectReferenceValue = flow;
-                soLoadout.ApplyModifiedPropertiesWithoutUndo();
-            }
+            Debug.LogWarning("[SkillGroup] wireLoadoutFlow 已弃用；请在 Loadout Inspector 手动绑定 combatFlow 并 Validate & Compile。");
         }
 
         AssetDatabase.SaveAssets();

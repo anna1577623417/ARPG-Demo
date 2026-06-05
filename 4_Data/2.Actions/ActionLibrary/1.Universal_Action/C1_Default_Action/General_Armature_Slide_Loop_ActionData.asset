@@ -17,10 +17,23 @@ MonoBehaviour:
   CrossfadeTime: 0.08
   AnimSpeed: 1.5
   Duration: 0.5
-  Category: 2
+  AnimationEndRatio: 1
+  DurationStatScaling: 0
+  PrincipalAxis: 2
+  Category: 1
   InterruptPriority: 10
   InterruptStability: 10
   AllowSelfInterrupt: 0
   MotionProfile: {fileID: 11400000, guid: a24a166105497464ab0fd676e800b3b8, type: 2}
-  Windows: []
+  Windows:
+  - NormalizedStart: 0.7
+    NormalizedEnd: 1
+    WindowSlotMask: 0
+    RuntimeEvents: []
+    InterruptibleByCategories: 1
+    MinIncomingPriority: 0
+    AllowSelfInterrupt: 0
+    incomingAbilityGate: 0
+    _legacyDirectStateTagMask: 0
   TeleportTriggers: []
+  TimelineMarkers: []

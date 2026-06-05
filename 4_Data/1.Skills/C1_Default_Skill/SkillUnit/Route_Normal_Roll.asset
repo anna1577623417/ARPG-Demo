@@ -13,12 +13,12 @@ MonoBehaviour:
   m_Name: Route_Normal_Roll
   m_EditorClassIdentifier: 
   routeId: Route_Normal_Roll
-  icon: {fileID: 0}
+  icon: {fileID: 21300000, guid: d1fbef1bd47eb074e939b2805c17e266, type: 3}
   displayName: 
-  showOnHud: 0
+  showOnHud: 1
   priority: 5
   cooldownPolicy: 1
-  baseCooldownSeconds: 2
+  baseCooldownSeconds: 0
   cooldownGroup: 
   ignoreGlobalCooldown: 0
   costs: []

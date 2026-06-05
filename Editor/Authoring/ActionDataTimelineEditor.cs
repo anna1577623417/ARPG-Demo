@@ -179,6 +179,7 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
         }
 
         _so.Update();
+        HandleKeyboardShortcuts();
         DrawMainLayout();
 
         if (_so.ApplyModifiedProperties())
@@ -260,10 +261,108 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
             DrawTagToggle(windowElem, StateTag.HitboxActive_Window, "Hitbox");
             DrawTagToggle(windowElem, StateTag.HurtboxActive_Window, "Hurtbox");
             DrawTagToggle(windowElem, StateTag.Invulnerable, "Invuln");
-            DrawTagToggle(windowElem, StateTag.PhaseStartup, "Startup");
-            DrawTagToggle(windowElem, StateTag.PhaseActive, "Active");
-            DrawTagToggle(windowElem, StateTag.PhaseRecovery, "Recovery");
+            DrawInterruptToggle(windowElem);
             GUILayout.Space(pad);
+        }
+    }
+
+    void DrawInterruptToggle(SerializedProperty windowElem)
+    {
+        var p = windowElem.FindPropertyRelative(nameof(ActionWindow.InterruptibleByCategories));
+        var on = (ActionCategory)p.enumValueFlag != ActionCategory.None;
+        var next = GUILayout.Toggle(on, "Interrupt", EditorStyles.miniButton);
+        if (next == on)
+        {
+            return;
+        }
+
+        Undo.RecordObject(_action, "Toggle Interrupt Window");
+        p.enumValueFlag = next ? (int)ActionCategory.Movement : (int)ActionCategory.None;
+    }
+
+    void HandleKeyboardShortcuts()
+    {
+        var e = Event.current;
+        if (e.type != EventType.KeyDown
+            || (e.keyCode != KeyCode.Delete && e.keyCode != KeyCode.Backspace))
+        {
+            return;
+        }
+
+        if (!TryDeleteSelection())
+        {
+            return;
+        }
+
+        e.Use();
+        GUI.changed = true;
+        Repaint();
+    }
+
+    bool HasDeletableSelection()
+    {
+        if (_selectedWindow >= 0 && _windows != null && _selectedWindow < _windows.arraySize)
+        {
+            return true;
+        }
+
+        if (_selectedTeleport >= 0 && _teleports != null && _selectedTeleport < _teleports.arraySize)
+        {
+            return true;
+        }
+
+        return _selectedMarker >= 0 && _markers != null && _selectedMarker < _markers.arraySize;
+    }
+
+    bool TryDeleteSelection()
+    {
+        if (_selectedWindow >= 0 && _windows != null && _selectedWindow < _windows.arraySize)
+        {
+            Undo.RecordObject(_action, "Delete Action Window");
+            _windows.DeleteArrayElementAtIndex(_selectedWindow);
+            _selectedWindow = _windows.arraySize > 0
+                ? Mathf.Clamp(_selectedWindow, 0, _windows.arraySize - 1)
+                : -1;
+            return true;
+        }
+
+        if (_selectedTeleport >= 0 && _teleports != null && _selectedTeleport < _teleports.arraySize)
+        {
+            Undo.RecordObject(_action, "Delete Teleport");
+            _teleports.DeleteArrayElementAtIndex(_selectedTeleport);
+            _selectedTeleport = _teleports.arraySize > 0
+                ? Mathf.Clamp(_selectedTeleport, 0, _teleports.arraySize - 1)
+                : -1;
+            return true;
+        }
+
+        if (_selectedMarker >= 0 && _markers != null && _selectedMarker < _markers.arraySize)
+        {
+            Undo.RecordObject(_action, "Delete Timeline Marker");
+            _markers.DeleteArrayElementAtIndex(_selectedMarker);
+            _selectedMarker = _markers.arraySize > 0
+                ? Mathf.Clamp(_selectedMarker, 0, _markers.arraySize - 1)
+                : -1;
+            return true;
+        }
+
+        return false;
+    }
+
+    static void ClearWindowElement(SerializedProperty elem, float start, float end)
+    {
+        elem.FindPropertyRelative(nameof(ActionWindow.NormalizedStart)).floatValue = start;
+        elem.FindPropertyRelative(nameof(ActionWindow.NormalizedEnd)).floatValue = end;
+        elem.FindPropertyRelative(nameof(ActionWindow.WindowSlotMask)).longValue = 0L;
+        elem.FindPropertyRelative(nameof(ActionWindow.InterruptibleByCategories)).enumValueFlag =
+            (int)ActionCategory.None;
+        elem.FindPropertyRelative(nameof(ActionWindow.MinIncomingPriority)).intValue = 0;
+        elem.FindPropertyRelative(nameof(ActionWindow.AllowSelfInterrupt)).boolValue = false;
+
+        var events = elem.FindPropertyRelative(nameof(ActionWindow.RuntimeEvents));
+        if (events != null && events.isArray)
+        {
+            events.arraySize = 0;
         }
     }
 
@@ -582,6 +681,7 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
             {
                 _selectedTeleport = i;
                 _selectedWindow = -1;
+                _selectedMarker = -1;
                 return true;
             }
         }
@@ -708,12 +808,12 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
         var elem = _windows.GetArrayElementAtIndex(_windows.arraySize - 1);
         var start = Snap(normStart);
         var end = Snap(Mathf.Min(1f, start + DefaultCombatClipLength));
-        elem.FindPropertyRelative(nameof(ActionWindow.NormalizedStart)).floatValue = start;
-        elem.FindPropertyRelative(nameof(ActionWindow.NormalizedEnd)).floatValue = end;
+        ClearWindowElement(elem, start, end);
 
         ApplyTrackPreset(elem, track);
         _selectedWindow = _windows.arraySize - 1;
         _selectedTeleport = -1;
+        _selectedMarker = -1;
     }
 
     void AddBlankWindow(float start, float end)
@@ -721,10 +821,10 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
         Undo.RecordObject(_action, "Add Action Window");
         _windows.arraySize++;
         var elem = _windows.GetArrayElementAtIndex(_windows.arraySize - 1);
-        elem.FindPropertyRelative(nameof(ActionWindow.NormalizedStart)).floatValue = start;
-        elem.FindPropertyRelative(nameof(ActionWindow.NormalizedEnd)).floatValue = end;
+        ClearWindowElement(elem, start, end);
         _selectedWindow = _windows.arraySize - 1;
         _selectedTeleport = -1;
+        _selectedMarker = -1;
     }
 
     static void ApplyTrackPreset(SerializedProperty windowElem, TrackId track)

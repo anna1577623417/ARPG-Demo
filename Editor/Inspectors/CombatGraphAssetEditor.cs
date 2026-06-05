@@ -1,5 +1,4 @@
 #if UNITY_EDITOR
-using System.Text;
 using UnityEditor;
 using UnityEngine;
 
@@ -8,130 +7,132 @@ public sealed class CombatGraphAssetEditor : Editor
 {
     public override void OnInspectorGUI()
     {
-        DrawDefaultInspector();
         var graph = (CombatGraphAsset)target;
         if (graph == null)
         {
             return;
         }
 
-        EditorGUILayout.Space(8f);
-        EditorGUILayout.LabelField("136.1 Edge Preview", EditorStyles.boldLabel);
-
-        var edges = graph.Edges;
-        if (edges == null || edges.Length == 0)
+        DrawProcessorViewStatus(graph);
+        if (GUILayout.Button("Open Graph Editor (GraphProcessor)", GUILayout.Height(26f)))
         {
-            EditorGUILayout.HelpBox("无边配置。", MessageType.Info);
+            if (CombatFlowGraphSync.TryEnsureProcessorView(graph, out var err))
+            {
+                CombatFlowGraphWindow.Open(graph);
+            }
+            else if (!string.IsNullOrEmpty(err))
+            {
+                EditorUtility.DisplayDialog("Combat Flow Graph", err, "OK");
+            }
+        }
+
+        Draw147Header(graph);
+        EditorGUILayout.Space(6f);
+        DrawDefaultInspector();
+        EditorGUILayout.Space(8f);
+        DrawCompileSection(graph);
+        EditorGUILayout.Space(6f);
+        DrawFlowPreview(graph);
+    }
+
+    static void DrawProcessorViewStatus(CombatGraphAsset graph)
+    {
+        if (graph.ProcessorView != null)
+        {
             return;
         }
 
-        var idle = graph.IdleNodeId;
-        var fromIdle = 0;
-        for (var i = 0; i < edges.Length; i++)
+        if (!EditorUtility.IsPersistent(graph))
         {
-            if (edges[i].FromNodeId == idle)
-            {
-                fromIdle++;
-            }
+            EditorGUILayout.HelpBox(
+                "Graph 视图子资产需要先保存本 CombatGraphAsset（Ctrl+S），再点 Open Graph Editor。",
+                MessageType.Warning);
+            return;
         }
 
         EditorGUILayout.HelpBox(
-            $"Idle 节点「{idle}」出边 {fromIdle} 条；运行时按 priority 升序求值，CanCast=false 时尝试下一条。",
-            MessageType.None);
+            "尚未创建 Graph 视图子资产；点 Open Graph Editor 将自动创建。",
+            MessageType.Info);
+    }
 
-        for (var i = 0; i < edges.Length; i++)
+    static void Draw147Header(CombatGraphAsset graph)
+    {
+        EditorGUILayout.HelpBox(
+            "147.1 Combat Flow Authoring\n" +
+            "· 资源池：Action / Route / Condition\n" +
+            "· flowEdges：Conditions 内联 + ConditionRefs（AND）\n" +
+            "· Combo 段后自动链：ComboRoute.AllowFlowSegmentAdvance（默认 false）\n" +
+            "· 运行时只读 CompiledData — Open Graph Editor → Sync && Compile",
+            MessageType.Info);
+
+        var valid = graph.CompileValid;
+        var msg = valid ? "已编译，Runner 可读 CompiledData" : "未编译或无效 — Play Mode 流转 OPEN";
+        EditorGUILayout.HelpBox(msg, valid ? MessageType.None : MessageType.Warning);
+    }
+
+    void DrawCompileSection(CombatGraphAsset graph)
+    {
+        using (new EditorGUILayout.HorizontalScope())
         {
-            DrawEdgeSummary(graph, edges[i], i);
+            if (GUILayout.Button("Validate", GUILayout.Height(24f)))
+            {
+                var result = CombatFlowGraphValidator.Validate(graph);
+                EditorUtility.DisplayDialog("Combat Flow Validate", result.Summary, "OK");
+            }
+
+            if (GUILayout.Button("Validate && Compile", GUILayout.Height(24f)))
+            {
+                if (graph.ProcessorView != null)
+                {
+                    CombatFlowGraphSync.PushToAuthoring(graph, graph.ProcessorView);
+                }
+                else if (CombatFlowGraphSync.TryEnsureProcessorView(graph, out var err))
+                {
+                    CombatFlowGraphSync.PushToAuthoring(graph, graph.ProcessorView);
+                }
+                else if (!string.IsNullOrEmpty(err))
+                {
+                    EditorUtility.DisplayDialog("Combat Flow Graph", err, "OK");
+                    return;
+                }
+
+                CombatFlowGraphCompiler.TryCompile(graph, out var report);
+                EditorUtility.DisplayDialog("Combat Flow Compile", report, "OK");
+            }
+        }
+
+        if (!string.IsNullOrEmpty(graph.LastCompileReport))
+        {
+            EditorGUILayout.LabelField("Compile Report", EditorStyles.miniBoldLabel);
+            EditorGUILayout.TextArea(graph.LastCompileReport, EditorStyles.wordWrappedLabel);
         }
     }
 
-    static void DrawEdgeSummary(CombatGraphAsset graph, CombatGraphEdge edge, int index)
+    static void DrawFlowPreview(CombatGraphAsset graph)
     {
-        using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
+        var data = graph.CompiledData;
+        if (data == null || data.IsEmpty)
         {
+            return;
+        }
+
+        EditorGUILayout.LabelField("Compiled Flow Preview", EditorStyles.boldLabel);
+        EditorGUILayout.LabelField($"Start: {data.StartNodeId}  Idle: {data.IdleNodeId}", EditorStyles.miniLabel);
+
+        if (data.Edges == null || data.Edges.Length == 0)
+        {
+            return;
+        }
+
+        for (var i = 0; i < data.Edges.Length; i++)
+        {
+            var e = data.Edges[i];
             EditorGUILayout.LabelField(
-                $"#{index} pri={edge.Priority} {edge.FromNodeId}→{edge.ToNodeId}",
-                EditorStyles.miniBoldLabel);
-            EditorGUILayout.LabelField(
-                $"Trigger: {edge.TriggerSlot} + {edge.TriggerSemantic}",
+                $"#{i} pri={e.Priority} {e.FromNodeId}→{e.ToNodeId} [{e.Transition}] route={(e.TargetRoute != null ? e.TargetRoute.name : "—")}",
                 EditorStyles.miniLabel);
-            EditorGUILayout.LabelField(
-                $"Route: {(edge.TargetRoute != null ? edge.TargetRoute.name : "(null)")}",
-                EditorStyles.miniLabel);
-
-            var condText = SummarizeConditions(edge.Conditions);
-            EditorGUILayout.LabelField($"Conditions: {condText}", EditorStyles.miniLabel);
-
-            if (edge.TriggerSemantic == InputSemanticType.Directional
-                && HasAlwaysCondition(edge.Conditions))
-            {
-                EditorGUILayout.HelpBox(
-                    "警告：Directional 边含 Always 条件，可能抢占其它方向边；四向主链应走 ContextGroup→Group。",
-                    MessageType.Warning);
-            }
-
-            if (edge.TargetRoute != null && !graph.ContainsRoute(edge.TargetRoute))
-            {
-                EditorGUILayout.HelpBox("目标 Route 不在 registeredRoutes 池内。", MessageType.Error);
-            }
         }
-    }
-
-    static string SummarizeConditions(SkillTransitionCondition[] conditions)
-    {
-        if (conditions == null || conditions.Length == 0)
-        {
-            return "(none)";
-        }
-
-        var sb = new StringBuilder();
-        for (var i = 0; i < conditions.Length; i++)
-        {
-            if (i > 0)
-            {
-                sb.Append(" AND ");
-            }
-
-            var c = conditions[i];
-            switch (c.Kind)
-            {
-                case SkillTransitionConditionKind.Always:
-                    sb.Append("Always");
-                    break;
-                case SkillTransitionConditionKind.OnGrounded:
-                    sb.Append("Grounded");
-                    break;
-                case SkillTransitionConditionKind.OnAirborne:
-                    sb.Append("Airborne");
-                    break;
-                case SkillTransitionConditionKind.WithMoveDirection:
-                    sb.Append($"MoveDir={c.RequiredMoveDirection}");
-                    break;
-                default:
-                    sb.Append(c.Kind);
-                    break;
-            }
-        }
-
-        return sb.ToString();
-    }
-
-    static bool HasAlwaysCondition(SkillTransitionCondition[] conditions)
-    {
-        if (conditions == null)
-        {
-            return false;
-        }
-
-        for (var i = 0; i < conditions.Length; i++)
-        {
-            if (conditions[i].Kind == SkillTransitionConditionKind.Always)
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 }
 #endif
+
+

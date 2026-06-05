@@ -35,7 +35,7 @@ public sealed class SkillEntryService
     SkillRouteDefinition _derivativeParentRoute;
     float _derivativeUnlockUntil;
 
-    CombatGraphRuntime _combatGraph;
+    CombatGraphRunner _combatGraph;
     readonly Dictionary<SkillGroupDefinition, GroupCooldownState> _groupCooldowns
         = new Dictionary<SkillGroupDefinition, GroupCooldownState>(8);
     bool _hitConfirmedThisStage;
@@ -109,10 +109,10 @@ public sealed class SkillEntryService
         SkillRouteDebug.LogSetup(_owner, flow, loadout?.AbilityMap, cgCount);
     }
 
-    /// <summary>装配 Combat Flow Graph（124.1）；须在 Rebuild 之后调用。</summary>
+    /// <summary>装配 Combat Flow Graph（147.1）；须在 Rebuild 之后调用。</summary>
     public void AttachGraph(CombatGraphAsset asset)
     {
-        _combatGraph ??= new CombatGraphRuntime(_owner, this);
+        _combatGraph ??= new CombatGraphRunner(_owner, this);
         _combatGraph.Attach(asset);
 
         if (asset?.RegisteredRoutes == null)
@@ -289,14 +289,8 @@ public sealed class SkillEntryService
         if (intent.Semantic == InputSemanticType.Directional)
         {
             SkillRouteDebug.LogDodge4(_owner, "Resolve",
-                "NO_ROUTE (Directional) — 禁止回落 NormalRoute / CombatGraph");
+                "NO_ROUTE (Directional) — 禁止回落 NormalRoute / CombatFlow");
             return null;
-        }
-
-        // Combat Graph：非四向语义的跨阶段流转（124.1+）
-        if (_combatGraph != null && _combatGraph.TryResolve(in intent, in ctx, out var graphRt, out _))
-        {
-            return graphRt;
         }
 
         // 派生招（LM 命中窗内 RM 等）：优先于常规决策
@@ -590,6 +584,7 @@ public sealed class SkillEntryService
 
         runtime?.OnEnter(in ctx);
         ObserveStageChangeAndNotifyPresentation();
+        _combatGraph?.BindEntryAction(runtime?.Stage?.Definition?.Action);
 
         // ─── Combo 状态写入（仲裁阶段不写，统一在此提交，避免重复 Resolve 带来的段位漂移）───
         if (_pendingComboContainer != null
@@ -655,6 +650,127 @@ public sealed class SkillEntryService
             $"comboSession={_activeComboSession?.Definition?.name} sessionSeg={_activeComboSession?.ComboIndex ?? -1}");
     }
 
+    /// <summary>147.1 — 段自然结束后沿 OnSegmentComplete 边推进；命中 TargetRoute 时返回可施放 Runtime。</summary>
+    public bool TryAdvanceCombatFlowOnSegmentComplete(out SkillRouteRuntime runtime)
+    {
+        runtime = null;
+        if (_combatGraph == null)
+        {
+            return false;
+        }
+
+        var ctx = BuildContext();
+        return _combatGraph.TryAdvanceOnSegmentComplete(in ctx, out runtime, out _);
+    }
+
+    /// <summary>147.1 — 动作进行中输入：沿 OnInput 边推进（非 SkillEntry 入口解析）。</summary>
+    public bool TryAdvanceCombatFlowOnInput(
+        in GameplayIntent intent,
+        in InputSnapshot input,
+        out SkillRouteRuntime runtime)
+    {
+        runtime = null;
+        if (_combatGraph == null || _activeRouteRuntime == null)
+        {
+            return false;
+        }
+
+        FillContext(in input, 0f);
+        return _combatGraph.TryAdvanceOnInput(in intent, in _scratchCtx, out runtime, out _);
+    }
+
+    /// <summary>Flow 段后自动进入 Combo 链下一段时，写入 pending 并跳过 link window。</summary>
+    bool TryPrepareFlowComboHandoff(SkillRouteRuntime flowRt, out bool skipLinkWindow)
+    {
+        skipLinkWindow = false;
+        if (_activeComboSession == null || flowRt?.Definition == null)
+        {
+            return false;
+        }
+
+        var def = _activeComboSession.Definition as ComboRouteDefinition;
+        if (def == null || def.ComboChain == null || def.ComboChain.Length == 0)
+        {
+            return false;
+        }
+
+        if (!def.AllowFlowSegmentAdvance)
+        {
+            SkillRouteDebug.LogFlow(
+                _owner,
+                $"ComboHandoff BLOCKED container={def.name} AllowFlowSegmentAdvance=false");
+            return false;
+        }
+
+        var nextIdx = _activeComboSession.ComboIndex + 1;
+        if (nextIdx < 0 || nextIdx >= def.ComboChain.Length)
+        {
+            return false;
+        }
+
+        if (def.ComboChain[nextIdx] != flowRt.Definition)
+        {
+            return false;
+        }
+
+        _pendingComboContainer = def;
+        _pendingComboIndex = nextIdx;
+        _pendingComboVirtualIndex = _activeVirtualComboIndex >= 0
+            ? _activeVirtualComboIndex + 1
+            : nextIdx;
+        skipLinkWindow = true;
+        SkillRouteDebug.LogFlow(
+            _owner,
+            $"ComboHandoff flow→chain[{nextIdx}]={flowRt.Definition.name} virtual={_pendingComboVirtualIndex}");
+        return true;
+    }
+
+    /// <summary>
+    /// 147.1 B 开关 — OnSegmentComplete 是否可施放至 Combo 子 Route。
+    /// 非 Combo 子 Route 恒 true；Combo 子 Route 须容器 <see cref="ComboRouteDefinition.AllowFlowSegmentAdvance"/>。
+    /// </summary>
+    public bool CanFlowSegmentAdvanceTo(SkillRouteDefinition targetRoute, out string blockReason)
+    {
+        blockReason = null;
+        if (targetRoute == null)
+        {
+            return true;
+        }
+
+        if (!TryFindComboContainerForSubRoute(targetRoute, out var combo))
+        {
+            return true;
+        }
+
+        if (combo.AllowFlowSegmentAdvance)
+        {
+            return true;
+        }
+
+        blockReason = $"AllowFlowSegmentAdvance=false ({combo.name})";
+        return false;
+    }
+
+    bool TryFindComboContainerForSubRoute(SkillRouteDefinition subRoute, out ComboRouteDefinition container)
+    {
+        container = null;
+        if (subRoute == null)
+        {
+            return false;
+        }
+
+        foreach (var kv in _routeRuntimes)
+        {
+            if (kv.Key is ComboRouteDefinition combo && combo.ContainsSubRoute(subRoute))
+            {
+                container = combo;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public void NotifyRouteExited(bool wasInterrupted)
     {
         if (_activeRouteRuntime == null) return;
@@ -695,9 +811,28 @@ public sealed class SkillEntryService
             _activeRouteRuntime = null;
             _lastObservedStageIndex = -1;
             _lastObservedStageDef = null;
-            _combatGraph?.NotifyRouteNaturalExit();
 
-            if (_activeComboSession != null)
+            var flowAutoCombo = false;
+            if (_combatGraph != null
+                && _combatGraph.TryAdvanceOnSegmentComplete(in _scratchCtx, out var flowRt, out var flowReason))
+            {
+                if (flowRt != null)
+                {
+                    TryPrepareFlowComboHandoff(flowRt, out flowAutoCombo);
+                    NotifyRouteEntered(flowRt, _activeEntrySlot);
+                    SkillRouteDebug.LogFlow(_owner, $"SegmentComplete→Enter route={flowRt.Definition?.name} reason={flowReason}");
+                }
+                else
+                {
+                    SkillRouteDebug.LogFlow(_owner, $"SegmentComplete graph-only reason={flowReason}");
+                }
+            }
+            else
+            {
+                _combatGraph?.NotifyRouteNaturalExit();
+            }
+
+            if (_activeComboSession != null && !flowAutoCombo)
             {
                 var entry = ResolveEntryByCanonicalSlot(_activeComboSessionSlot);
                 var pri = entry?.ComboRoute;

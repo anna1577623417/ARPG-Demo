@@ -241,19 +241,14 @@ public sealed partial class ActionDataTimelineEditor
         {
             if (GUILayout.Button("+ Window", EditorStyles.miniButtonLeft))
             {
-                AddBlankWindow(0f, 0.25f);
+                AddBlankWindow(Snap(_previewTime), Snap(Mathf.Min(1f, _previewTime + DefaultCombatClipLength)));
             }
 
-            using (new EditorGUI.DisabledScope(_selectedWindow < 0))
+            using (new EditorGUI.DisabledScope(!HasDeletableSelection()))
             {
                 if (GUILayout.Button("−", EditorStyles.miniButtonMid, GUILayout.Width(22f)))
                 {
-                    _windows.DeleteArrayElementAtIndex(_selectedWindow);
-                    _selectedWindow = Mathf.Clamp(_selectedWindow, 0, _windows.arraySize - 1);
-                    if (_windows.arraySize == 0)
-                    {
-                        _selectedWindow = -1;
-                    }
+                    TryDeleteSelection();
                 }
             }
 

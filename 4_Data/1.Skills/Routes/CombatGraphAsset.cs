@@ -1,35 +1,75 @@
 using System;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 /// <summary>
-/// 战斗行为图资产 — 注册 Route 池 + 从 Idle 出发的显式边（124.1 Combat-Flow MVP）。
+/// 147.1 Combat Flow Authoring 资产 — 资源池 + 流转图；运行时读 <see cref="CompiledData"/>。
 /// </summary>
-[CreateAssetMenu(menuName = "GameMain/SkillRoute/Combat Graph", fileName = "Combat_Graph_")]
+[CreateAssetMenu(menuName = "GameMain/SkillRoute/Combat Flow Graph", fileName = "CombatFlow_")]
 public sealed class CombatGraphAsset : ScriptableObject
 {
-    [SerializeField, Tooltip("空闲节点 ID；Route 自然结束后回到此节点。")]
-    private string idleNodeId = "Idle";
+    [Header("Resource Pools")]
+    [SerializeField, Tooltip("Action 资源池；FlowAction 节点只引用池内 Action。")]
+    ActionDataSO[] actionPool;
 
-    [SerializeField, Tooltip("本图允许解析的 Route 池（Resolver 校验 targetRoute 须在此列表内）。")]
-    private SkillRouteDefinition[] registeredRoutes;
+    [FormerlySerializedAs("registeredRoutes")]
+    [SerializeField, Tooltip("Route 资源池；Runner 校验 TargetRoute / RouteSwitch 须在此列表内。")]
+    SkillRouteDefinition[] routePool;
 
-    [SerializeField, Tooltip("从 fromNode 出发的边；同 from 按 priority 升序求值，首条满足者中标。")]
-    private CombatGraphEdge[] edges;
+    [SerializeField, Tooltip("Condition 资产池；flowEdges.ConditionRefs 须引用此列表内资产。")]
+    CombatFlowConditionDefinition[] conditionPool;
 
-    public string IdleNodeId => string.IsNullOrEmpty(idleNodeId) ? "Idle" : idleNodeId;
-    public SkillRouteDefinition[] RegisteredRoutes => registeredRoutes;
-    public CombatGraphEdge[] Edges => edges;
+    [Header("Flow Graph (Authoring)")]
+    [SerializeField] CombatFlowNodeAuthoring[] nodes;
+    [SerializeField] CombatFlowEdgeAuthoring[] flowEdges;
+
+    [Header("Compiled Runtime")]
+    [SerializeField] CombatFlowData compiledData = new();
+    [SerializeField] bool compileValid;
+    [SerializeField, TextArea(2, 6)] string lastCompileReport;
+
+    [SerializeField, HideInInspector]
+    string idleNodeId = "Idle";
+
+    [SerializeField, HideInInspector]
+    CombatFlowProcessorGraph processorView;
+
+    public ActionDataSO[] ActionPool => actionPool;
+    public SkillRouteDefinition[] RoutePool => routePool;
+    public CombatFlowConditionDefinition[] ConditionPool => conditionPool;
+    public SkillRouteDefinition[] RegisteredRoutes => routePool;
+    public CombatFlowNodeAuthoring[] Nodes => nodes;
+    public CombatFlowEdgeAuthoring[] FlowEdges => flowEdges;
+    public CombatFlowData CompiledData => compiledData;
+    public bool CompileValid => compileValid;
+    public string LastCompileReport => lastCompileReport;
+    public CombatFlowProcessorGraph ProcessorView => processorView;
+
+    public string IdleNodeId
+    {
+        get
+        {
+            if (compiledData != null && !string.IsNullOrEmpty(compiledData.IdleNodeId))
+            {
+                return compiledData.IdleNodeId;
+            }
+
+            return string.IsNullOrEmpty(idleNodeId) ? "Idle" : idleNodeId;
+        }
+    }
+
+    public bool HasValidCompile => compileValid && compiledData != null && !compiledData.IsEmpty;
 
     public bool ContainsRoute(SkillRouteDefinition route)
     {
-        if (route == null || registeredRoutes == null)
+        if (route == null || routePool == null)
         {
             return false;
         }
 
-        for (var i = 0; i < registeredRoutes.Length; i++)
+        for (var i = 0; i < routePool.Length; i++)
         {
-            if (registeredRoutes[i] == route)
+            if (routePool[i] == route)
             {
                 return true;
             }
@@ -37,25 +77,18 @@ public sealed class CombatGraphAsset : ScriptableObject
 
         return false;
     }
-}
 
-/// <summary>图边：触发语义 + 条件 + 目标 Route。</summary>
-[Serializable]
-public struct CombatGraphEdge
-{
-    [SerializeField] private string fromNodeId;
-    [SerializeField] private string toNodeId;
-    [SerializeField] private SkillRouteDefinition targetRoute;
-    [SerializeField] private SkillEntrySlot triggerSlot;
-    [SerializeField] private InputSemanticType triggerSemantic;
-    [SerializeField] private SkillTransitionCondition[] conditions;
-    [SerializeField] private int priority;
+#if UNITY_EDITOR
+    public void EditorSetCompileResult(CombatFlowData data, bool valid, string report)
+    {
+        compiledData = data ?? new CombatFlowData();
+        compileValid = valid;
+        lastCompileReport = report ?? string.Empty;
+    }
 
-    public string FromNodeId => fromNodeId;
-    public string ToNodeId => toNodeId;
-    public SkillRouteDefinition TargetRoute => targetRoute;
-    public SkillEntrySlot TriggerSlot => triggerSlot;
-    public InputSemanticType TriggerSemantic => triggerSemantic;
-    public SkillTransitionCondition[] Conditions => conditions;
-    public int Priority => priority;
+    public void EditorSetProcessorView(CombatFlowProcessorGraph view)
+    {
+        processorView = view;
+    }
+#endif
 }

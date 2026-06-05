@@ -12,6 +12,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3c30fbadfb384604eb3acc4303290eb1, type: 3}
   m_Name: General_Standing Dive Forward Left_MotionProfile
   m_EditorClassIdentifier: 
+  SourceClip: {fileID: 0}
+  XSourceClip: {fileID: 0}
+  YSourceClip: {fileID: 0}
+  ZSourceClip: {fileID: 0}
+  XExtractSource: 0
+  YExtractSource: 0
+  ZExtractSource: 0
   AxisCurves:
     XCurve:
       serializedVersion: 2
@@ -51,9 +58,14 @@ MonoBehaviour:
       m_RotationOrder: 4
     XScale: 0
     YScale: 0
-    ZScale: 4.0
-  YPolicy: 0
-  DisplacementCurve:
+    ZScale: 4
+  YMotion: 1
+  Gravity: 0
+  GroundConstraint: 1
+  yAxisV2Configured: 1
+  legacyYPolicy: 0
+  LandingOffset: 0
+  LandingCurve:
     serializedVersion: 2
     m_Curve:
     - serializedVersion: 3
@@ -77,15 +89,7 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  BaseDistance: 4
-  PeakSpeedMultiplier: 1
-  LateralCurve:
-    serializedVersion: 2
-    m_Curve: []
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  LateralDistance: 0
+  LandingDetectionRadius: 20
   AnimSpeedMode: 0
   SpeedOverTime:
     serializedVersion: 2
@@ -111,17 +115,8 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  ReferenceSpeed: 2.4489794
-  MatchAnimationSpeed: 1
-  GravityBehavior: 0
   ScaleType: 0
-  WarpCurve:
-    serializedVersion: 2
-    m_Curve: []
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
-  MaxWarpDistance: 0.5
+  MotionSpace: 0
   BurstDurationSeconds: 1.6333334
   LegacyConstantPlanarSpeed: 2.4489794
   UsePlanarVelocityShape: 0

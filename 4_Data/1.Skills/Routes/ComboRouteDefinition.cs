@@ -75,6 +75,12 @@ public sealed class ComboRouteDefinition : SkillRouteDefinition
     [SerializeField, Tooltip("Session 内是否允许在子招动画中段预输入下一段。")]
     bool allowEarlyBufferInput = true;
 
+    [Header("Combat Flow (147.1)")]
+    [SerializeField, Tooltip(
+        "允许 CombatGraph OnSegmentComplete 沿 Flow 边自动施放下一段 Combo 子 Route。\n" +
+        "默认 false — 地面连段仍由 ComboRoute + link window + Resolve 负责。")]
+    bool allowFlowSegmentAdvance;
+
     [SerializeField, HideInInspector, Tooltip("已废弃 — 仅用于从旧资产迁移到 comboTransitions。")]
     ComboLinkInputWindowLegacy[] linkInputWindows;
 
@@ -92,11 +98,30 @@ public sealed class ComboRouteDefinition : SkillRouteDefinition
     public ComboTransition[] ComboTransitions => comboTransitions;
     public float ComboSessionResetTime => comboSessionResetTime;
     public bool AllowEarlyBufferInput => allowEarlyBufferInput;
+    public bool AllowFlowSegmentAdvance => allowFlowSegmentAdvance;
     public float ComboResetTime => comboSessionResetTime;
     public bool FallbackToFirstOnExpire => fallbackToFirstOnExpire;
 
     public int ChainLength => comboChain != null ? comboChain.Length : 0;
     public int TransitionCount => Mathf.Max(0, ChainLength - 1);
+
+    public bool ContainsSubRoute(SkillRouteDefinition subRoute)
+    {
+        if (subRoute == null || comboChain == null)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < comboChain.Length; i++)
+        {
+            if (comboChain[i] == subRoute)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     public SkillRouteDefinition GetSubRoute(int nodeIndex)
     {

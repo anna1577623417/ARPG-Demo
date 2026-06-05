@@ -16,7 +16,7 @@ MonoBehaviour:
     type: 3}
   CrossfadeTime: 0.08
   AnimSpeed: 1
-  Duration: 0
+  Duration: 0.8
   AnimationEndRatio: 1
   DurationStatScaling: 2
   PrincipalAxis: 2

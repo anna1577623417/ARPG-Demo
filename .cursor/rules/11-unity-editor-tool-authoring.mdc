@@ -131,4 +131,5 @@ Build PreviewContext → PreviewController (AnimationMode.SampleAnimationClip) �
 1. 先定：窗口骨架（Toolbar / 双栏 / StatusBar）还是 Inspector 折叠（Rule 10）。  
 2. Scene 需要预览 → 先建 Context + SceneBridge（Handles），再 IMGUI。  
 3. 常量进 `*EditorUI.cs`，Magic Number 不散落。  
-4. 完成后对照 **§7 自检**；布局类改动对照 Output 文档 **§九验收清单**。
+4. 完成后对照 **§7 自检**；布局类改动对照 Output 文档 **§九验收清单**。  
+5. **禁止**未经用户要求新增 Setup/MVP/Migrate 菜单或 EditMode 测试 — 见 **`12-no-unrequested-scaffolding.mdc`**。

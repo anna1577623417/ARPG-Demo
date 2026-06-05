@@ -31,7 +31,7 @@ MonoBehaviour:
   - slot: 7
     entry: {fileID: 11400000, guid: b6c58b50e7a4b2a4ebdcaa243d00e936, type: 2}
     hudKeyLabel: Space
-  combatFlow: {fileID: 0}
+  combatFlow: {fileID: 11400000, guid: 25708567479bfd74da47966592ad45b3, type: 2}
   contextGroups:
   - {fileID: 11400000, guid: 6b31ae08d3a3e2c41878dd6104eb0cbe, type: 2}
   abilityMap: {fileID: 11400000, guid: a2b3c4d5e6f7890123456789abcdef02, type: 2}

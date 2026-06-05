@@ -73,8 +73,8 @@ MonoBehaviour:
       serializedVersion: 2
       m_Curve:
       - serializedVersion: 3
-        time: 0
-        value: 0.0391345
+        time: -0.084309965
+        value: -0.16439301
         inSlope: 0
         outSlope: 0.84139174
         tangentMode: 1
@@ -82,8 +82,8 @@ MonoBehaviour:
         inWeight: 0
         outWeight: 0
       - serializedVersion: 3
-        time: 0.046511628
-        value: 0.078269
+        time: -0.037798338
+        value: -0.1252585
         inSlope: 0.100967005
         outSlope: 1.6543763
         tangentMode: 1
@@ -91,29 +91,20 @@ MonoBehaviour:
         inWeight: 0
         outWeight: 0
       - serializedVersion: 3
-        time: 0.5813953
-        value: 0.96316785
+        time: 0.5
+        value: 0.6
         inSlope: 0.19852515
-        outSlope: 0.46648112
-        tangentMode: 1
-        weightedMode: 0
-        inWeight: 0
-        outWeight: 0
-      - serializedVersion: 3
-        time: 0.6511628
-        value: 0.99571306
-        inSlope: 0.055977732
-        outSlope: -0.0038444998
-        tangentMode: 1
+        outSlope: 0.78874385
+        tangentMode: 65
         weightedMode: 0
         inWeight: 0
         outWeight: 0
       - serializedVersion: 3
         time: 1
         value: 0.99437195
-        inSlope: -0.00046133998
+        inSlope: 0.78874385
         outSlope: 0
-        tangentMode: 1
+        tangentMode: 5
         weightedMode: 0
         inWeight: 0
         outWeight: 0
@@ -154,8 +145,6 @@ MonoBehaviour:
     m_PostInfinity: 2
     m_RotationOrder: 4
   LandingDetectionRadius: 20
-  UseActionDuration: 1
-  TimeSync: 0
   AnimSpeedMode: 0
   SpeedOverTime:
     serializedVersion: 2
@@ -181,7 +170,6 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  MatchAnimationSpeed: 1
   ScaleType: 0
   MotionSpace: 0
   BurstDurationSeconds: 1.4666667

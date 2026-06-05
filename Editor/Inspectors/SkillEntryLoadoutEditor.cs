@@ -21,10 +21,12 @@ public sealed class SkillEntryLoadoutEditor : Editor
         EditorGUILayout.LabelField("CombatFlow", flow != null ? flow.name : "(null)");
 
         var map = loadout.AbilityMap;
-        EditorGUILayout.LabelField("AbilityMap (CombatFlow)", map != null ? map.name : "(null)");
+        EditorGUILayout.LabelField("AbilityMap (Flow OnInput)", map != null ? map.name : "(null)");
         EditorGUILayout.HelpBox(
-            "AbilityMap：CombatGraph 边流转闸门（Slot + Ability 语义）。\n" +
-            "起手：各 Route.abilityGateRules；Action 打断：ActionWindow.InterruptibleByCategories。",
+            "147.1 CombatFlow：Loadout 绑定 CombatGraphAsset（须 CompileValid）。\n" +
+            "· 入口：SkillEntry → Route（Graph 不做输入选路）\n" +
+            "· 流转：OnSegmentComplete / OnInput\n" +
+            "· Combo 段后自动链：ComboRoute.AllowFlowSegmentAdvance（默认 false）",
             MessageType.Info);
 
         var groups = loadout.ContextGroups;
@@ -50,7 +52,15 @@ public sealed class SkillEntryLoadoutEditor : Editor
 
         if (flow == null)
         {
-            EditorGUILayout.HelpBox("CombatFlow 未配置；跨阶段流转边不可用。", MessageType.Warning);
+            EditorGUILayout.HelpBox(
+                "CombatFlow 未配置；段后/段内流转 OPEN。在 Inspector 配置 Graph 并 Validate & Compile。",
+                MessageType.Warning);
+        }
+        else if (!flow.CompileValid)
+        {
+            EditorGUILayout.HelpBox(
+                $"CombatFlow={flow.name} 未编译；选中 Graph → Validate && Compile",
+                MessageType.Warning);
         }
 
         //EditorGUILayout.Space(4f);

@@ -91,7 +91,8 @@ public sealed partial class ActionDataTimelineEditor
     {
         EditorGUILayout.HelpBox(
             "在时间轴上单击片段、◆ 标记或瞬移点。\n" +
-            "拖拽边缘改起止，拖拽条带平移，双击空轨创建。",
+            "拖拽边缘改起止，拖拽条带平移，双击空轨创建。\n" +
+            "选中后按 Delete / Backspace 或点 − 删除。",
             MessageType.Info);
     }
 }

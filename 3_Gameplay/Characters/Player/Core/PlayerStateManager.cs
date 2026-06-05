@@ -75,6 +75,13 @@ public class PlayerStateManager : EntityStateManager<Player>
                 var discardIntent = false;
                 resolvedRoute = Entity.SkillEntries?.TryResolveForIntent(
                     in intent, in inputSnap, Time.time, out discardIntent);
+                if (resolvedRoute == null
+                    && Entity.SkillEntries?.ActiveRoute != null
+                    && Entity.SkillEntries.TryAdvanceCombatFlowOnInput(in intent, in inputSnap, out var flowRt))
+                {
+                    resolvedRoute = flowRt;
+                }
+
                 if (resolvedRoute == null)
                 {
                     Entity.ClearPendingAction();

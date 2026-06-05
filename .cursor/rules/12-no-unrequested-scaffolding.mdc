@@ -1,0 +1,47 @@
+---
+description: 禁止未经用户要求生成迁移/演示 Tools 与测试；Editor 菜单只保留效率工具
+globs: Assets/GameMain/Scripts/**/*
+alwaysApply: true
+---
+
+# 交付脚手架约束（迁移 Tools / 测试）
+
+> 与 `07-single-track-migration.mdc`（禁止运行时双轨）、`09-refactor-delivery-protocol.mdc`（Landing 通电）配套。  
+> 本节约束 **AI 默认会多做的脚手架**，避免仓库堆演示菜单与无人维护的测试。
+
+## 默认禁止（除非用户书面要求）
+
+| 类别 | 禁止示例 | 允许替代 |
+|------|----------|----------|
+| **迁移 / 演示 MenuItem** | `Setup C1 … Template`、`Generate MVP`、`Auto-Combo Demo`、`Compile All`、一键装配 Loadout | Inspector / Graph 窗口内 **Validate & Compile**、**Sync && Compile** |
+| **Legacy 迁移工具** | `Migrate Legacy 边`、运行时读旧 SO 的 Editor 批量器 | 旧数据仅 git 历史；需迁移时 **用户点名** 再写一次性 Editor |
+| **EditMode / PlayMode 测试** | 为 Landing 验收自动新增 `*Tests.cs` | 施工 Log 写 Play 验收步骤；用户要求「加测试」再写 |
+| **示例资产批量生成** | 菜单生成整套 Route/Graph/Entry 并绑 Player | 用户指定路径时改 **单个** 资产或文档说明 |
+
+## Editor 菜单 — 只保留「效率工具」
+
+**可保留**（重复劳动、批量、日常 authoring）：
+
+- 批处理窗口：`Action → SkillStage Batch`、`Stage → NormalRoute Batch` 等
+- 可视化编辑器入口：`Window/Combat Flow Graph`、Inspector **Open Graph Editor**
+- Inspector 内按钮：Validate、Validate & Compile、Sync（**不要**再挂 `Tools/SkillRoute/Setup …`）
+
+**不得保留**（除非用户本次任务明确要求）：
+
+- 「模板 / MVP / Demo / 一键装配 / 验收用生成器」类 `Tools/SkillRoute/*`
+- 「Compile All / Migrate All / Purge Legacy」类全项目批处理（易掩盖未编译 Graph）
+
+菜单路径新工具优先：`Tools/GameMain/...` 或与现有 **Batch / Window** 一致；**禁止**为每次 Landing 新增 Setup 菜单。
+
+## 重构 / 新系统交付时
+
+1. **设施 + 运行时单轨** → Inspector / Graph 编辑器内完成 compile/sync  
+2. **握手表 + Play 验收 Log** → 写 `6.AI/Cursor/Log/...`，**不**默认补 EditMode 测试  
+3. 用户说「以后没有说明不要生成迁移工具和测试」→ 本 Rule 优先级高于「验收完整性」直觉
+
+## AI 自检（会话结束前）
+
+- [ ] 是否新增了用户未点的 `MenuItem` Setup/MVP/Migrate/CompileAll？  
+- [ ] 是否新增了用户未点的 `*Tests.cs`？  
+- [ ] 新 Editor 能力是否可在 **Inspector / Graph 窗口** 完成而无菜单？  
+- [ ] 若删除了演示菜单，Loadout/文档是否仍指向旧菜单路径？（须改文案）

@@ -93,6 +93,16 @@ public struct SkillTransitionCondition
             kind = SkillTransitionConditionKind.WithMoveDirection,
             requiredMoveDirection = dir,
         };
+
+    public static SkillTransitionCondition AlwaysTrue() =>
+        new SkillTransitionCondition { kind = SkillTransitionConditionKind.Always };
+
+    public static SkillTransitionCondition RouteCdReady(SkillRouteDefinition route) =>
+        new SkillTransitionCondition
+        {
+            kind = SkillTransitionConditionKind.RouteCdReady,
+            routeForCdCheck = route,
+        };
 }
 
 /// <summary>

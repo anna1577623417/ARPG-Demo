@@ -19,7 +19,7 @@ MonoBehaviour:
   AnimationEndRatio: 1
   DurationStatScaling: 0
   PrincipalAxis: 2
-  Category: 2
+  Category: 3
   InterruptPriority: 10
   InterruptStability: 10
   AllowSelfInterrupt: 0
