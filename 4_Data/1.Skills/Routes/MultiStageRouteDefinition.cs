@@ -43,4 +43,6 @@ public sealed class MultiStageRouteDefinition : SkillRouteDefinition
     public bool StartCooldownOnArmTimeout => startCooldownOnArmTimeout;
 
     public override RouteKind Kind => RouteKind.MultiStage;
+
+    public override RouteGraphType GraphType => RouteGraphType.MultiStage;
 }

@@ -151,6 +151,15 @@ public abstract class EntityAnimController : MonoBehaviour {
         }
     }
 
+    /// <summary>164.1 L6：Per-Action Clip RootMotion 开关（与 MotionProfile 程序化位移二选一）。</summary>
+    public void SetClipRootMotionEnabled(bool enabled)
+    {
+        if (_animator != null)
+        {
+            _animator.applyRootMotion = enabled;
+        }
+    }
+
     public void Stop() {
         if (!_graph.IsValid()) return;
 

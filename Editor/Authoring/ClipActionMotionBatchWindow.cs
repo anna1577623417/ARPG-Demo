@@ -152,7 +152,7 @@ public sealed class ClipActionMotionBatchWindow : EditorWindow
         EditorGUILayout.LabelField("Clip → Motion → Action", EditorStyles.boldLabel);
         EditorGUILayout.HelpBox(
             "仅生成动作层资产（含位移模具）。\n" +
-            "技能 Route / Stage / Loadout 请使用 Tools → SkillRoute → Stage / NormalRoute Batch（键位入口、动作后期绑定）。",
+            "技能 Stage + Route 请使用 Tools → Skill → Action → Stage → Route Batch（或分步 SkillStage / NormalRoute Batch）。",
             MessageType.Info);
 
         EditorGUILayout.LabelField("命名（基于 Clip 文件名）", EditorStyles.boldLabel);
@@ -425,7 +425,7 @@ public sealed class ClipActionMotionBatchWindow : EditorWindow
         }
 
         var profile = existing != null ? existing : ScriptableObject.CreateInstance<MotionProfileSO>();
-        profile.ApplyDefaultForwardAxis(4f);
+        profile.ApplyDefaultZeroAxisDisplacement();
         profile.AnimSpeedMode = AnimSpeedMode.Constant;
         profile.SpeedOverTime = AnimationCurve.Constant(0f, 1f, 1f);
         ApplyMotionBaselineFromClip(clip, profile);
@@ -474,12 +474,7 @@ public sealed class ClipActionMotionBatchWindow : EditorWindow
     {
         if (!profile.UsesAxisCurves)
         {
-            profile.ApplyDefaultForwardAxis(4f);
-        }
-
-        if (profile.AxisCurves.ZScale < 0.001f)
-        {
-            profile.ApplyDefaultForwardAxis(4f);
+            profile.ApplyDefaultZeroAxisDisplacement();
         }
     }
 

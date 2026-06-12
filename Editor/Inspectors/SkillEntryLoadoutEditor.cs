@@ -5,69 +5,76 @@ using UnityEngine;
 [CustomEditor(typeof(SkillEntryLoadoutSO))]
 public sealed class SkillEntryLoadoutEditor : Editor
 {
+    SerializedProperty _combatFlowEnabled;
+    SerializedProperty _combatFlow;
+
+    void OnEnable()
+    {
+        _combatFlowEnabled = serializedObject.FindProperty("combatFlowEnabled");
+        _combatFlow = serializedObject.FindProperty("combatFlow");
+    }
+
     public override void OnInspectorGUI()
     {
-        DrawDefaultInspector();
-        var loadout = (SkillEntryLoadoutSO)target;
+        serializedObject.Update();
+
+        EditorGUILayout.LabelField("Combat Flow", EditorStyles.boldLabel);
+        EditorGUILayout.PropertyField(
+            _combatFlowEnabled,
+            new GUIContent("启用 Combat Graph", "关闭后 Play 模式不装配 Graph，走 Entry+Interrupt 单轨。"));
+        EditorGUILayout.PropertyField(_combatFlow, new GUIContent("Combat Flow 资产"));
+
+        DrawCombatFlowRuntimeSummary((SkillEntryLoadoutSO)target);
+
+        EditorGUILayout.Space(6f);
+        DrawPropertiesExcluding(serializedObject, "m_Script", "combatFlowEnabled", "combatFlow");
+
+        serializedObject.ApplyModifiedProperties();
+    }
+
+    static void DrawCombatFlowRuntimeSummary(SkillEntryLoadoutSO loadout)
+    {
         if (loadout == null)
         {
             return;
         }
 
-        EditorGUILayout.Space(8f);
-        EditorGUILayout.LabelField("136.1 装配摘要", EditorStyles.boldLabel);
-
         var flow = loadout.CombatFlow;
-        EditorGUILayout.LabelField("CombatFlow", flow != null ? flow.name : "(null)");
+        var toggleOn = loadout.CombatFlowEnabled;
+        var compileOk = flow != null && flow.HasValidCompile;
+        var graphEnabled = toggleOn && compileOk;
 
-        var map = loadout.AbilityMap;
-        EditorGUILayout.LabelField("AbilityMap (Flow OnInput)", map != null ? map.name : "(null)");
-        EditorGUILayout.HelpBox(
-            "147.1 CombatFlow：Loadout 绑定 CombatGraphAsset（须 CompileValid）。\n" +
-            "· 入口：SkillEntry → Route（Graph 不做输入选路）\n" +
-            "· 流转：OnSegmentComplete / OnInput\n" +
-            "· Combo 段后自动链：ComboRoute.AllowFlowSegmentAdvance（默认 false）",
-            MessageType.Info);
-
-        var groups = loadout.ContextGroups;
-        var groupCount = groups != null ? groups.Length : 0;
-        EditorGUILayout.LabelField("ContextGroups", groupCount.ToString());
-
-        if (groupCount > 0)
+        EditorGUILayout.LabelField("GraphEnabled (Play)", graphEnabled ? "true" : "false", EditorStyles.miniLabel);
+        if (flow != null)
         {
-            for (var i = 0; i < groups.Length; i++)
-            {
-                var g = groups[i];
-                if (g == null)
-                {
-                    EditorGUILayout.LabelField($"  [{i}] (null)", EditorStyles.miniLabel);
-                    continue;
-                }
-
-                EditorGUILayout.LabelField(
-                    $"  [{i}] pri={g.Priority} → {g.TargetGroup?.name ?? "?"} slot={g.RequiredSlot}",
-                    EditorStyles.miniLabel);
-            }
+            EditorGUILayout.LabelField("Compile Valid", flow.CompileValid ? "true" : "false", EditorStyles.miniLabel);
         }
 
-        if (flow == null)
+        if (!toggleOn)
         {
             EditorGUILayout.HelpBox(
-                "CombatFlow 未配置；段后/段内流转 OPEN。在 Inspector 配置 Graph 并 Validate & Compile。",
-                MessageType.Warning);
+                "Combat Graph 已关闭。Slide→剑冲等将仅走 Entry_RM + ActionWindow 打断，不经过 Graph 双闸门。",
+                MessageType.Info);
         }
-        else if (!flow.CompileValid)
+        else if (flow == null)
+        {
+            EditorGUILayout.HelpBox("已勾选启用但未绑定 combatFlow 资产。", MessageType.Warning);
+        }
+        else if (!compileOk)
         {
             EditorGUILayout.HelpBox(
-                $"CombatFlow={flow.name} 未编译；选中 Graph → Validate && Compile",
+                $"CombatFlow={flow.name} 未编译；选中 Graph → Validate && Compile。",
                 MessageType.Warning);
         }
-
-        //EditorGUILayout.Space(4f);
-        //if (GUILayout.Button("136.1 一键装配 C1 Space 翻滚（Ability+Context）"))
-        //{
-        //    SkillRoute136Migration.SetupC1LoadoutAssembly(loadout);
-        //}
+        else
+        {
+            EditorGUILayout.HelpBox(
+                "双闸门（动作进行中）：\n" +
+                "· Graph 边未命中 → [Flow] DUAL_GATE block reason=graph-miss\n" +
+                "· Early 窗口未过 → [Flow] DUAL_GATE block reason=early-window\n" +
+                "· 两者都过 → [Flow] DUAL_GATE pass …",
+                MessageType.Info);
+        }
     }
 }
 #endif

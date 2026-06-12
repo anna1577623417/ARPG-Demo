@@ -25,6 +25,16 @@ public enum CombatFlowTransitionMode : byte
     Immediate = 2,
 }
 
+/// <summary>149.3 — Graph 已启用且当前上下文未命中边时的策略。</summary>
+public enum CombatFlowGraphMissPolicy : byte
+{
+    /// <summary>回落 Default Entry 解析。</summary>
+    FallbackToEntry = 0,
+
+    /// <summary>动作进行中且无匹配边：丢弃意图（不回 Entry）。Idle/Start 未命中仍回落 Entry。</summary>
+    Block = 1,
+}
+
 /// <summary>Combat Graph 内节点（只引用资源 GUID，不嵌入 Action 内容）。</summary>
 [Serializable]
 public struct CombatFlowNodeAuthoring
@@ -74,4 +84,7 @@ public struct CombatFlowEdgeAuthoring
 
     [Tooltip("走此边时施放的 Route；空则沿用当前 Route / Combo 链。")]
     public SkillRouteDefinition TargetRoute;
+
+    [Tooltip("149.3 — 动作自然结束后容错秒数（绝对时间）；0=无 Late Window。仅 OnInput 边常用。")]
+    public float LateWindowSeconds;
 }

@@ -217,12 +217,30 @@ public class MotionProfileSO : ScriptableObject
         return true;
     }
 
-    /// <summary>新建/批处理默认：前进 Z 轴 ease 0→1，默认 4m。</summary>
+    /// <summary>新建 Profile 默认：三轴位移 Scale 均为 0（无曲线 / 零幅度）。</summary>
+    public void ApplyDefaultZeroAxisDisplacement()
+    {
+        AxisCurves.XCurve = null;
+        AxisCurves.YCurve = null;
+        AxisCurves.ZCurve = null;
+        AxisCurves.XScale = 0f;
+        AxisCurves.YScale = 0f;
+        AxisCurves.ZScale = 0f;
+    }
+
+    /// <summary>显式预设：前进 Z 轴 ease 0→1 + 指定米数（批处理/按钮用，非新建默认）。</summary>
     public void ApplyDefaultForwardAxis(float distanceMeters = 4f)
     {
         AxisCurves.ZCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
         AxisCurves.ZScale = Mathf.Max(0f, distanceMeters);
     }
+
+#if UNITY_EDITOR
+    void Reset()
+    {
+        ApplyDefaultZeroAxisDisplacement();
+    }
+#endif
 }
 
 /// <summary>Motion 局部轴映射到世界的参考空间（136.3+）。</summary>

@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dc44221e6d158b148ad988016a948ef4, type: 3}
+  m_Name: GhostSamurai_APose_Attack01_3_ActionData
+  m_EditorClassIdentifier: 
+  MainClip: {fileID: 7400000, guid: 8decc86bf4985ea42b3005926975955f, type: 3}
+  CrossfadeTime: 0.08
+  AnimSpeed: 1.2500005
+  Duration: 2
+  AnimationEndRatio: 1
+  DurationStatScaling: 0
+  PrincipalAxis: 2
+  Category: 2
+  InterruptPriority: 10
+  InterruptStability: 10
+  AllowSelfInterrupt: 0
+  MotionProfile: {fileID: 11400000, guid: b7b8f4d69142a32468ca70956568f7c3, type: 2}
+  Windows:
+  - NormalizedStart: 0.62
+    NormalizedEnd: 0.99
+    WindowSlotMask: 0
+    RuntimeEvents: []
+    InterruptibleByCategories: 19
+    MinIncomingPriority: 0
+    AllowSelfInterrupt: 0
+    incomingAbilityGate: 0
+    _legacyDirectStateTagMask: 0
+  TeleportTriggers: []
+  TimelineMarkers: []

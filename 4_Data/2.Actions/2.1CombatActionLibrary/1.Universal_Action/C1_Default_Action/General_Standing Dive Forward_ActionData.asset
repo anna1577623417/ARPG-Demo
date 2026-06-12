@@ -1,0 +1,37 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dc44221e6d158b148ad988016a948ef4, type: 3}
+  m_Name: General_Standing Dive Forward_ActionData
+  m_EditorClassIdentifier: 
+  MainClip: {fileID: -203655887218126122, guid: 4f6e71cddd6bdb94283b40df4b00c2f9,
+    type: 3}
+  CrossfadeTime: 0.1
+  AnimSpeed: 1.8
+  Duration: 0.8
+  IntentCategory: 0
+  GraphParticipation: -1
+  Category: 2
+  InterruptPriority: 10
+  InterruptStability: 10
+  AllowSelfInterrupt: 0
+  MotionProfile: {fileID: 11400000, guid: cd9b08a0513e9884f8e917112ab2c303, type: 2}
+  Windows:
+  - NormalizedStart: 0.55
+    NormalizedEnd: 1
+    WindowSlotMask: 0
+    RuntimeEvents: []
+    InterruptibleByCategories: 16
+    MinIncomingPriority: 0
+    AllowSelfInterrupt: 0
+    incomingAbilityGate: 0
+    _legacyDirectStateTagMask: 0
+  TeleportTriggers: []

@@ -32,11 +32,18 @@ public class SkillEntryLoadoutSO : ScriptableObject
     private EntryBinding[] bindings;
 
     [Header("Combat Flow & Context (136.1)")]
+    [SerializeField, Tooltip("启用后运行时装配 CombatGraph 并参与 Contextual 解析；关闭则退化为 Entry+Interrupt 单轨。")]
+    bool combatFlowEnabled = true;
+
     [SerializeField, Tooltip("147.1 战斗流转图模板；运行时读 CompiledData，非 SkillEntry 输入入口。")]
     CombatGraphAsset combatFlow;
 
     [SerializeField, Tooltip("上下文语义组（Directional/地面/滞空等 → Group）。")]
     SkillContextGroupDefinition[] contextGroups;
+
+    [Header("Locomotion Graph Context (157.2/157.3)")]
+    [SerializeField, Tooltip("JumpStart/JumpLoop/JumpLand 与 Graph SourceOnly 节点绑定；未配则 Graph 仍用 Start/Idle。")]
+    LocomotionGraphContextBinding locomotionGraphContext;
 
     [Header("Combat Flow Gate (138)")]
     [SerializeField, Tooltip(
@@ -45,8 +52,10 @@ public class SkillEntryLoadoutSO : ScriptableObject
     AbilityMapSO abilityMap;
 
     public EntryBinding[] Bindings => bindings;
+    public bool CombatFlowEnabled => combatFlowEnabled;
     public CombatGraphAsset CombatFlow => combatFlow;
     public SkillContextGroupDefinition[] ContextGroups => contextGroups;
+    public LocomotionGraphContextBinding LocomotionGraphContext => locomotionGraphContext;
     public AbilityMapSO AbilityMap => abilityMap;
 
     /// <summary>查询 — 0-GC 路径，运行时安全。未找到返回 null。</summary>

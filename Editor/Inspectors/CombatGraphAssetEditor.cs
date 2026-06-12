@@ -58,11 +58,11 @@ public sealed class CombatGraphAssetEditor : Editor
     static void Draw147Header(CombatGraphAsset graph)
     {
         EditorGUILayout.HelpBox(
-            "147.1 Combat Flow Authoring\n" +
-            "· 资源池：Action / Route / Condition\n" +
-            "· flowEdges：Conditions 内联 + ConditionRefs（AND）\n" +
-            "· Combo 段后自动链：ComboRoute.AllowFlowSegmentAdvance（默认 false）\n" +
-            "· 运行时只读 CompiledData — Open Graph Editor → Sync && Compile",
+            "149.3 Contextual Entry Resolution · 153.2 Flow/Interrupt\n" +
+            "· Flow 边：Action→Action；Interrupt 边：Action→End（Route 藏边内）\n" +
+            "· 解析优先级：Graph Edge > Derivative > Default Entry\n" +
+            "· Miss Policy：动作中未命中边 Block / FallbackToEntry\n" +
+            "· Skill Link Preview 见下方；Open Graph Editor → Validate && Compile",
             MessageType.Info);
 
         var valid = graph.CompileValid;
@@ -76,23 +76,20 @@ public sealed class CombatGraphAssetEditor : Editor
         {
             if (GUILayout.Button("Validate", GUILayout.Height(24f)))
             {
+                PushProcessorViewToAuthoring(graph);
                 var result = CombatFlowGraphValidator.Validate(graph);
                 EditorUtility.DisplayDialog("Combat Flow Validate", result.Summary, "OK");
             }
 
             if (GUILayout.Button("Validate && Compile", GUILayout.Height(24f)))
             {
-                if (graph.ProcessorView != null)
+                if (!PushProcessorViewToAuthoring(graph, out var pushErr))
                 {
-                    CombatFlowGraphSync.PushToAuthoring(graph, graph.ProcessorView);
-                }
-                else if (CombatFlowGraphSync.TryEnsureProcessorView(graph, out var err))
-                {
-                    CombatFlowGraphSync.PushToAuthoring(graph, graph.ProcessorView);
-                }
-                else if (!string.IsNullOrEmpty(err))
-                {
-                    EditorUtility.DisplayDialog("Combat Flow Graph", err, "OK");
+                    if (!string.IsNullOrEmpty(pushErr))
+                    {
+                        EditorUtility.DisplayDialog("Combat Flow Graph", pushErr, "OK");
+                    }
+
                     return;
                 }
 
@@ -108,29 +105,39 @@ public sealed class CombatGraphAssetEditor : Editor
         }
     }
 
+    /// <summary>Graph 视图边属性（EdgeKind 等）写入 asset.flowEdges；Validate/Compile 前必须调用。</summary>
+    static bool PushProcessorViewToAuthoring(CombatGraphAsset graph, out string error)
+    {
+        error = null;
+        if (graph == null)
+        {
+            error = "graph=null";
+            return false;
+        }
+
+        if (graph.ProcessorView != null)
+        {
+            CombatFlowGraphSync.PushToAuthoring(graph, graph.ProcessorView);
+            return true;
+        }
+
+        if (CombatFlowGraphSync.TryEnsureProcessorView(graph, out error))
+        {
+            CombatFlowGraphSync.PushToAuthoring(graph, graph.ProcessorView);
+            return true;
+        }
+
+        return false;
+    }
+
+    static void PushProcessorViewToAuthoring(CombatGraphAsset graph)
+    {
+        PushProcessorViewToAuthoring(graph, out _);
+    }
+
     static void DrawFlowPreview(CombatGraphAsset graph)
     {
-        var data = graph.CompiledData;
-        if (data == null || data.IsEmpty)
-        {
-            return;
-        }
-
-        EditorGUILayout.LabelField("Compiled Flow Preview", EditorStyles.boldLabel);
-        EditorGUILayout.LabelField($"Start: {data.StartNodeId}  Idle: {data.IdleNodeId}", EditorStyles.miniLabel);
-
-        if (data.Edges == null || data.Edges.Length == 0)
-        {
-            return;
-        }
-
-        for (var i = 0; i < data.Edges.Length; i++)
-        {
-            var e = data.Edges[i];
-            EditorGUILayout.LabelField(
-                $"#{i} pri={e.Priority} {e.FromNodeId}→{e.ToNodeId} [{e.Transition}] route={(e.TargetRoute != null ? e.TargetRoute.name : "—")}",
-                EditorStyles.miniLabel);
-        }
+        CombatFlowChainPreviewDrawer.Draw(graph, foldout: false);
     }
 }
 #endif

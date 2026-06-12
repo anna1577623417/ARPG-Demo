@@ -100,7 +100,7 @@ public sealed class RouteHudDebugOverlay : MonoBehaviour
         }
 
         sb.Append("HudHandles:  ").Append(service.HudHandles.Count).AppendLine();
-        sb.AppendLine("(Console: [SkillRoute][Dodge4] 仅四向闪避链 · 需 Player.DebugSkillRoute)");
+        sb.AppendLine("(Console: [SkillRoute][Graph] Graph 流转 · [CombatGraph][Finisher] 末段退出 · 需 Player.Debug Skill Route)");
         return sb.ToString();
     }
 }

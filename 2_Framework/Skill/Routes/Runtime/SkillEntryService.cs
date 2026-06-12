@@ -36,6 +36,8 @@ public sealed class SkillEntryService
     float _derivativeUnlockUntil;
 
     CombatGraphRunner _combatGraph;
+    bool _loadoutCombatFlowEnabled;
+    bool _lastIntentResolvedViaGraph;
     readonly Dictionary<SkillGroupDefinition, GroupCooldownState> _groupCooldowns
         = new Dictionary<SkillGroupDefinition, GroupCooldownState>(8);
     bool _hitConfirmedThisStage;
@@ -65,6 +67,19 @@ public sealed class SkillEntryService
     public SkillEntrySlot ActiveEntrySlot => _activeEntrySlot;
     public SkillEntryLoadoutSO Loadout => _loadout;
     public IReadOnlyList<IRouteRuntimeHandle> HudHandles => _hudHandles;
+
+    /// <summary>Loadout 开关：是否请求启用 Combat Graph。</summary>
+    public bool LoadoutCombatFlowEnabled => _loadoutCombatFlowEnabled;
+
+    /// <summary>149.3 — Loadout 启用 + Graph 已装配且编译有效；否则解析退化为 Entry 单轨。</summary>
+    public bool GraphEnabled =>
+        _loadoutCombatFlowEnabled && _combatGraph != null && _combatGraph.IsEnabled;
+
+    /// <summary>当前图游标（Debug / 双闸门 Log）。</summary>
+    public string GraphCurrentNodeId => _combatGraph?.CurrentNodeId;
+
+    /// <summary>上一帧仲裁中 <see cref="TryResolveForIntent"/> 是否由 Graph 命中（供 Cancel 双闸门 Log）。</summary>
+    public bool LastIntentResolvedViaGraph => _lastIntentResolvedViaGraph;
 
     // ─── 装配 ───
 
@@ -103,10 +118,15 @@ public sealed class SkillEntryService
     /// <summary>从 Loadout 装配 CombatFlow / 打 Setup 日志（136.1 L1）。</summary>
     public void AttachFromLoadout(SkillEntryLoadoutSO loadout)
     {
-        var flow = loadout != null ? loadout.CombatFlow : null;
+        _loadoutCombatFlowEnabled = loadout != null && loadout.CombatFlowEnabled;
+        var flow = _loadoutCombatFlowEnabled && loadout != null ? loadout.CombatFlow : null;
         AttachGraph(flow);
         var cgCount = loadout?.ContextGroups != null ? loadout.ContextGroups.Length : 0;
         SkillRouteDebug.LogSetup(_owner, flow, loadout?.AbilityMap, cgCount);
+        if (loadout != null && loadout.CombatFlow != null && !_loadoutCombatFlowEnabled)
+        {
+            SkillRouteDebug.LogGraph(_owner, "Attach SKIPPED loadout.combatFlowEnabled=false");
+        }
     }
 
     /// <summary>装配 Combat Flow Graph（147.1）；须在 Rebuild 之后调用。</summary>
@@ -262,6 +282,7 @@ public sealed class SkillEntryService
         out bool discardIntent)
     {
         discardIntent = false;
+        _lastIntentResolvedViaGraph = false;
         _pendingComboIndex = -1;
         _pendingComboVirtualIndex = -1;
         _pendingComboContainer = null;
@@ -293,7 +314,44 @@ public sealed class SkillEntryService
             return null;
         }
 
-        // 派生招（LM 命中窗内 RM 等）：优先于常规决策
+        // 149.3 — Contextual Entry Resolution：Graph Edge > Derived > Default Entry（单轨，无二次查图旁路）
+        if (GraphEnabled
+            && intent.Semantic != InputSemanticType.Release
+            && intent.Semantic != InputSemanticType.Charge)
+        {
+            if (_combatGraph.TryResolveContextual(in intent, in ctx, out var graphRt, out _))
+            {
+                _lastIntentResolvedViaGraph = true;
+                return graphRt;
+            }
+
+            if (_activeRouteRuntime != null)
+            {
+                discardIntent = true;
+                var stageName = _activeRouteRuntime.Stage?.Definition?.name ?? "?";
+                var actionName = _activeRouteRuntime.Stage?.Definition?.Action?.name ?? "?";
+                SkillRouteDebug.LogGraph(
+                    _owner,
+                    $"DUAL_GATE block in={slot} node={_combatGraph.CurrentNodeId} stage={stageName} action={actionName} " +
+                    $"reason=graph-miss (Graph启用禁Entry/派生回落；边须在「当前游标节点」。关Graph时同键可走Entry+硬优先级)");
+                return null;
+            }
+
+            if (_combatGraph.MissPolicy == CombatFlowGraphMissPolicy.Block)
+            {
+                discardIntent = true;
+                SkillRouteDebug.LogGraph(
+                    _owner,
+                    $"MISS policy=Block in={slot} node={_combatGraph.CurrentNodeId} discard");
+                return null;
+            }
+
+            SkillRouteDebug.LogGraph(
+                _owner,
+                $"MISS policy=Fallback→Entry in={slot} node={_combatGraph.CurrentNodeId}");
+        }
+
+        // 派生招（LM 命中窗内 RM 等）：Graph 未命中后
         if (TryResolveDerivativeRuntime(entry, slot, in inputSnapshot, now, out var derivativeRt))
         {
             return derivativeRt;
@@ -552,6 +610,11 @@ public sealed class SkillEntryService
         // ═══ 6) Normal — 最终兜底 ═══
         if (TryPickRouteDefinition(entry.NormalRoute, in ctx, out var nrt))
         {
+            if (GraphEnabled && _combatGraph != null && _combatGraph.IsEnabled)
+            {
+                CombatGraphComboChainDiagnostics.LogEntryFallback(_owner, _combatGraph, entry.NormalRoute, slot);
+            }
+
             SkillRouteDebug.Log(_owner, SkillRouteDebug.CatResolve, $"PICK Normal route={entry.NormalRoute.name}");
             return nrt;
         }
@@ -648,6 +711,11 @@ public sealed class SkillEntryService
             $"Enter slot={slot} route={runtime?.Definition?.name} kind={runtime?.Kind} " +
             $"stageIdx={runtime?.CurrentStageIndex} stageDur={runtime?.Stage?.DurationSeconds:F2}s active={runtime?.IsActive} " +
             $"comboSession={_activeComboSession?.Definition?.name} sessionSeg={_activeComboSession?.ComboIndex ?? -1}");
+
+        CombatGraphFinisherDiagnostics.BeginTrace(
+            _owner,
+            runtime?.Stage?.Definition?.Action,
+            runtime?.Definition);
     }
 
     /// <summary>147.1 — 段自然结束后沿 OnSegmentComplete 边推进；命中 TargetRoute 时返回可施放 Runtime。</summary>
@@ -661,22 +729,6 @@ public sealed class SkillEntryService
 
         var ctx = BuildContext();
         return _combatGraph.TryAdvanceOnSegmentComplete(in ctx, out runtime, out _);
-    }
-
-    /// <summary>147.1 — 动作进行中输入：沿 OnInput 边推进（非 SkillEntry 入口解析）。</summary>
-    public bool TryAdvanceCombatFlowOnInput(
-        in GameplayIntent intent,
-        in InputSnapshot input,
-        out SkillRouteRuntime runtime)
-    {
-        runtime = null;
-        if (_combatGraph == null || _activeRouteRuntime == null)
-        {
-            return false;
-        }
-
-        FillContext(in input, 0f);
-        return _combatGraph.TryAdvanceOnInput(in intent, in _scratchCtx, out runtime, out _);
     }
 
     /// <summary>Flow 段后自动进入 Combo 链下一段时，写入 pending 并跳过 link window。</summary>
@@ -696,7 +748,7 @@ public sealed class SkillEntryService
 
         if (!def.AllowFlowSegmentAdvance)
         {
-            SkillRouteDebug.LogFlow(
+            SkillRouteDebug.LogGraph(
                 _owner,
                 $"ComboHandoff BLOCKED container={def.name} AllowFlowSegmentAdvance=false");
             return false;
@@ -719,7 +771,7 @@ public sealed class SkillEntryService
             ? _activeVirtualComboIndex + 1
             : nextIdx;
         skipLinkWindow = true;
-        SkillRouteDebug.LogFlow(
+        SkillRouteDebug.LogGraph(
             _owner,
             $"ComboHandoff flow→chain[{nextIdx}]={flowRt.Definition.name} virtual={_pendingComboVirtualIndex}");
         return true;
@@ -792,6 +844,8 @@ public sealed class SkillEntryService
 
     public void TickActive(in InputSnapshot input, float dt)
     {
+        _combatGraph?.TickLateWindow();
+
         if (_activeRouteRuntime == null) return;
         FillContext(in input, dt);
 
@@ -801,7 +855,9 @@ public sealed class SkillEntryService
 
         if (_activeRouteRuntime != null && !_activeRouteRuntime.IsActive)
         {
-            var name = _activeRouteRuntime.Definition?.name;
+            var exitedRoute = _activeRouteRuntime.Definition;
+            var name = exitedRoute?.name;
+            var exitingAction = _activeRouteRuntime.Stage?.Definition?.Action;
             // Combo Session 内子招不单独进 CD（SubRoute 资产亦应为 BaseCooldown=0）。
             if (_activeComboSession != null)
             {
@@ -813,6 +869,8 @@ public sealed class SkillEntryService
             _lastObservedStageDef = null;
 
             var flowAutoCombo = false;
+            var cursorBefore = _combatGraph?.CurrentNodeId;
+            var idleNodeId = _combatGraph?.IdleNodeId;
             if (_combatGraph != null
                 && _combatGraph.TryAdvanceOnSegmentComplete(in _scratchCtx, out var flowRt, out var flowReason))
             {
@@ -820,17 +878,46 @@ public sealed class SkillEntryService
                 {
                     TryPrepareFlowComboHandoff(flowRt, out flowAutoCombo);
                     NotifyRouteEntered(flowRt, _activeEntrySlot);
-                    SkillRouteDebug.LogFlow(_owner, $"SegmentComplete→Enter route={flowRt.Definition?.name} reason={flowReason}");
+                    SkillRouteDebug.LogGraph(_owner, $"SegmentComplete→Enter route={flowRt.Definition?.name} reason={flowReason}");
                 }
                 else
                 {
-                    SkillRouteDebug.LogFlow(_owner, $"SegmentComplete graph-only reason={flowReason}");
+                    SkillRouteDebug.LogGraph(_owner, $"SegmentComplete graph-only reason={flowReason}");
+                    _combatGraph.NotifyRouteNaturalExit(exitingAction);
                 }
+
+                CombatGraphFinisherDiagnostics.LogSegmentComplete(
+                    _owner,
+                    exitedRoute,
+                    exitingAction,
+                    graphAdvanced: true,
+                    enteredRoute: flowRt,
+                    graphReason: flowReason,
+                    cursorBefore,
+                    _combatGraph.CurrentNodeId,
+                    idleNodeId);
             }
             else
             {
-                _combatGraph?.NotifyRouteNaturalExit();
+                _combatGraph?.NotifyRouteNaturalExit(exitingAction);
+                CombatGraphFinisherDiagnostics.LogSegmentComplete(
+                    _owner,
+                    exitedRoute,
+                    exitingAction,
+                    graphAdvanced: false,
+                    enteredRoute: null,
+                    graphReason: "TryAdvance=false",
+                    cursorBefore,
+                    _combatGraph?.CurrentNodeId,
+                    idleNodeId);
             }
+
+            CombatGraphFinisherDiagnostics.LogRouteInactive(
+                _owner,
+                exitedRoute,
+                exitingAction,
+                _combatGraph?.CurrentNodeId,
+                idleNodeId);
 
             if (_activeComboSession != null && !flowAutoCombo)
             {
@@ -1284,6 +1371,7 @@ public sealed class SkillEntryService
         if (action != null)
         {
             _owner.NotifyRouteStageAction(action);
+            _combatGraph?.BindEntryAction(action);
         }
     }
 

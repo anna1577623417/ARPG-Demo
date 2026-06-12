@@ -20,7 +20,8 @@ public class PlayerStateManager : EntityStateManager<Player>
     [SerializeField] bool debugIntentArbitration;
 
     const ActionCategory AllPillarCategories =
-        ActionCategory.Movement | ActionCategory.Offense | ActionCategory.Defensive | ActionCategory.Utility;
+        ActionCategory.Movement | ActionCategory.Offense | ActionCategory.Defensive | ActionCategory.Utility
+        | ActionCategory.Locomotion;
 
     [Header("Locomotion — interruption (categories)")]
     [SerializeField] ActionCategory locomotionAllowedCategories = AllPillarCategories;
@@ -67,20 +68,15 @@ public class PlayerStateManager : EntityStateManager<Player>
                 break;
             }
 
-            // ─── 2) Skill 解析：SkillEntryService.TryResolveForIntent ───
+            // ─── 2) Skill 解析：仅 Combat 车道走 SkillEntryService（157.2 L3）───
             SkillRouteRuntime resolvedRoute = null;
-            if (intent.Kind != GameplayIntentKind.Jump)
+            var lane = ActionIntentRouting.ResolveLane(in intent, pendingAction: null);
+            if (lane == ActionIntentCategory.Combat)
             {
                 var inputSnap = BuildInputSnapshot(in intent);
                 var discardIntent = false;
                 resolvedRoute = Entity.SkillEntries?.TryResolveForIntent(
                     in intent, in inputSnap, Time.time, out discardIntent);
-                if (resolvedRoute == null
-                    && Entity.SkillEntries?.ActiveRoute != null
-                    && Entity.SkillEntries.TryAdvanceCombatFlowOnInput(in intent, in inputSnap, out var flowRt))
-                {
-                    resolvedRoute = flowRt;
-                }
 
                 if (resolvedRoute == null)
                 {
@@ -113,6 +109,15 @@ public class PlayerStateManager : EntityStateManager<Player>
                         $"RESOLVED intent={intent.Kind} semantic={intent.Semantic} axis={intent.DirectionAxis} " +
                         $"→ route={resolvedRoute?.Definition?.name} stage={firstStage?.name}");
                 }
+
+                if (debugIntentArbitration)
+                {
+                    Debug.Log($"[Lane] Combat→Graph intent={intent.Kind} route={resolvedRoute?.Definition?.name}", this);
+                }
+            }
+            else if (debugIntentArbitration || Entity.DebugInterruptFlow)
+            {
+                Debug.Log($"[Lane] {lane}→Global intent={intent.Kind}", this);
             }
 
             // ─── 3) 当前支柱本地闸门 ───
@@ -143,10 +148,38 @@ public class PlayerStateManager : EntityStateManager<Player>
 
             if (debugIntentArbitration || Entity.DebugInterruptFlow)
             {
-                Debug.Log($"[IntentArb] CONSUMED | state={Current.StateId} | intent={intent.Kind}", this);
+                var consumedNote = intent.Kind == GameplayIntentKind.Move ? " → Locomotion" : string.Empty;
+                Debug.Log($"[IntentArb] CONSUMED intent={intent.Kind}{consumedNote} | state={Current.StateId}", this);
             }
 
             Entity.IntentBuffer.Pop();
+        }
+
+        // ─── 158.2 L2：ControlOwner 可观测写入（不参与裁决；仅供 Debug / Profiler）───
+        WriteControlOwnerObservable();
+    }
+
+    /// <summary>
+    /// 158.2 §6.2：当前支柱 → ControlOwner 映射；只观测，不裁决。
+    /// PlayerActionState → Action；其余支柱 → Locomotion；CutsceneState 占位（暂未引入）。
+    /// </summary>
+    void WriteControlOwnerObservable()
+    {
+        if (Entity == null || Current == null) return;
+
+        var nextOwner = Current is PlayerActionState
+            ? ControlOwner.Action
+            : ControlOwner.Locomotion;
+
+        var prev = Entity.CurrentControlOwner;
+        if (prev == nextOwner) return;
+
+        Entity.CurrentControlOwner = nextOwner;
+        if (Entity.DebugLocomotion)
+        {
+            Debug.Log(
+                $"[LocoOwner] Owner: {prev} → {nextOwner} | state={Current.StateId} | frame={Time.frameCount}",
+                this);
         }
     }
 

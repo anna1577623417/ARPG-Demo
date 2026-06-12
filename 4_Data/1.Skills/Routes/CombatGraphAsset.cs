@@ -23,13 +23,17 @@ public sealed class CombatGraphAsset : ScriptableObject
     [SerializeField] CombatFlowNodeAuthoring[] nodes;
     [SerializeField] CombatFlowEdgeAuthoring[] flowEdges;
 
+    [Header("Runtime Policy (149.3)")]
+    [SerializeField, Tooltip("Graph 启用且动作进行中未命中边：Block=吞输入；FallbackToEntry=走 Entry。Start 未命中始终回落 Entry。")]
+    CombatFlowGraphMissPolicy missPolicy = CombatFlowGraphMissPolicy.FallbackToEntry;
+
     [Header("Compiled Runtime")]
     [SerializeField] CombatFlowData compiledData = new();
     [SerializeField] bool compileValid;
     [SerializeField, TextArea(2, 6)] string lastCompileReport;
 
     [SerializeField, HideInInspector]
-    string idleNodeId = "Idle";
+    string idleNodeId = "End";
 
     [SerializeField, HideInInspector]
     CombatFlowProcessorGraph processorView;
@@ -44,6 +48,7 @@ public sealed class CombatGraphAsset : ScriptableObject
     public bool CompileValid => compileValid;
     public string LastCompileReport => lastCompileReport;
     public CombatFlowProcessorGraph ProcessorView => processorView;
+    public CombatFlowGraphMissPolicy MissPolicy => missPolicy;
 
     public string IdleNodeId
     {
@@ -54,7 +59,7 @@ public sealed class CombatGraphAsset : ScriptableObject
                 return compiledData.IdleNodeId;
             }
 
-            return string.IsNullOrEmpty(idleNodeId) ? "Idle" : idleNodeId;
+            return string.IsNullOrEmpty(idleNodeId) ? "End" : idleNodeId;
         }
     }
 

@@ -19,14 +19,14 @@ using UnityEngine;
 /// 触发判定（同时满足）：
 ///   ① currentSpeed &lt; LockSpeedThreshold       （被对齐惩罚压制 / 静止起步）
 ///   ② |MovementIntent| 有清晰输入
-///   ③ |angleDiff| ≥ TriggerAngleThreshold       （超过防抖角度）
+///   ③ |angleDiff| ≥ LocomotionTuning.Turn90ThresholdDeg（超过防抖角度）
 ///
 /// 状态锁定：一旦触发即锁定，屏蔽后续微小角度扰动；
 /// 解锁条件：|angleDiff| &lt; UnlockAngleThreshold 即视为收敛完成。
 ///
-/// 类型分类：
-///   |angleDiff| ≥ Type180AngleThreshold（135° 默认）→ Turn180
-///   否则                                              → Turn90
+/// 类型分类（162.1 唯一权威：<see cref="LocomotionTuningSO"/>）：
+///   |angleDiff| ≥ Turn180ThresholdDeg（135° 默认）→ Turn180
+///   |angleDiff| ≥ Turn90ThresholdDeg               → Turn90
 ///
 /// 方向：SignedAngle 正值 = 右转，负值 = 左转。
 /// </summary>
@@ -40,16 +40,25 @@ public struct TurnSettings
     [Tooltip("低于此速度才允许触发转身（避免跑动中误触发）。默认 0.2 m/s。")]
     [Range(0f, 2f)] public float LockSpeedThreshold;
 
-    [Tooltip("角度差超过此值才触发转身（防抖动）。默认 60°。")]
-    [Range(15f, 120f)] public float TriggerAngleThreshold;
-
     [Tooltip("锁定状态下，角度差收敛到此值以内即解锁，回到 Idle/Walk/Run。默认 10°。")]
     [Range(1f, 30f)] public float UnlockAngleThreshold;
 
     [Tooltip("触发后最短锁定时长（秒）。在该时间内即便角度已收敛，也保持 Turn 表现，避免瞬时闪断。默认 0.12s。")]
     [Range(0f, 0.5f)] public float MinLockDuration;
 
-    [Tooltip("角度差大于等于此值视为 180° 转身，否则视为 90° 转身。默认 135°。")]
+    [Header("Post-Turn Blend (162.1)")]
+    [Tooltip("90° 转身解锁后，叠加到 Turn Binding TransitionDuration 的回 Locomotion 混合时长（秒）。")]
+    [Range(0f, 0.5f)] public float PostTurnBlendTurn90;
+
+    [Tooltip("180° 转身解锁后，叠加到 Turn Binding TransitionDuration 的回 Locomotion 混合时长（秒）；通常略长于 90°。")]
+    [Range(0f, 0.5f)] public float PostTurnBlendTurn180;
+
+    [Obsolete("162.1：角度阈值改读 LocomotionTuningSO.Turn90ThresholdDeg。")]
+    [Tooltip("已废弃 —— 请改 LocomotionTuning.Turn90ThresholdDeg。")]
+    [Range(15f, 120f)] public float TriggerAngleThreshold;
+
+    [Obsolete("162.1：角度阈值改读 LocomotionTuningSO.Turn180ThresholdDeg。")]
+    [Tooltip("已废弃 —— 请改 LocomotionTuning.Turn180ThresholdDeg。")]
     [Range(60f, 180f)] public float Type180AngleThreshold;
 
     [Header("Turn debugger (Console)")]
@@ -66,10 +75,14 @@ public struct TurnSettings
     {
         EnableTurnInPlacePresentation = true,
         LockSpeedThreshold = 0.2f,
-        TriggerAngleThreshold = 60f,
         UnlockAngleThreshold = 10f,
         MinLockDuration = 0.12f,
+        PostTurnBlendTurn90 = 0.08f,
+        PostTurnBlendTurn180 = 0.12f,
+#pragma warning disable CS0618
+        TriggerAngleThreshold = 60f,
         Type180AngleThreshold = 135f,
+#pragma warning restore CS0618
         EnableTriggerDebugger = false,
         TriggerDebuggerLogInterval = 0.15f,
         DrawTurnDebugRays = false,
@@ -119,10 +132,13 @@ public sealed class TurnResolver
     /// 计算本帧 TurnInfo。调用方须传入 pre-rotation 的 forward 与 MovementIntent，
     /// 即在 <see cref="Player.MoveByLocomotionIntent"/>（含 LookAtDirection）之前调用。
     /// </summary>
-    /// <param name="settings">每帧传入以保证 Inspector 中阈值/调试开关即时生效。</param>
-    public TurnInfo Tick(Player player, float deltaTime, in TurnSettings settings)
+    /// <param name="settings">每帧传入以保证 Inspector 中表现开关/调试即时生效。</param>
+    /// <param name="tuning">转身角度阈值唯一权威（Turn90/180ThresholdDeg）。</param>
+    public TurnInfo Tick(Player player, float deltaTime, in TurnSettings settings, LocomotionTuningSO tuning)
     {
         m_settings = settings;
+        var triggerThreshold = tuning != null ? tuning.Turn90ThresholdDeg : 70f;
+        var type180Threshold = tuning != null ? tuning.Turn180ThresholdDeg : 135f;
 
         if (player == null)
         {
@@ -157,6 +173,22 @@ public sealed class TurnResolver
 
         var signedAngle = Vector3.SignedAngle(forward, intent, Vector3.up);
         var absAngle = Mathf.Abs(signedAngle);
+        var currentSpeed = player.PlanarVelocity.magnitude;
+
+        // 162.1：移动中强制退出原地转身锁定 — Turn-In-Place 仅用于站立起步，避免锁死相机相对移动。
+        if (m_locked && currentSpeed >= m_settings.LockSpeedThreshold)
+        {
+            if (m_settings.EnableTriggerDebugger || LocomotionDebug.IsTraceEnabled(player))
+            {
+                LocomotionDebug.Log(
+                    player,
+                    LocomotionDebug.CatTurn,
+                    $"UNLOCK speed_gate spd={currentSpeed:F3}≥{m_settings.LockSpeedThreshold:F3} " +
+                    $"had type={m_lockedType} dir={(m_lockedDirection < 0 ? "L" : "R")}");
+            }
+
+            ClearLock();
+        }
 
         // === 已锁定：用解锁阈值判定收敛 ===
         if (m_locked)
@@ -195,14 +227,13 @@ public sealed class TurnResolver
         }
 
         // === 未锁定：用触发阈值判定是否进入锁定 ===
-        var currentSpeed = player.PlanarVelocity.magnitude;
         var speedOk = currentSpeed < m_settings.LockSpeedThreshold;
-        var angleOk = absAngle >= m_settings.TriggerAngleThreshold;
+        var angleOk = absAngle >= triggerThreshold;
         var shouldTurn = speedOk && angleOk;
 
         if (!shouldTurn)
         {
-            MaybeLogGateBlocked(player, currentSpeed, absAngle, signedAngle, speedOk, angleOk);
+            MaybeLogTurnSkipped(player, currentSpeed, absAngle, signedAngle, speedOk, angleOk, triggerThreshold, type180Threshold);
 
             return new TurnInfo
             {
@@ -215,17 +246,40 @@ public sealed class TurnResolver
         m_locked = true;
         m_lockTimer = 0f;
         m_lockedDirection = (sbyte)(signedAngle > 0f ? 1 : -1);
-        m_lockedType = absAngle >= m_settings.Type180AngleThreshold
+        m_lockedType = absAngle >= type180Threshold
             ? TurnType.Turn180
             : TurnType.Turn90;
 
-        if (m_settings.EnableTriggerDebugger)
+        if (m_settings.EnableTriggerDebugger || LocomotionDebug.IsTraceEnabled(player))
         {
-            Debug.Log(
-                $"[TurnDbg] LOCK | type={m_lockedType} dir={(m_lockedDirection < 0 ? "L" : "R")} " +
-                $"abs={absAngle:F1}° signed={signedAngle:F1}° | speed={currentSpeed:F3} (< {m_settings.LockSpeedThreshold}) " +
-                $"trigger≥{m_settings.TriggerAngleThreshold}° | 180阈值≥{m_settings.Type180AngleThreshold}°",
-                player);
+            LocomotionDebug.Log(
+                player,
+                LocomotionDebug.CatTurn,
+                $"LOCK type={m_lockedType} dir={(m_lockedDirection < 0 ? "L" : "R")} abs={absAngle:F1}° " +
+                $"signed={signedAngle:F1}° spd={currentSpeed:F3} (<{m_settings.LockSpeedThreshold}) " +
+                $"trigger≥{triggerThreshold:F1}° 180≥{type180Threshold:F1}°");
+        }
+
+        if (LocomotionDebug.IsEnabled(player))
+        {
+            var turnDir = m_lockedDirection < 0 ? TurnDirection4.Left90 : TurnDirection4.Right90;
+            if (m_lockedType == TurnType.Turn180)
+            {
+                turnDir = m_lockedDirection < 0 ? TurnDirection4.Left180 : TurnDirection4.Right180;
+            }
+
+            LocomotionDebug.LogTurnPhase(
+                player,
+                "Detect",
+                $"signed={signedAngle:F1}° abs={absAngle:F1}° turn90={triggerThreshold:F1} turn180={type180Threshold:F1} " +
+                $"→ type={m_lockedType} dir={turnDir}");
+            var fwd = forward.normalized;
+            var inp = intent.normalized;
+            LocomotionDebug.LogTurnPhase(
+                player,
+                "FIRE",
+                $"type={m_lockedType} dir={turnDir} " +
+                $"forward=({fwd.x:F2},{fwd.z:F2}) inputWorld=({inp.x:F2},{inp.z:F2})");
         }
 
         return new TurnInfo
@@ -289,10 +343,16 @@ public sealed class TurnResolver
             player);
     }
 
-    private void MaybeLogGateBlocked(Player player, float currentSpeed, float absAngle, float signedAngle,
-        bool speedOk, bool angleOk)
+    private void MaybeLogTurnSkipped(Player player, float currentSpeed, float absAngle, float signedAngle,
+        bool speedOk, bool angleOk, float triggerThreshold, float type180Threshold)
     {
-        if (!m_settings.EnableTriggerDebugger || player == null)
+        if (player == null)
+        {
+            return;
+        }
+
+        var useBlueprintLog = LocomotionDebug.IsEnabled(player);
+        if (!useBlueprintLog && !m_settings.EnableTriggerDebugger)
         {
             return;
         }
@@ -305,6 +365,17 @@ public sealed class TurnResolver
 
         m_nextDebuggerLogTime = now + Mathf.Max(0.05f, m_settings.TriggerDebuggerLogInterval);
 
+        if (useBlueprintLog)
+        {
+            var reason = !speedOk ? "speed" : "noAngle";
+            LocomotionDebug.LogTurnPhase(
+                player,
+                "SKIP",
+                $"reason={reason} abs={absAngle:F1}° signed={signedAngle:F1}° " +
+                $"spd={currentSpeed:F3} trigger90={triggerThreshold:F1} trigger180={type180Threshold:F1}");
+            return;
+        }
+
         var reasons = "";
         if (!speedOk)
         {
@@ -313,7 +384,7 @@ public sealed class TurnResolver
 
         if (!angleOk)
         {
-            reasons += $"angle_gate (|θ|={absAngle:F1}° < trigger={m_settings.TriggerAngleThreshold}°) ";
+            reasons += $"angle_gate (|θ|={absAngle:F1}° < trigger={triggerThreshold:F1}°) ";
         }
 
         Debug.Log($"[TurnDbg] no_turn | signed={signedAngle:F1}° abs={absAngle:F1}° | {reasons}".TrimEnd(),

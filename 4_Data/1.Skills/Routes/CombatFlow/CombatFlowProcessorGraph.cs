@@ -76,7 +76,7 @@ public sealed class CombatFlowProcessorEdgeMeta
     public CombatFlowEdgeAuthoring Authoring = new()
     {
         EdgeKind = CombatFlowEdgeKind.Flow,
-        Transition = CombatFlowTransitionMode.OnSegmentComplete,
+        Transition = CombatFlowTransitionMode.OnInput,
         InputSlot = SkillEntrySlot.Any,
     };
 

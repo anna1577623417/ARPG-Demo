@@ -11,6 +11,8 @@ public enum GameplayIntentKind : byte
 {
     None = 0,
     Jump = 1,
+    /// <summary>WASD 走/跑 — Locomotion 车道；仅在 Action 后摇窗口放行时入队（157.2）。</summary>
+    Move = 2,
 
     Skill_Entry_01 = 10,
     Skill_Entry_02 = 11,
@@ -135,6 +137,29 @@ public struct GameplayIntent
             RequiredAllAbilityTags = 0UL,
             ForbiddenAbilityTags = 0UL,
             EntrySlot = default,
+        };
+    }
+
+    public static GameplayIntent ForMove(
+        float time,
+        float bufferSeconds,
+        UnityEngine.Vector2 moveBuffered,
+        bool moveBufferValid,
+        ulong forbidden = 0UL)
+    {
+        return new GameplayIntent
+        {
+            Kind = GameplayIntentKind.Move,
+            TimeStamp = time,
+            ExpireTime = time + bufferSeconds,
+            RequiredAllTags = 0UL,
+            RequiredAnyTags = 0UL,
+            ForbiddenTags = forbidden,
+            RequiredAllAbilityTags = 0UL,
+            ForbiddenAbilityTags = 0UL,
+            EntrySlot = default,
+            MoveBuffered = moveBuffered,
+            MoveBufferValid = moveBufferValid,
         };
     }
 

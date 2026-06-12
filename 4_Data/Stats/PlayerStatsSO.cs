@@ -27,8 +27,10 @@ public class PlayerStatsSO : EntityStatsSO
     [Header("Optional Player BaseStats Preset")]
     [SerializeField] bool usePlayerBaseStatsPreset;
     [SerializeField, Min(1f)] float presetMaxHealth = 100f;
-    [SerializeField, Min(0f)] float presetWalkSpeed = 2.4f;
-    [SerializeField, Min(0f)] float presetRunSpeed = 5.5f;
+    [SerializeField, Min(0f), Tooltip("【158.2 迁移期】基础步行速度（m/s）。\n建议未来移到 LocomotionTuningSO 与 Stats.MoveSpeed 单口径合并；现保留以避免序列化破坏。")]
+    float presetWalkSpeed = 2.4f;
+    [SerializeField, Min(0f), Tooltip("【158.2 迁移期】基础奔跑速度（m/s）。\n建议未来移到 LocomotionTuningSO.RunMultiplier × Stats.MoveSpeed；现保留以避免序列化破坏。")]
+    float presetRunSpeed = 5.5f;
     [SerializeField, Min(0f)] float presetRotationSpeed = 540f;
     [SerializeField] float presetAttackPower = 10f;
     [SerializeField] float presetDefense = 0f;

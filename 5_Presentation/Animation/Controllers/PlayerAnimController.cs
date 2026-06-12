@@ -73,6 +73,9 @@ public class PlayerAnimController : EntityAnimController
 
     private float _nextTurnPresentationLogTime;
 
+    /// <summary>162.1：上一帧处于 Turn 子态时的类型，用于解锁边沿 PostTurnBlend。</summary>
+    private TurnType _lastActiveTurnType = TurnType.None;
+
     private enum LocomotionSub : byte
     {
         None,
@@ -85,6 +88,8 @@ public class PlayerAnimController : EntityAnimController
         TurnRight90,
         TurnLeft180,
         TurnRight180,
+        /// <summary>159.2+：Profile StrafeLocomotion ContinuousClip。</summary>
+        StrafeProfile,
     }
 
     // ─── 生命周期 ───
@@ -105,6 +110,7 @@ public class PlayerAnimController : EntityAnimController
 
         // Action 支柱专用
         _entity.EventBus.Subscribe<PlayerActionPresentationRequestEvent>(OnActionPresentationRequest);
+        _entity.EventBus.Subscribe<PlayerContinuousLocomotionRequestEvent>(OnContinuousLocomotionRequest);
         _entity.EventBus.Subscribe<PlayablePlaybackSpeedRequestEvent>(OnPlayablePlaybackSpeedRequest);
 
         // 跳跃三阶段
@@ -119,6 +125,7 @@ public class PlayerAnimController : EntityAnimController
 
         _entity.EventBus.Unsubscribe<EntityStateEnterEvent>(OnStateEnter);
         _entity.EventBus.Unsubscribe<PlayerActionPresentationRequestEvent>(OnActionPresentationRequest);
+        _entity.EventBus.Unsubscribe<PlayerContinuousLocomotionRequestEvent>(OnContinuousLocomotionRequest);
         _entity.EventBus.Unsubscribe<PlayablePlaybackSpeedRequestEvent>(OnPlayablePlaybackSpeedRequest);
         _entity.EventBus.Unsubscribe<PlayerJumpEvent>(OnJumpStart);
         _entity.EventBus.Unsubscribe<PlayerJumpAirPhaseEvent>(OnJumpAirPhase);
@@ -129,18 +136,7 @@ public class PlayerAnimController : EntityAnimController
     {
         base.Update(); // Crossfade 权重插值
 
-        // 有移动输入时立即打断落地缓冲，避免「半蹲滑步」锁死 Locomotion。
-        if (_landingHold && _player != null && _player.HasMovementIntent)
-        {
-            _landingHold = false;
-            _landingTimer = 0f;
-            if (_inLocomotion)
-            {
-                _locoSub = LocomotionSub.None;
-            }
-        }
-
-        // 落地锁定倒计时
+        // 落地锁定倒计时（表现层；Gameplay 打断统一走 Move 意图 + ActionWindow，157.2）
         if (_landingHold)
         {
             _landingTimer -= Time.deltaTime;
@@ -162,10 +158,21 @@ public class PlayerAnimController : EntityAnimController
                 var fromSub = _locoSub;
                 var wasTurn = IsTurnSub(fromSub);
                 var nowTurn = IsTurnSub(target);
+                if (wasTurn && !nowTurn)
+                {
+                    _lastActiveTurnType = TurnTypeFromSub(fromSub);
+                }
+
                 _locoSub = target;
-                // Turn 与普通 Locomotion 互切时使用统一时序，避免条目 transition 差异造成视觉抖动。
-                var transitionOverride = (wasTurn || nowTurn) ? ResolveTurnCrossfadeDuration() : -1f;
+                var transitionOverride = (wasTurn || nowTurn)
+                    ? ResolveTurnTransitionDuration(wasTurn, nowTurn, fromSub, target)
+                    : -1f;
                 PlayLocomotionClipForSub(target, transitionOverride, fromSub);
+            }
+
+            if (IsTurnSub(_locoSub) && _player != null && _player.CurrentTurnInfo.IsTurning)
+            {
+                _lastActiveTurnType = _player.CurrentTurnInfo.Type;
             }
 
             ApplyLocomotionStrideMatching();
@@ -246,6 +253,16 @@ public class PlayerAnimController : EntityAnimController
             }
         }
 
+        // 159.1 L3：LockOn + StrafeLocomotion ContinuousClip（Profile 优先）
+        if (_player.IsLockedOn && _player.HasMovementIntent)
+        {
+            var snap = _player.LocomotionPresentation;
+            if (snap.ResolvedState == LocomotionStateId.StrafeLocomotion && snap.ContinuousClip != null)
+            {
+                return LocomotionSub.StrafeProfile;
+            }
+        }
+
         if (!_player.HasMovementIntent) return LocomotionSub.Idle;
         return _player.WantsRun ? LocomotionSub.Run : LocomotionSub.Walk;
     }
@@ -255,6 +272,58 @@ public class PlayerAnimController : EntityAnimController
         LocomotionSub fromSub = LocomotionSub.None)
     {
         if (animLibrary == null) return;
+
+        // 159.2：Profile 优先（Turn ContinuousClip）；未注册或未配 Clip 时回落 AnimLibrary 字符串键。
+        if (IsTurnSub(target)
+            && _player != null
+            && LocomotionAnimProfileBridge.TryGetTurnContinuousClip(
+                _player.LocomotionProfile, _player.CurrentTurnInfo, _player.WantsRun, out var turnBinding))
+        {
+            if (!turnBinding.TryGetContinuousPresentation(
+                    out var clip,
+                    out var bindingTransition,
+                    out var bindingSpeed,
+                    out _,
+                    out _))
+            {
+                return;
+            }
+
+            var transition = transitionOverride >= 0f ? transitionOverride : bindingTransition;
+            var speed = bindingSpeed > 0.001f ? bindingSpeed : 1f;
+            _currentLocoEntry = null;
+            Play(clip, transition, speed, clip.isLooping);
+            LogTurnPresentationEdge(fromSub, target, $"Profile:TurnInPlaceDirected:{turnBinding.TurnDirection}", clip, transition);
+            MaybeLogTurnPresentationRepeat(target, turnBinding.TurnDirection.ToString(), clip, transition);
+            return;
+        }
+
+        if (target == LocomotionSub.StrafeProfile && _player != null)
+        {
+            var snap = _player.LocomotionPresentation;
+            if (snap.ContinuousClip != null)
+            {
+                var transition = transitionOverride >= 0f ? transitionOverride : snap.TransitionDuration;
+                var speed = snap.ClipSpeed > 0.001f ? snap.ClipSpeed : 1f;
+                _currentLocoEntry = new PlayerAnimManagerSO.AnimClipEntry
+                {
+                    Clip = snap.ContinuousClip,
+                    TransitionDuration = transition,
+                    Speed = speed,
+                    ReferenceLocomotionSpeed = snap.ReferenceLocomotionSpeed,
+                    IsLooping = snap.ContinuousClip.isLooping,
+                };
+                Play(snap.ContinuousClip, transition, speed, snap.ContinuousClip.isLooping);
+                return;
+            }
+        }
+
+        // 159.3：Idle / Walk / Run Profile 优先；未配 Clip 回落 AnimLibrary。
+        if (_player != null
+            && TryPlayProfileLoopClip(target, transitionOverride, fromSub))
+        {
+            return;
+        }
 
         var key = target switch
         {
@@ -333,9 +402,139 @@ public class PlayerAnimController : EntityAnimController
             this);
     }
 
-    private float ResolveTurnCrossfadeDuration()
+    /// <summary>162.1：进入 Turn 用 Binding TransitionDuration；离开 Turn 叠加 PostTurnBlend。</summary>
+    private float ResolveTurnTransitionDuration(bool wasTurn, bool nowTurn, LocomotionSub fromSub, LocomotionSub toSub)
     {
+        if (wasTurn && !nowTurn)
+        {
+            var bindingDur = 0.08f;
+            if (TryGetTurnBindingForSub(fromSub, out var exitBinding))
+            {
+                bindingDur = exitBinding.ResolvePresentationTransition();
+            }
+
+            var postBlend = 0.08f;
+            if (_player?.States != null)
+            {
+                var ts = _player.States.LocomotionTurnSettings;
+                postBlend = _lastActiveTurnType == TurnType.Turn180
+                    ? ts.PostTurnBlendTurn180
+                    : ts.PostTurnBlendTurn90;
+            }
+
+            return bindingDur + postBlend;
+        }
+
+        if (!wasTurn && nowTurn && TryGetTurnBindingForSub(toSub, out var enterBinding))
+        {
+            return enterBinding.ResolvePresentationTransition();
+        }
+
+        if (wasTurn && nowTurn && fromSub != toSub
+            && TryGetTurnBindingForSub(toSub, out var switchBinding))
+        {
+            return switchBinding.ResolvePresentationTransition();
+        }
+
         return 1f / Mathf.Max(1f, turnWeightBlendSpeed);
+    }
+
+    private bool TryGetTurnBindingForSub(LocomotionSub sub, out LocomotionStateBinding binding)
+    {
+        binding = default;
+        if (_player == null) return false;
+
+        var turnDir = TurnDirectionFromSub(sub);
+        if (turnDir == TurnDirection4.None) return false;
+
+        if (!LocomotionAnimProfileBridge.TryGetTurnContinuousClip(
+                _player.LocomotionProfile,
+                BuildSyntheticTurnInfo(sub),
+                _player.WantsRun,
+                out binding))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static TurnInfo BuildSyntheticTurnInfo(LocomotionSub sub)
+    {
+        return sub switch
+        {
+            LocomotionSub.TurnLeft90 => new TurnInfo { IsTurning = true, Type = TurnType.Turn90, Direction = -1 },
+            LocomotionSub.TurnRight90 => new TurnInfo { IsTurning = true, Type = TurnType.Turn90, Direction = 1 },
+            LocomotionSub.TurnLeft180 => new TurnInfo { IsTurning = true, Type = TurnType.Turn180, Direction = -1 },
+            LocomotionSub.TurnRight180 => new TurnInfo { IsTurning = true, Type = TurnType.Turn180, Direction = 1 },
+            _ => default,
+        };
+    }
+
+    private static TurnType TurnTypeFromSub(LocomotionSub sub) =>
+        sub == LocomotionSub.TurnLeft180 || sub == LocomotionSub.TurnRight180
+            ? TurnType.Turn180
+            : TurnType.Turn90;
+
+    private static TurnDirection4 TurnDirectionFromSub(LocomotionSub sub) =>
+        sub switch
+        {
+            LocomotionSub.TurnLeft90 => TurnDirection4.Left90,
+            LocomotionSub.TurnRight90 => TurnDirection4.Right90,
+            LocomotionSub.TurnLeft180 => TurnDirection4.Left180,
+            LocomotionSub.TurnRight180 => TurnDirection4.Right180,
+            _ => TurnDirection4.None,
+        };
+
+    bool TryPlayProfileLoopClip(LocomotionSub target, float transitionOverride, LocomotionSub fromSub)
+    {
+        var stateId = target switch
+        {
+            LocomotionSub.Idle => LocomotionStateId.Idle,
+            LocomotionSub.Walk => LocomotionStateId.Walk,
+            LocomotionSub.Run => LocomotionStateId.Run,
+            _ => LocomotionStateId.None,
+        };
+
+        if (stateId == LocomotionStateId.None)
+        {
+            return false;
+        }
+
+        if (!LocomotionAnimProfileBridge.TryGetLoopContinuousClip(
+                _player.LocomotionProfile, stateId, out var binding))
+        {
+            return false;
+        }
+
+        if (!binding.TryGetContinuousPresentation(
+                out var clip,
+                out var bindingTransition,
+                out var bindingSpeed,
+                out var refSpeed,
+                out _))
+        {
+            return false;
+        }
+
+        var transition = transitionOverride >= 0f ? transitionOverride : bindingTransition;
+        var speed = bindingSpeed > 0.001f ? bindingSpeed : 1f;
+        _currentLocoEntry = new PlayerAnimManagerSO.AnimClipEntry
+        {
+            Clip = clip,
+            TransitionDuration = transition,
+            Speed = speed,
+            ReferenceLocomotionSpeed = refSpeed,
+            IsLooping = clip.isLooping,
+        };
+        Play(clip, transition, speed, clip.isLooping);
+        if (target == LocomotionSub.Idle)
+        {
+            return true;
+        }
+
+        LogTurnPresentationEdge(fromSub, target, $"Profile:{stateId}", clip, transition);
+        return true;
     }
 
     /// <summary>转身切片是"原地旋转动画"，与角色平面速度无关，必须跳过步幅匹配，否则会因 currentSpeed≈0 把 playbackSpeed 推到 Clamp 下限。</summary>
@@ -346,7 +545,7 @@ public class PlayerAnimController : EntityAnimController
     private void ApplyLocomotionStrideMatching()
     {
         if (_player == null || _currentLocoEntry == null) return;
-        if (IsTurnSub(_locoSub)) return;
+        if (IsTurnSub(_locoSub) || _locoSub == LocomotionSub.StrafeProfile) return;
 
         var refSpeed = _currentLocoEntry.ReferenceLocomotionSpeed;
         if (refSpeed < 0.001f) return;
@@ -374,6 +573,18 @@ public class PlayerAnimController : EntityAnimController
 
     private void OnLanded(PlayerLandedEvent evt)
     {
+        if (_player != null && _player.States?.Current is PlayerActionState)
+        {
+            return;
+        }
+
+        if (_player != null && ProfileProvidesJumpLandAction(_player))
+        {
+            return;
+        }
+
+        Locomotion165Diagnostics.LogJumpLandAnimFallback(_player);
+
         var entry = animLibrary?.GetEntry("Airborne_Land");
         if (entry != null && entry.Clip != null)
         {
@@ -387,18 +598,41 @@ public class PlayerAnimController : EntityAnimController
     //  通道 3：Action 支柱 → ActionDataSO.MainClip 优先
     // ═══════════════════════════════════════════════════════════
 
+    private void OnContinuousLocomotionRequest(PlayerContinuousLocomotionRequestEvent evt)
+    {
+        if (_player == null || evt.PlayerInstanceId != _entity.GetInstanceID())
+        {
+            return;
+        }
+
+        if (evt.Action == null || evt.Action.MainClip == null)
+        {
+            return;
+        }
+
+        _inLocomotion = true;
+        _locoSub = LocomotionSub.None;
+        var clip = evt.Action.MainClip;
+        var loop = evt.Action.IsContinuousLocomotion || clip.isLooping;
+        Play(clip, evt.Action.CrossfadeTime, Mathf.Max(0.01f, evt.Action.AnimSpeed), loop);
+    }
+
     private void OnActionPresentationRequest(PlayerActionPresentationRequestEvent evt)
     {
         _inLocomotion = false;
 
-        if (evt.Action != null && evt.Action.MainClip != null)
+        if (evt.Action != null)
         {
-            Play(
-                evt.Action.MainClip,
-                evt.Action.CrossfadeTime,
-                Mathf.Max(0.01f, evt.Action.AnimSpeed),
-                evt.Action.MainClip.isLooping);
-            return;
+            var clip = evt.PresentationClip != null ? evt.PresentationClip : evt.Action.MainClip;
+            if (clip != null)
+            {
+                Play(
+                    clip,
+                    evt.Action.CrossfadeTime,
+                    evt.Action.ResolveEffectiveAnimSpeed(),
+                    clip.isLooping);
+                return;
+            }
         }
 
         // 无 SO 回退：按 Kind 查 AnimLibrary（Ver4.3.6+ Skill_Entry_NN 默认走 Action_Attack 兜底，
@@ -417,6 +651,41 @@ public class PlayerAnimController : EntityAnimController
     }
 
     // ─── 工具方法 ───
+
+    static bool ProfileProvidesJumpLandAction(Player player)
+    {
+        var profile = player.LocomotionProfile;
+        if (profile == null)
+        {
+            return false;
+        }
+
+        if (TryGetProfileLandAction(profile, LocomotionStateId.JumpLand, out _))
+        {
+            return true;
+        }
+
+        var tuning = profile.Tuning;
+        if (tuning == null || !tuning.EnableTieredLanding)
+        {
+            return false;
+        }
+
+        return TryGetProfileLandAction(profile, LocomotionStateId.JumpLandHeavy, out _)
+               || TryGetProfileLandAction(profile, LocomotionStateId.JumpLandRoll, out _);
+    }
+
+    static bool TryGetProfileLandAction(LocomotionProfile profile, LocomotionStateId id, out ActionDataSO action)
+    {
+        action = null;
+        if (profile == null || !profile.HasState(id))
+        {
+            return false;
+        }
+
+        action = profile.GetBinding(id).ResolveLocomotionAction();
+        return action != null;
+    }
 
     /// <param name="transitionOverride">≥0 时覆盖条目上的 TransitionDuration（用于起跳→滞空等）。</param>
     private void PlayLibraryEntry(string key, float transitionOverride = -1f)

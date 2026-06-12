@@ -22,15 +22,15 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
     [Header("Input")]
     [SerializeField] InputReader inputReader;
 
-    // ─── 移动参数 ───
-    [Header("Movement")]
-    [Tooltip("移动加速度（手感硬度）。")]
+    // ─── 移动参数（158.2 L3+：legacy fallback；Tuning 配置后由 LocomotionTuningSO 接管）───
+    [Header("Movement (Legacy — Tuning 接管前的回落值；零回归保留)")]
+    [Tooltip("移动加速度（手感硬度）。Tuning 接管后由 LocomotionTuningSO.GroundAcceleration 替代。")]
     [SerializeField] float moveAcceleration = 18f;
-    [Tooltip("停止减速度。")]
+    [Tooltip("停止减速度。Tuning 接管后由 LocomotionTuningSO.GroundDeceleration 替代。")]
     [SerializeField] float moveDeceleration = 22f;
-    [Tooltip("跳跃初速。")]
+    [Tooltip("跳跃初速。Tuning 接管后由 LocomotionTuningSO.JumpForce 替代。")]
     [SerializeField] float jumpForce = 12f;
-    [Tooltip("空中控制乘子 (0..1)。")]
+    [Tooltip("空中控制乘子 (0..1)。Tuning 接管后由 LocomotionTuningSO.AirMoveMultiplier 替代。")]
     [SerializeField] float airMoveMultiplier = 0.6f;
 
     // ─── 攻击参数 ───
@@ -39,6 +39,13 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
     [SerializeField] float attackDuration = 0.45f;
     [Tooltip("攻击/潜行时的移动衰减。")]
     [SerializeField, Range(0f, 1f)] float walkSpeedMultiplier = 0.55f;
+
+    // ─── Locomotion 行为资产（158.2 L1：仅占位，不通电）───
+    [Header("Locomotion (158.2)")]
+    [Tooltip("L1：玩家级 Locomotion 行为资产 —— 状态注册 / 动画绑定 / Tuning 引用。\n" +
+             "本字段在 L1 仅作为 Inspector 可编辑占位，Resolver 与 Tuning 公式接入分别在 L2 / L3 完成。\n" +
+             "为空时一切沿用旧路径（PlayerAnimManagerSO + Movement 旧字段），零回归。")]
+    [SerializeField] LocomotionProfile locomotionProfile;
 
     // ─── Skill Entry 装配 ───
     [Header("Skill Entries (Ver4.3.6+)")]
@@ -52,7 +59,7 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
     // ─── Debug ───
     [Header("Debug")]
     [SerializeField] bool debugInterruptFlow;
-    [Tooltip("SkillRoute 通用解析日志（Resolve/Combo 等，不含 Dodge4/Roll4）。")]
+    [Tooltip("Combat Graph 专向 Log：Console 过滤 [SkillRoute][Graph] 与 [CombatGraph][Finisher]；不含 Resolve/Combo/Route 全量 Flow。")]
     [SerializeField] bool debugSkillRoute;
     [Tooltip("四向站立闪避链 [SkillRoute][Dodge4]；默认关。")]
     [SerializeField] bool debugSkillRouteDodge4;
@@ -60,6 +67,12 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
     [SerializeField] bool debugSkillRouteRoll4;
     [Tooltip("能力准入 [Ability] route gate / loadout map（与 Route.abilityGateRules 对应）。")]
     [SerializeField] bool debugSkillAbility;
+    [Tooltip("158.2 Locomotion Resolver / ControlOwner / Tuning 决策日志（L2-L5）。")]
+    [SerializeField] bool debugLocomotion;
+    [Tooltip("162.1 Locomotion 输入/移动/转身节流 Trace（Console 过滤 [Loco]）；恶性移动故障时优先开启。")]
+    [SerializeField] bool debugLocomotionTrace;
+    [Tooltip("159.1 L2/L3：Play 验收用 — 模拟 LockOn 以启用 StrafeLocomotion 解析；LockOn 切片接入后删除。")]
+    [SerializeField] bool debugLockOnLocomotion;
 
     // ─── 运行时 ───
     PlayerStateManager m_stateManager;
@@ -82,8 +95,17 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
     ActionDataSO m_pendingAction;
     bool m_pendingActionArmed;
     bool m_jumpRequestedByIntent;
+    ActionDataSO m_graphContextAction;
+    LocomotionStateId m_lastActionEndStateHint = LocomotionStateId.None;
+
+    /// <summary>157.2/157.3 — 无 ActiveRoute 时 Graph Resolve 的 Locomotion 上下文 Action（单点写入）。</summary>
+    public ActionDataSO GraphContextAction => m_graphContextAction;
+
+    public LocomotionGraphContextBinding LocomotionGraphContext =>
+        skillEntryLoadout != null ? skillEntryLoadout.LocomotionGraphContext : default;
 
     TurnInfo m_currentTurnInfo;
+    LocomotionPresentationSnapshot m_locoPresentation;
     IGameModeMovementContext m_movementContext;
 
     // ─── 公开属性 ───
@@ -92,12 +114,29 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
     public SkillEntryService SkillEntries => m_skillEntries;
     public SkillEntryLoadoutSO SkillEntryLoadout => skillEntryLoadout;
     public CombatGraphAsset CombatFlowGraph => skillEntryLoadout != null ? skillEntryLoadout.CombatFlow : null;
+    /// <summary>158.2 L1：玩家级 Locomotion 行为资产；L2 之前仅占位，无运行时消费方。</summary>
+    public LocomotionProfile LocomotionProfile => locomotionProfile;
+
+    /// <summary>165.1 L3：Locomotion End Action 退出后供 LocomotionState 读取并清除。</summary>
+    public LocomotionStateId ConsumeLastActionEndStateHint()
+    {
+        var hint = m_lastActionEndStateHint;
+        m_lastActionEndStateHint = LocomotionStateId.None;
+        return hint;
+    }
+
+    internal void SetLastActionEndStateHint(LocomotionStateId id) => m_lastActionEndStateHint = id;
+
+    /// <summary>158.2 L2：当前位移/朝向控制权归属（仅观测；由 PlayerStateManager 末尾自动写入）。</summary>
+    public ControlOwner CurrentControlOwner { get; internal set; } = ControlOwner.Locomotion;
     public InputSemanticResolver InputSemantic => m_inputSemantic;
     public bool DebugInterruptFlow => debugInterruptFlow;
     public bool DebugSkillRoute => debugSkillRoute;
     public bool DebugSkillRouteDodge4 => debugSkillRouteDodge4;
     public bool DebugSkillRouteRoll4 => debugSkillRouteRoll4;
     public bool DebugSkillAbility => debugSkillAbility;
+    public bool DebugLocomotion => debugLocomotion;
+    public bool DebugLocomotionTrace => debugLocomotionTrace;
 
     public Vector3 PlanarVelocity => m_motor != null ? m_motor.PlanarVelocity : Vector3.zero;
     public float VerticalSpeed => m_motor != null ? m_motor.VerticalSpeed : 0f;
@@ -110,8 +149,18 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
     public float ManaMax => Resources.GetMax(ResourceType.MP);
 
     public float AttackDuration => attackDuration;
-    public float JumpForce => jumpForce;
-    public float AirMoveMultiplier => airMoveMultiplier;
+    /// <summary>158.2 L3：JumpForce 查询；Tuning 优先 → Player 旧字段。</summary>
+    public float JumpForce => locomotionProfile != null && locomotionProfile.Tuning != null
+        ? locomotionProfile.Tuning.JumpForce
+        : jumpForce;
+    /// <summary>158.2 L3：AirMoveMultiplier 查询；Tuning 优先 → Player 旧字段。</summary>
+    public float AirMoveMultiplier => locomotionProfile != null && locomotionProfile.Tuning != null
+        ? locomotionProfile.Tuning.AirMoveMultiplier
+        : airMoveMultiplier;
+    /// <summary>158.2 L3：下落重力倍率；Tuning 优先 → 1（无 Profile 时与旧行为一致）。</summary>
+    public float FallGravityScale => locomotionProfile != null && locomotionProfile.Tuning != null
+        ? locomotionProfile.Tuning.FallGravityScale
+        : 1f;
     public float WalkSpeedMultiplier => walkSpeedMultiplier;
 
     public bool HasMovementIntent => m_movementIntent.sqrMagnitude > 0.0001f;
@@ -120,9 +169,14 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
     public bool WantsWalk => HasMovementIntent && !m_runIntent;
     public Vector3 MovementIntent => m_movementIntent;
     public TurnInfo CurrentTurnInfo => m_currentTurnInfo;
+    /// <summary>159.1 L2+：Resolver 连续 Clip 表现快照（Strafe 等）。</summary>
+    public LocomotionPresentationSnapshot LocomotionPresentation => m_locoPresentation;
+    /// <summary>159.1 L2：LockOn 信号；当前为 debug 占位，LockOn 切片接入后改读真实目标锁定。</summary>
+    public bool IsLockedOn => debugLockOnLocomotion;
 
     public void ActivateRunLatch(float seconds) => m_runLatchEndTime = Time.time + Mathf.Max(0.01f, seconds);
     public void SetTurnInfo(in TurnInfo info) => m_currentTurnInfo = info;
+    public void SetLocomotionPresentation(in LocomotionPresentationSnapshot snapshot) => m_locoPresentation = snapshot;
 
     internal void InjectMovementContext(IGameModeMovementContext context) => m_movementContext = context;
 
@@ -181,6 +235,7 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
         if (m_motor != null)
         {
             m_motor.Bind(this, m_stateManager, debugInterruptFlow);
+            SyncLocomotionMotorTuning();
             m_motor.RefreshInitialGroundedState();
         }
 
@@ -327,6 +382,55 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
 
     public void EnqueueGameplayIntent(in GameplayIntent intent) => IntentBuffer.Enqueue(intent);
 
+    /// <summary>157.2/157.3 — 写入 Graph 上下文 Action（Airborne 相位 / 落地 JumpLand 等）。</summary>
+    public void SetGraphContextAction(ActionDataSO action, string reason = null)
+    {
+        if (ReferenceEquals(m_graphContextAction, action))
+        {
+            return;
+        }
+
+        m_graphContextAction = action;
+        if (debugSkillRoute && action != null)
+        {
+            var part = ActionIntentRouting.ResolveGraphParticipation(action);
+            SkillRouteDebug.LogGraph(this, $"Ctx SET action={action.name} C={part} reason={reason ?? "-"}");
+        }
+    }
+
+    public void ClearGraphContextAction(string reason = null)
+    {
+        if (m_graphContextAction == null)
+        {
+            return;
+        }
+
+        if (debugSkillRoute)
+        {
+            SkillRouteDebug.LogGraph(
+                this,
+                m_graphContextAction != null
+                    ? $"Ctx CLEAR was={m_graphContextAction.name} reason={reason ?? "-"}"
+                    : $"Ctx CLEAR (none) reason={reason ?? "-"}");
+        }
+
+        m_graphContextAction = null;
+    }
+
+    /// <summary>157.2 — Action 期 Move 入队时探测当前段打断窗口。</summary>
+    public bool TryGetActiveActionInterruptProbe(out ActionDataSO action, out float normalizedTime)
+    {
+        if (States?.Current is PlayerActionState actionState
+            && actionState.TryGetInterruptProbe(out action, out normalizedTime))
+        {
+            return true;
+        }
+
+        action = null;
+        normalizedTime = 0f;
+        return false;
+    }
+
     // ─── PendingAction（Locomotion/Airborne 切到 Action 前的待播）───
 
     public void ArmPendingAction(GameplayIntentKind kind, ActionDataSO action)
@@ -360,10 +464,24 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
     }
 
     /// <summary>请求 Playables 播放 Action 主 Clip（首段进入 / MultiStage 段内换招）。</summary>
-    public void RequestActionPresentation(GameplayIntentKind kind, ActionDataSO action)
+    public void RequestActionPresentation(
+        GameplayIntentKind kind,
+        ActionDataSO action,
+        AnimationClip presentationClip = null)
     {
         if (action == null) return;
-        PublishEvent(new PlayerActionPresentationRequestEvent(GetInstanceID(), kind, action));
+        PublishEvent(new PlayerActionPresentationRequestEvent(GetInstanceID(), kind, action, presentationClip));
+    }
+
+    /// <summary>164.1 L3：Locomotion 内 IsContinuousLocomotion Action 换片。</summary>
+    public void RequestContinuousLocomotionPresentation(ActionDataSO action)
+    {
+        if (action == null || !action.IsContinuousLocomotion)
+        {
+            return;
+        }
+
+        PublishEvent(new PlayerContinuousLocomotionRequestEvent(GetInstanceID(), action));
     }
 
     /// <summary>Route 内 Stage 推进后由 SkillEntryService 调用，换段动画与 Motion。</summary>
@@ -444,14 +562,32 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
     public Vector3 GetMovementDirectionOrForward()
         => HasMovementIntent ? m_movementIntent.normalized : Forward;
 
+    /// <summary>
+    /// 158.2 L3：地面 / 空中 Locomotion 位移结算入口。
+    /// <para>速度公式（四级）：FinalSpeed = Stats.&lt;Walk/Run&gt;Speed × Tuning.&lt;Walk/Run&gt;Multiplier × externalSpeedMultiplier × (Buff 由 Stats 内部已合）。</para>
+    /// <para>Tuning 缺失（locomotionProfile/Tuning 为 null）→ 完全沿用旧路径：Stats 速度 × external，加速度走 Player.moveAcceleration/moveDeceleration。零回归。</para>
+    /// </summary>
     public void MoveByLocomotionIntent(float externalSpeedMultiplier, bool wantsRun)
     {
+        var tuning = locomotionProfile != null ? locomotionProfile.Tuning : null;
+
         var input = m_movementIntent;
         var hasInput = input.sqrMagnitude > 0.0001f;
         var inputMag = hasInput ? Mathf.Clamp01(input.magnitude) : 0f;
-        var speedCap = wantsRun ? RuntimeStats.RunSpeed : RuntimeStats.WalkSpeed;
-        var targetSpeed = hasInput ? speedCap * inputMag * Mathf.Max(0f, externalSpeedMultiplier) : 0f;
-        var accel = hasInput ? moveAcceleration : moveDeceleration;
+
+        // 速度上限：Stats 基础速 × Tuning 倍率（缺失视作 1.0）
+        var baseSpeed = wantsRun ? RuntimeStats.RunSpeed : RuntimeStats.WalkSpeed;
+        var modeMult = wantsRun
+            ? (tuning != null ? Mathf.Max(0f, tuning.RunMultiplier) : 1f)
+            : (tuning != null ? Mathf.Max(0f, tuning.WalkMultiplier) : 1f);
+        var tuningExternal = tuning != null ? Mathf.Max(0f, tuning.ExternalSpeedMultiplier) : 1f;
+        var externalMult = Mathf.Max(0f, externalSpeedMultiplier) * tuningExternal;
+        var speedCap = baseSpeed * modeMult * externalMult;
+        var targetSpeed = hasInput ? speedCap * inputMag : 0f;
+
+        // 加速度：Tuning > Player 旧字段
+        var accel = ResolveMoveAcceleration(tuning, hasInput);
+
         var planar = PlanarVelocity;
         var currentSpeed = planar.magnitude;
         var newSpeed = Mathf.MoveTowards(currentSpeed, targetSpeed, accel * Time.deltaTime);
@@ -469,8 +605,22 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
         }
     }
 
+    /// <summary>158.2 L3：加速度查找（Tuning 优先；缺失回落 Player 旧字段）。</summary>
+    float ResolveMoveAcceleration(LocomotionTuningSO tuning, bool hasInput)
+    {
+        if (tuning != null)
+        {
+            return hasInput ? tuning.GroundAcceleration : tuning.GroundDeceleration;
+        }
+        return hasInput ? moveAcceleration : moveDeceleration;
+    }
+
     public void StopMove()
-        => SetPlanarVelocity(Vector3.MoveTowards(PlanarVelocity, Vector3.zero, moveDeceleration * Time.deltaTime));
+    {
+        var tuning = locomotionProfile != null ? locomotionProfile.Tuning : null;
+        var decel = tuning != null ? tuning.GroundDeceleration : moveDeceleration;
+        SetPlanarVelocity(Vector3.MoveTowards(PlanarVelocity, Vector3.zero, decel * Time.deltaTime));
+    }
 
     public void ClearPlanarVelocity() => m_motor?.ClearPlanarVelocity();
     public void SetPlanarVelocity(Vector3 v) => m_motor?.SetPlanarVelocity(v);
@@ -478,8 +628,17 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
 
     public void Jump()
     {
-        m_motor?.Jump(jumpForce);
+        // 158.2 L3：JumpForce Tuning 优先；缺失回落 Player.jumpForce
+        var tuning = locomotionProfile != null ? locomotionProfile.Tuning : null;
+        var force = tuning != null ? tuning.JumpForce : jumpForce;
+        m_motor?.Jump(force);
         PublishEvent(new PlayerJumpEvent(GetInstanceID(), name));
+    }
+
+    /// <summary>158.2 L3：把 LocomotionTuning 物理参数写入 Motor（Init 时；Profile 热换后可再调）。</summary>
+    public void SyncLocomotionMotorTuning()
+    {
+        m_motor?.SetFallGravityScale(FallGravityScale);
     }
 
     public void BeginAttack(float durationOverride = -1f)

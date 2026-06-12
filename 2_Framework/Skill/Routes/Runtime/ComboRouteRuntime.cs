@@ -193,10 +193,6 @@ public sealed class ComboRouteRuntime : SkillRouteRuntime
     {
         if (wasInterrupted)
         {
-            if (ctx.Self is Player p && p.DebugSkillRoute)
-            {
-                Debug.Log($"[Combo] LastSubRoute settlement skipped (interrupted) container={Definition?.name}", p);
-            }
             return;
         }
 

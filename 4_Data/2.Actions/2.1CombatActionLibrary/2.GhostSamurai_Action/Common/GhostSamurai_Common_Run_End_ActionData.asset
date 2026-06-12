@@ -1,0 +1,47 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dc44221e6d158b148ad988016a948ef4, type: 3}
+  m_Name: GhostSamurai_Common_Run_End_ActionData
+  m_EditorClassIdentifier: 
+  MainClip: {fileID: 7400002, guid: 7962f8eb3c4cee042b2d666e80bce418, type: 3}
+  CrossfadeTime: 0.08
+  AnimSpeed: 1.366667
+  AutoSyncAnimSpeedToDuration: 1
+  Duration: 1
+  AnimationEndRatio: 1
+  DurationStatScaling: 0
+  PrincipalAxis: 2
+  IntentCategory: 0
+  GraphParticipation: 1
+  Category: 16
+  InterruptPriority: 5
+  InterruptStability: 5
+  AllowSelfInterrupt: 0
+  IsContinuousLocomotion: 0
+  UseClipRootMotion: 0
+  CanRotateDuringLocomotion: 1
+  CanMoveDuringLocomotion: 1
+  LeftFootSupportClip: {fileID: 0}
+  RightFootSupportClip: {fileID: 0}
+  MotionProfile: {fileID: 11400000, guid: c05bb46169542ee489b3c836103a955f, type: 2}
+  Windows:
+  - NormalizedStart: 0.25
+    NormalizedEnd: 1
+    WindowSlotMask: 0
+    RuntimeEvents: []
+    InterruptibleByCategories: 16
+    MinIncomingPriority: 0
+    AllowSelfInterrupt: 0
+    incomingAbilityGate: 0
+    _legacyDirectStateTagMask: 0
+  TeleportTriggers: []
+  TimelineMarkers: []

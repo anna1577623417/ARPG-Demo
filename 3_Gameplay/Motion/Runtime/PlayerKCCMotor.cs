@@ -128,6 +128,7 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
     // ─── 物理状态 ──────────────────────────────────────────────────────────
     Vector3 _planarVelocity;
     float _verticalSpeed;
+    float _fallGravityScale = 1f;
     bool _isGrounded;
     bool _gravitySuspended;
 
@@ -226,6 +227,12 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
     {
         _verticalSpeed = jumpForce;
         _isGrounded = false;
+    }
+
+    /// <summary>158.2 L3 — 下落段重力倍率（Vy &lt; 0 时叠加；上升段仍用基础 gravity）。</summary>
+    public void SetFallGravityScale(float scale)
+    {
+        _fallGravityScale = Mathf.Max(0.1f, scale);
     }
 
     public void SuspendGravity()
@@ -815,6 +822,8 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
             return;
         }
 
+        var g = ResolveGravityAcceleration();
+
         // 动作空中锁 / 动作态（非重力挂起）：默认累计重力，防"边缘探针把 vy 反复清零 → 永远等不到下落"的死锁。
         // Grounded attacks（地走起手、无空中锁）：与 Locomotion 一致保持 vy=0。否则首帧就出现 vy≈−gΔt，
         // ComputeActionMotorSolveContext → Airborne，solver 带向下位移扫到楼面 → 假障碍命中 / Sweep 闪烁。
@@ -826,7 +835,7 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
                 return;
             }
 
-            _verticalSpeed -= gravity * Time.deltaTime;
+            _verticalSpeed -= g * Time.deltaTime;
             return;
         }
 
@@ -836,8 +845,19 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
         }
         else
         {
-            _verticalSpeed -= gravity * Time.deltaTime;
+            _verticalSpeed -= g * Time.deltaTime;
         }
+    }
+
+    float ResolveGravityAcceleration()
+    {
+        var g = gravity;
+        if (_verticalSpeed < 0f)
+        {
+            g *= _fallGravityScale;
+        }
+
+        return g;
     }
 
     void ClampTerminalVelocityVertical()

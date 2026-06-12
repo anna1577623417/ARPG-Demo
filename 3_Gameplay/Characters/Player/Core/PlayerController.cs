@@ -2,44 +2,25 @@ using UnityEngine;
 
 /// <summary>
 /// 玩家控制器：连续移动采样 + 离散意图入队。
-/// 跑步（Run）：摇杆高幅度 **或** **同一 WASD 方向双击** 进入「粘性跑步」——有移动输入期间保持 Run，可任意变向，松手后退出。
+/// 跑步（Run）：165.1 L7 — Sprint 键 Hold/Toggle（见 LocomotionTuningSO.RunInputMode）或手柄高幅度。
 /// </summary>
 [DefaultExecutionOrder(-50)]
 [RequireComponent(typeof(Player))]
 [AddComponentMenu("GameMain/Player/Player Controller")]
 public class PlayerController : EntityController
 {
-    private enum MoveTapCardinal : byte
-    {
-        None = 0,
-        Up = 1,
-        Down = 2,
-        Left = 3,
-        Right = 4,
-    }
-
     [Header("References")]
     [SerializeField] private Player player;
     [SerializeField] private InputReader inputReader;
 
     [Header("Continuous locomotion — Run")]
-    [Tooltip("仅手柄：左摇杆幅度超过该阈值视为 Run。键盘 WASD 模长常为 1，不会走此分支；键盘 Run 只靠双击粘性。")]
+    [Tooltip("仅手柄：左摇杆幅度超过该阈值视为 Run（键盘 Run 走 Sprint 键 Hold/Toggle）。")]
     [SerializeField, Range(0f, 1f)] private float runMagnitudeThreshold = 0.85f;
 
-    [Header("Double-tap WASD → sticky run")]
-    [Tooltip("同一方向（W/A/S/D 主导）两次「按下边沿」之间的最大间隔（秒），小于此值则进入粘性跑步。")]
-    [SerializeField, Range(0.05f, 0.8f)] private float doubleTapCardinalWindow = 0.35f;
-
-    [Tooltip("判定「主导方向」时，合成向量模长低于此值视为无输入（用于松手退出粘性跑步）。")]
+    [Tooltip("判定无输入时，合成向量模长低于此值视为松手。")]
     [SerializeField, Range(0.01f, 0.3f)] private float moveReleaseThreshold = 0.12f;
 
-    [Tooltip("判定 W/A/S/D 主导轴时，主分量需比另一轴大多少（避免斜向误判）。")]
-    [SerializeField, Range(0f, 0.3f)] private float tapAxisSeparation = 0.06f;
-
     [Header("Debug")]
-    [Tooltip("勾选后输出粘性跑步（双击 WASD）相关调试日志；仅开发用。")]
-    [SerializeField] private bool debugRunLogs = true;
-
     [Tooltip("勾选后在场景视图玩家脚底绘制相机参考水平前向与角色水平前向；颜色见下方两项。")]
     [SerializeField] private bool debugForwardDirectionArrows;
 
@@ -62,14 +43,15 @@ public class PlayerController : EntityController
     private IGameModeMovementContext _movementContext;
     private bool _isInitialized;
     private bool _loggedMissingMovementContext;
+    private float _nextLocoInputTraceTime;
+    private float _nextLocoAnomalyLogTime;
 
     private Vector2 _prevMoveInput;
-
-    /// <summary>索引 = MoveTapCardinal。记录该方向上一次「按下边沿」时间。</summary>
-    private readonly float[] _lastCardinalPressTime = new float[5];
-
-    private bool _stickyRunMode;
+    private bool _runToggled;
     private bool _prevWantsRun;
+
+    ActionDataSO _moveInterruptWindowAction;
+    bool _moveInterruptQueuedForWindow;
 
     // ─── 生命周期 ───
 
@@ -142,20 +124,12 @@ public class PlayerController : EntityController
         var rawInput = inputReader.MoveInput;
         var releaseSq = moveReleaseThreshold * moveReleaseThreshold;
 
-        if (rawInput.sqrMagnitude < releaseSq)
-        {
-            if (_stickyRunMode)
-            {
-                _stickyRunMode = false;
-                LogRunSticky(false, "input released (below threshold)");
-            }
-        }
+        TryEnqueueMoveInterruptIntent(rawInput, releaseSq);
 
-        DetectDoubleTapCardinalStickyRun(rawInput, releaseSq);
-
-        var worldDirection = ResolveWorldDirection(rawInput);
+        var worldDirection = ResolveWorldDirection(rawInput, out var moveCtxSource, out var cameraRelative);
         var wantsRun = ResolveRunIntent(rawInput, releaseSq);
         player.SetMovementIntent(worldDirection, wantsRun);
+        LogLocomotionInputTrace(player, rawInput, worldDirection, moveCtxSource, cameraRelative);
 
         //if (debugRunLogs && wantsRun != _prevWantsRun)
         //{
@@ -242,10 +216,6 @@ public class PlayerController : EntityController
             var intent = SkillEntryIntentFactory.ForEntryTapFallback(
                 slot, Time.time, holdSeconds, moveBuf, moveBufValid);
             player.EnqueueGameplayIntent(intent);
-            if (player.DebugSkillRoute)
-            {
-                Debug.LogWarning($"[IntentInput] FALLBACK Tap slot={slot} (InputSemantic 未初始化)", this);
-            }
         }
 
         if (player.DebugInterruptFlow)
@@ -254,66 +224,79 @@ public class PlayerController : EntityController
         }
     }
 
-    private static MoveTapCardinal GetDominantTapDir(Vector2 v, float separation)
+    /// <summary>
+    /// 157.2 — Action 期 WASD → Move 意图（后摇窗口放行 Locomotion 时：按下边沿，或窗口内已按住 WASD）。
+    /// </summary>
+    void TryEnqueueMoveInterruptIntent(Vector2 rawInput, float releaseSq)
     {
-        var ax = Mathf.Abs(v.x);
-        var ay = Mathf.Abs(v.y);
-        if (ay > ax + separation)
+        if (player.States?.Current is not PlayerActionState)
         {
-            return v.y > 0f ? MoveTapCardinal.Up : MoveTapCardinal.Down;
-        }
-
-        if (ax > ay + separation)
-        {
-            return v.x > 0f ? MoveTapCardinal.Right : MoveTapCardinal.Left;
-        }
-
-        return MoveTapCardinal.None;
-    }
-
-    private void DetectDoubleTapCardinalStickyRun(Vector2 rawInput, float releaseSq)
-    {
-        if (rawInput.sqrMagnitude < releaseSq)
-        {
+            ResetMoveInterruptWindowTrack();
             return;
         }
 
-        var curr = GetDominantTapDir(rawInput, tapAxisSeparation);
-        var prev = GetDominantTapDir(_prevMoveInput, tapAxisSeparation);
-
-        if (curr == MoveTapCardinal.None || curr == prev)
+        if (!player.TryGetActiveActionInterruptProbe(out var action, out var nt))
         {
+            ResetMoveInterruptWindowTrack();
             return;
         }
 
-        // 主导方向从「非当前键」切到「当前键」：视为一次新的方向按下边沿。
-        var idx = (int)curr;
-        var lastT = _lastCardinalPressTime[idx];
-        if (lastT > 0.001f && Time.time - lastT <= doubleTapCardinalWindow)
+        if (!ActionInterruptResolver.IsCategoryAllowedAtWindow(action, nt, ActionCategory.Locomotion))
         {
-            if (!_stickyRunMode)
+            if (!ReferenceEquals(_moveInterruptWindowAction, action))
             {
-                LogRunSticky(true, $"double-tap {curr} within {doubleTapCardinalWindow:F2}s");
+                ResetMoveInterruptWindowTrack();
             }
 
-            _stickyRunMode = true;
+            _moveInterruptWindowAction = action;
+            return;
         }
 
-        _lastCardinalPressTime[idx] = Time.time;
-    }
+        if (!ReferenceEquals(_moveInterruptWindowAction, action))
+        {
+            _moveInterruptWindowAction = action;
+            _moveInterruptQueuedForWindow = false;
+        }
 
-    private void LogRunSticky(bool on, string reason)
-    {
-        if (!debugRunLogs)
+        if (_moveInterruptQueuedForWindow)
         {
             return;
         }
 
-        //Debug.Log(
-        //    on
-        //        ? $"[PlayerController][Run] Sticky RUN **ON** ({reason})"
-        //        : $"[PlayerController][Run] Sticky RUN **OFF** — {reason}",
-        //    this);
+        var hasMove = rawInput.sqrMagnitude >= releaseSq;
+        var edge = DetectMovePressEdge(rawInput, releaseSq);
+        if (!edge && !hasMove)
+        {
+            return;
+        }
+
+        var moveBuf = rawInput;
+        var moveBufValid = moveBuf.sqrMagnitude > releaseSq;
+        var forbidden = (ulong)StateTag.Dead;
+        player.EnqueueGameplayIntent(SkillEntryIntentFactory.ForMove(
+            Time.time, moveBuf, moveBufValid, forbidden));
+        _moveInterruptQueuedForWindow = true;
+
+        if (player.DebugInterruptFlow)
+        {
+            var trigger = edge ? "edge" : "hold-in-window";
+            Debug.Log(
+                $"[Intent] ENQUEUE Move ({trigger}) buffered=({moveBuf.x:F2},{moveBuf.y:F2}) nt={nt:F2} action={action.name}",
+                this);
+        }
+    }
+
+    void ResetMoveInterruptWindowTrack()
+    {
+        _moveInterruptWindowAction = null;
+        _moveInterruptQueuedForWindow = false;
+    }
+
+    bool DetectMovePressEdge(Vector2 rawInput, float releaseSq)
+    {
+        var hadMove = _prevMoveInput.sqrMagnitude >= releaseSq;
+        var hasMove = rawInput.sqrMagnitude >= releaseSq;
+        return !hadMove && hasMove;
     }
 
     private bool ResolveRunIntent(Vector2 rawInput, float releaseSq)
@@ -323,63 +306,149 @@ public class PlayerController : EntityController
             return false;
         }
 
-        if (_stickyRunMode)
-        {
-            return true;
-        }
-
         if (inputReader.MoveActuatedByGamepad && rawInput.magnitude >= runMagnitudeThreshold)
         {
             return true;
         }
 
-        return false;
+        var tuning = player != null && player.LocomotionProfile != null
+            ? player.LocomotionProfile.Tuning
+            : null;
+        var mode = tuning != null ? tuning.RunInputMode : RunInputMode.Toggle;
+
+        if (mode == RunInputMode.Toggle)
+        {
+            if (inputReader.ConsumeRunToggled())
+            {
+                _runToggled = !_runToggled;
+                Locomotion165Diagnostics.LogRunIntent(
+                    player,
+                    mode,
+                    _runToggled,
+                    _runToggled,
+                    inputReader.IsRunHeld,
+                    "SprintToggleEdge");
+            }
+
+            return _runToggled;
+        }
+
+        var holdRun = inputReader.IsRunHeld;
+        if (holdRun != _prevWantsRun && player.HasMovementIntent)
+        {
+            Locomotion165Diagnostics.LogRunIntent(
+                player,
+                mode,
+                holdRun,
+                _runToggled,
+                inputReader.IsRunHeld,
+                "SprintHoldChange");
+        }
+
+        return holdRun;
     }
 
-    private Vector3 ResolveWorldDirection(Vector2 rawInput)
+    private Vector3 ResolveWorldDirection(Vector2 rawInput, out string ctxSource, out bool cameraRelative)
     {
+        ctxSource = "none";
+        cameraRelative = true;
+
         if (rawInput.sqrMagnitude <= 0.0001f)
         {
             return Vector3.zero;
         }
 
         var input = Vector2.ClampMagnitude(rawInput, 1f);
+        var ctx = ResolveMovementContext(out ctxSource);
 
-        if (_movementContext != null && !_movementContext.IsCameraRelativeMovement)
+        if (ctx != null && !ctx.IsCameraRelativeMovement)
         {
+            cameraRelative = false;
             return new Vector3(input.x, 0f, input.y);
         }
 
         Quaternion refRotation;
 
-        if (_movementContext != null)
+        if (ctx != null)
         {
-            refRotation = _movementContext.GetMovementReferenceRotation();
+            refRotation = ctx.GetMovementReferenceRotation();
         }
         else
         {
-#if UNITY_EDITOR
-            if (!_loggedMissingMovementContext)
-            {
-                _loggedMissingMovementContext = true;
-                Debug.LogWarning(
-                    "[PlayerController] 缺少 IGameModeMovementContext：请在 SystemRoot → Scene Player Controllers 登记本角色，" +
-                    "或对 Instantiate 结果使用 PlayerFactory 注入。当前使用 Camera.main Y 角作为移动参考。",
-                    this);
-            }
-#endif
+            LocomotionDebug.LogWarnOnce(
+                player,
+                ref _loggedMissingMovementContext,
+                LocomotionDebug.CatInput,
+                "缺少 IGameModeMovementContext（注入与 GameModeManager 均为 null）→ 回落世界轴 (x,0,y)；CameraFwd 失效。",
+                this);
+
             var mainCam = Camera.main;
             if (mainCam == null)
             {
+                ctxSource = "world-fallback";
+                cameraRelative = false;
                 return new Vector3(input.x, 0f, input.y);
             }
 
             refRotation = Quaternion.Euler(0f, mainCam.transform.eulerAngles.y, 0f);
+            ctxSource = "camera.main";
         }
 
         var forward = refRotation * Vector3.forward;
         var right = refRotation * Vector3.right;
         return forward * input.y + right * input.x;
+    }
+
+    /// <summary>注入优先；缺失时回落 <see cref="GameModeManager"/> 单例，避免 CameraFwd 静默失效。</summary>
+    IGameModeMovementContext ResolveMovementContext(out string source)
+    {
+        if (_movementContext != null)
+        {
+            source = "injected";
+            return _movementContext;
+        }
+
+        var gmm = GameModeManager.Instance;
+        if (gmm != null)
+        {
+            source = "GameModeManager";
+            return gmm;
+        }
+
+        source = "missing";
+        return null;
+    }
+
+    void LogLocomotionInputTrace(
+        Player p,
+        Vector2 rawInput,
+        Vector3 worldDir,
+        string ctxSource,
+        bool cameraRelative)
+    {
+        if (rawInput.sqrMagnitude < 0.0001f)
+        {
+            return;
+        }
+
+        var camFwd = Vector3.forward;
+        var ctx = ResolveMovementContext(out _);
+        if (ctx != null && ctx.IsCameraRelativeMovement)
+        {
+            camFwd = ctx.GetMovementReferenceRotation() * Vector3.forward;
+        }
+
+        var charFwd = p.transform.forward;
+        LocomotionDebug.TryLogCameraRelativeAnomaly(
+            p, rawInput, worldDir, camFwd, charFwd, cameraRelative, ctxSource, ref _nextLocoAnomalyLogTime);
+
+        LocomotionDebug.LogTrace(
+            p,
+            LocomotionDebug.CatInput,
+            $"raw=({rawInput.x:F2},{rawInput.y:F2}) world=({worldDir.x:F2},{worldDir.z:F2}) " +
+            $"camRel={cameraRelative} ctx={ctxSource} state={p.States?.Current?.StateId} " +
+            $"charFwd=({charFwd.x:F2},{charFwd.z:F2}) camFwd=({camFwd.x:F2},{camFwd.z:F2})",
+            ref _nextLocoInputTraceTime);
     }
 
     /// <summary>
@@ -422,7 +491,8 @@ public class PlayerController : EntityController
     {
         flatForward = Vector3.forward;
 
-        if (_movementContext != null && !_movementContext.IsCameraRelativeMovement)
+        var ctx = ResolveMovementContext(out _);
+        if (ctx != null && !ctx.IsCameraRelativeMovement)
         {
             flatForward = Vector3.forward;
             return true;
@@ -430,9 +500,9 @@ public class PlayerController : EntityController
 
         Quaternion refRotation;
 
-        if (_movementContext != null)
+        if (ctx != null)
         {
-            refRotation = _movementContext.GetMovementReferenceRotation();
+            refRotation = ctx.GetMovementReferenceRotation();
         }
         else
         {

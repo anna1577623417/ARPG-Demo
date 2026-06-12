@@ -133,17 +133,37 @@ public readonly struct ActionTimelinePresentationEvent : IGameEvent
     }
 }
 
+/// <summary>164.1 L3：Locomotion 连续 Action 换片（不切 ActionState）。</summary>
+public readonly struct PlayerContinuousLocomotionRequestEvent : IGameEvent
+{
+    public readonly int PlayerInstanceId;
+    public readonly ActionDataSO Action;
+
+    public PlayerContinuousLocomotionRequestEvent(int playerInstanceId, ActionDataSO action)
+    {
+        PlayerInstanceId = playerInstanceId;
+        Action = action;
+    }
+}
+
 public readonly struct PlayerActionPresentationRequestEvent : IGameEvent
 {
     public readonly int PlayerInstanceId;
     public readonly GameplayIntentKind Kind;
     public readonly ActionDataSO Action;
+    /// <summary>非空时覆盖 Action.MainClip（164.1 L10 相位急停变体等）。</summary>
+    public readonly AnimationClip PresentationClip;
 
-    public PlayerActionPresentationRequestEvent(int playerInstanceId, GameplayIntentKind kind, ActionDataSO action)
+    public PlayerActionPresentationRequestEvent(
+        int playerInstanceId,
+        GameplayIntentKind kind,
+        ActionDataSO action,
+        AnimationClip presentationClip = null)
     {
         PlayerInstanceId = playerInstanceId;
         Kind = kind;
         Action = action;
+        PresentationClip = presentationClip;
     }
 }
 

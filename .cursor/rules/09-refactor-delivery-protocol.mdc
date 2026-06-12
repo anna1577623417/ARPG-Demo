@@ -154,10 +154,20 @@ Route 重构默认连带（开工清单里逐项勾选）：
 
 ### 8.1 通电 Log 约定
 
-- **前缀稳定**：与项目 7 层管线一致（例：`[Semantic]` `[Resolve]` `[Combo]` `[Route]`），禁止临时 `Debug.Log("here")`。  
-- **断点即报**：握手失败打 **一条** 结构化日志：`[Resolve] OPEN handshake Entry→Route: entry=null` — 含层名、通电点名、关键 null/enum。  
-- **与蓝图对照**：握手表「验收 Log」列必须在实现前就写好；落位结束对照 **出现 / 未出现**。  
+- **前缀稳定**：与项目 7 层管线一致（例：`[Semantic]` `[Resolve]` `[Combo]` `[Route]`），禁止临时 `Debug.Log("here")`。 
+- **断点即报**：握手失败打 **一条** 结构化日志：`[Resolve] OPEN handshake Entry→Route: entry=null` — 含层名、通电点名、关键 null/enum。 
+- **与蓝图对照**：握手表「验收 Log」列必须在实现前就写好；落位结束对照 **出现 / 未出现**。 
 - 优先复用 `SkillRouteDebug` / 既有 `Cat*` 分类，不新增散落开关。
+
+### 8.4 Log 目录（与 `6.AI/Cursor/Log/README.md` 一致）
+
+| 路径 | 用途 |
+|------|------|
+| `Log/Test/**` | **只读**：用户粘贴原始 Play Log；AI **禁止**写入 |
+| `Log/Record/Output/{主题}/` | AI 验收对照、施工记录、操作指南；无子目录则新建 |
+| `BluePrint/{141-150\|151-160\|…}/` | 蓝图 / 资料；区间满后新建 `151-160` 等 |
+
+- **非必要**不写冗长总结 Log；对照用户 `Test/` 日志时，在 `Record/Output/` 写简短 **【Record】**（结论 + 关键行 + 待修项）。
 
 ### 8.2 通路修复顺序（禁止跳步兜底）
 

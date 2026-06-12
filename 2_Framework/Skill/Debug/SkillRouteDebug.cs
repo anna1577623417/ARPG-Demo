@@ -2,6 +2,7 @@ using UnityEngine;
 
 /// <summary>
 /// SkillRoute 诊断 — 由 Player 上 Debug 开关分通道控制。
+/// <see cref="IsEnabled"/>（Debug Skill Route）仅输出 Combat Graph 专向 Log，不再刷 Flow/Resolve/Combo 全量。
 /// </summary>
 public static class SkillRouteDebug
 {
@@ -23,9 +24,14 @@ public static class SkillRouteDebug
     public const string CatStage = "Stage";
     public const string CatCtx = "Ctx";
     public const string CatGraph = "Graph";
+    /// <summary>Graph 末段退出专向 — Console 过滤 <c>[CombatGraph][Finisher]</c>，与 Graph 分离。</summary>
+    public const string CatFinisher = "Finisher";
     public const string CatCond = "Cond";
     public const string CatUnit = "Unit";
     public const string CatExtract = "Extract";
+
+    static string s_lastGraphDedupKey;
+    static float s_lastGraphDedupTime;
 
     public static bool IsEnabled(Player player) => player != null && player.DebugSkillRoute;
 
@@ -85,15 +91,45 @@ public static class SkillRouteDebug
         }
     }
 
+    /// <summary>Ability 专向 Flow（Debug Skill Ability）；不再走 Debug Skill Route。</summary>
     public static void LogFlow(Player player, string message, Object context = null)
     {
-        if (!IsEnabled(player) && !IsAbilityEnabled(player))
+        if (!IsAbilityEnabled(player))
         {
             return;
         }
 
         var ctx = context != null ? context : player;
         Debug.Log($"[SkillRoute][{CatFlow}] {message}", ctx);
+    }
+
+    /// <summary>Combat Graph 专向 — Console 过滤 <c>[SkillRoute][Graph]</c>。</summary>
+    public static void LogGraph(Player player, string message, Object context = null)
+    {
+        if (!IsEnabled(player))
+        {
+            return;
+        }
+
+        if (ShouldDedupGraphMessage(message))
+        {
+            return;
+        }
+
+        var ctx = context != null ? context : player;
+        Debug.Log($"[SkillRoute][{CatGraph}] {message}", ctx);
+    }
+
+    /// <summary>Graph 末段退出专向 — 独立前缀，避免与 Graph 混滤。</summary>
+    public static void LogFinisher(Player player, string message, Object context = null)
+    {
+        if (!IsEnabled(player))
+        {
+            return;
+        }
+
+        var ctx = context != null ? context : player;
+        Debug.Log($"[CombatGraph][{CatFinisher}] {message}", ctx);
     }
 
     public static void LogAbility(Player player, string message, Object context = null)
@@ -111,6 +147,15 @@ public static class SkillRouteDebug
     {
         if (!IsEnabled(player) && !IsAbilityEnabled(player))
         {
+            return;
+        }
+
+        if (IsEnabled(player))
+        {
+            LogGraph(
+                player,
+                $"Setup flow={(flow != null ? flow.name : "null")} " +
+                $"abilityMap={(abilityMap != null ? abilityMap.name : "null")} contextGroups={contextGroupCount}");
             return;
         }
 
@@ -197,6 +242,7 @@ public static class SkillRouteDebug
         }
     }
 
+    /// <summary>Debug Skill Route 下仅 Graph 类 <see cref="Log"/> 可出；Resolve/Combo/Route 等默认静默。</summary>
     static bool ShouldEmit(string category, string message)
     {
         if (string.IsNullOrEmpty(message))
@@ -206,6 +252,9 @@ public static class SkillRouteDebug
 
         switch (category)
         {
+            case CatGraph:
+                return true;
+
             case CatSemantic:
                 return message.StartsWith("DIRECTIONAL");
 
@@ -216,13 +265,37 @@ public static class SkillRouteDebug
                     || message.Contains("PrimaryUnit");
 
             case CatCtx:
-            case CatGraph:
             case CatCond:
             case CatUnit:
-                return true;
+                return false;
 
             default:
                 return false;
         }
+    }
+
+    static bool ShouldDedupGraphMessage(string message)
+    {
+        if (string.IsNullOrEmpty(message))
+        {
+            return false;
+        }
+
+        var dedup = message.StartsWith("MISS policy=", System.StringComparison.Ordinal)
+            || message.StartsWith("[ComboChain] ENTRY_FALLBACK", System.StringComparison.Ordinal)
+            || message.StartsWith("DUAL_GATE block", System.StringComparison.Ordinal);
+        if (!dedup)
+        {
+            return false;
+        }
+
+        if (message == s_lastGraphDedupKey && Time.unscaledTime - s_lastGraphDedupTime < 1f)
+        {
+            return true;
+        }
+
+        s_lastGraphDedupKey = message;
+        s_lastGraphDedupTime = Time.unscaledTime;
+        return false;
     }
 }

@@ -1,0 +1,37 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dc44221e6d158b148ad988016a948ef4, type: 3}
+  m_Name: GhostSamurai_APose_Jump_Start_ActionData
+  m_EditorClassIdentifier: 
+  MainClip: {fileID: 7400002, guid: 92d30f35ed0ad3745905cb4c04274a2e, type: 3}
+  CrossfadeTime: 0.08
+  AnimSpeed: 1
+  Duration: 0.8333334
+  AnimationEndRatio: 1
+  DurationStatScaling: 0
+  PrincipalAxis: 2
+  IntentCategory: 0
+  GraphParticipation: -1
+  Category: 2
+  InterruptPriority: 10
+  InterruptStability: 10
+  AllowSelfInterrupt: 0
+  IsContinuousLocomotion: 0
+  UseClipRootMotion: 0
+  CanRotateDuringLocomotion: 1
+  CanMoveDuringLocomotion: 1
+  LeftFootSupportClip: {fileID: 0}
+  RightFootSupportClip: {fileID: 0}
+  MotionProfile: {fileID: 11400000, guid: c92f162406d3f5f4b951c3f2c8933de2, type: 2}
+  Windows: []
+  TeleportTriggers: []
+  TimelineMarkers: []

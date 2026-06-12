@@ -641,7 +641,18 @@
                 {
                     "name": "",
                     "id": "839a7a9d-598b-44ee-9933-f4da5fb8f37f",
-                    "path": "<Keyboard>/shift",
+                    "path": "<Keyboard>/leftCtrl",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Sprint",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "b7c8d9e0-f1a2-4b3c-8d4e-5f6a7b8c9d0e",
+                    "path": "<Keyboard>/rightCtrl",
                     "interactions": "",
                     "processors": "",
                     "groups": "",

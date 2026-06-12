@@ -21,6 +21,21 @@ public abstract class SkillRouteRuntime
     /// <summary>当前 Stage 在 Route.Stages[] 中的下标。</summary>
     public int CurrentStageIndex { get; protected set; }
 
+    /// <summary>165.1 L6：是否处于 Route 末段 Stage。</summary>
+    public bool IsLastStage
+    {
+        get
+        {
+            var stages = Definition?.Stages;
+            if (stages == null || stages.Length == 0)
+            {
+                return true;
+            }
+
+            return CurrentStageIndex >= stages.Length - 1;
+        }
+    }
+
     // ── CD（单 Route 维度；CooldownGroup 由 CooldownGroupRegistry 联动） ──
     public float CdRemainingSeconds;
     public float CdScaledTotalSeconds;   // 给 HUD 进度条用，保证 0→1 单调
@@ -158,14 +173,6 @@ public abstract class SkillRouteRuntime
         if (shouldStartCd)
         {
             StartCooldown(in ctx);
-            if (ctx.Self is Player p && p.DebugSkillRoute)
-            {
-                Debug.Log($"[CD] {policy} → StartCooldown {Definition.name} cd={CdRemainingSeconds:F2}s suppress={SuppressNextCooldown} interrupted={wasInterrupted}", p);
-            }
-        }
-        else if (ctx.Self is Player pp && pp.DebugSkillRoute)
-        {
-            Debug.Log($"[CD] OnExit NO CD ({Definition.name}) policy={policy} suppress={SuppressNextCooldown}", pp);
         }
 
         SuppressNextCooldown = false;
@@ -188,10 +195,6 @@ public abstract class SkillRouteRuntime
 
         ConsumeRouteCosts(in ctx);
         flag = true;
-        if (ctx.Self is Player p && p.DebugSkillRoute)
-        {
-            Debug.Log($"[Cost] {when} → ConsumeRouteCosts {Definition.name}", p);
-        }
     }
 
     ref bool GetConsumeFlagRef(RouteResourceConsumePolicy when)
@@ -217,10 +220,6 @@ public abstract class SkillRouteRuntime
         }
 
         StartCooldown(in ctx);
-        if (ctx.Self is Player p && p.DebugSkillRoute)
-        {
-            Debug.Log($"[CD] {policy} → StartCooldown {Definition.name} cd={CdRemainingSeconds:F2}s", p);
-        }
     }
 
     /// <summary>每帧 CD 减秒（由 SkillEntryService 在 PreLogicUpdate 调用，无论 IsActive）。</summary>
@@ -305,8 +304,6 @@ public abstract class SkillRouteRuntime
             return;
         }
 
-        var owner = ctx.Self as Player;
-        var debug = owner != null && owner.DebugSkillRoute;
         var nt = Stage.NormalizedTime;
         for (var i = 0; i < transitions.Length; i++)
         {
@@ -318,32 +315,14 @@ public abstract class SkillRouteRuntime
 
             if (!IsTriggerSatisfied(in tr, in ctx))
             {
-                if (debug)
-                {
-                    Debug.Log(
-                        $"[Trans] {Definition?.name}/{Stage.Definition.name} tr[{i}] 时间窗内但 Trigger 未满足 " +
-                        $"trigger={tr.Trigger} pressEdge={ctx.Input.TriggerPressedEdge} releaseEdge={ctx.Input.TriggerReleasedEdge} hits={ctx.HitTally?.TotalHits ?? 0}",
-                        owner);
-                }
                 continue;
             }
 
             if (!ConditionEvaluator.EvaluateAll(tr.Conditions, in ctx, Stage.Elapsed))
             {
-                if (debug)
-                {
-                    Debug.Log($"[Trans] {Definition?.name}/{Stage.Definition.name} tr[{i}] Conditions 未通过", owner);
-                }
                 continue;
             }
 
-            if (debug)
-            {
-                Debug.Log(
-                    $"[Trans] {Definition?.name}/{Stage.Definition.name} tr[{i}] FIRED " +
-                    $"→ nextStage={(tr.NextStage != null ? tr.NextStage.name : "<null>")} nextRoute={(tr.NextRoute != null ? tr.NextRoute.name : "<null>")}",
-                    owner);
-            }
             AdvanceTo(in tr, in ctx);
             return;
         }

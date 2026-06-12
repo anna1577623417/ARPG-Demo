@@ -118,6 +118,8 @@ public static class CombatFlowGraphValidator
             result.Warnings.Add("建议至少 1 个 End 节点作为图出口。");
         }
 
+        var nodesById = CombatFlowEdgeKindRules.BuildNodeLookup(nodes);
+
         var edges = graph.FlowEdges;
         if (edges == null || edges.Length == 0)
         {
@@ -128,28 +130,29 @@ public static class CombatFlowGraphValidator
         for (var i = 0; i < edges.Length; i++)
         {
             var e = edges[i];
+            var edgeLabel = CombatFlowEdgeKindRules.FormatEdgeLabel(i, in e, nodesById);
             if (string.IsNullOrEmpty(e.FromNodeId) || string.IsNullOrEmpty(e.ToNodeId))
             {
-                result.Errors.Add($"flowEdges[{i}] from/to 为空");
+                result.Errors.Add($"{edgeLabel}: from/to 为空");
                 result.IsValid = false;
                 continue;
             }
 
             if (!ids.Contains(e.FromNodeId))
             {
-                result.Errors.Add($"flowEdges[{i}] 未知 from={e.FromNodeId}");
+                result.Errors.Add($"{edgeLabel}: 未知 from 节点");
                 result.IsValid = false;
             }
 
             if (!ids.Contains(e.ToNodeId))
             {
-                result.Errors.Add($"flowEdges[{i}] 未知 to={e.ToNodeId}");
+                result.Errors.Add($"{edgeLabel}: 未知 to 节点");
                 result.IsValid = false;
             }
 
             if (e.TargetRoute != null && !graph.ContainsRoute(e.TargetRoute))
             {
-                result.Errors.Add($"flowEdges[{i}] TargetRoute 不在 routePool: {e.TargetRoute.name}");
+                result.Errors.Add($"{edgeLabel}: TargetRoute 不在 routePool: {e.TargetRoute.name}");
                 result.IsValid = false;
             }
 
@@ -157,18 +160,127 @@ public static class CombatFlowGraphValidator
                 && e.InputSlot == SkillEntrySlot.Any
                 && e.InputSemantic == InputSemanticType.None)
             {
-                result.Warnings.Add($"flowEdges[{i}] OnInput 未配置 InputSlot/Semantic");
+                result.Warnings.Add($"{edgeLabel}: OnInput 未配置 InputSlot/Semantic");
             }
 
-            ValidateComboSegmentAdvanceEdge(graph, e, i, result);
-            ValidateConditionRefs(graph, e, i, result);
+            ValidateComboSegmentAdvanceEdge(graph, nodesById, e, i, result);
+            ValidateConditionRefs(graph, nodesById, e, i, result);
+            ValidateEdgeKindRules(nodesById, e, i, result);
+            ValidateComboChainStartEdge(nodesById, e, i, result);
         }
+
+        ValidateGraphCycles(graph, result);
 
         return result;
     }
 
+    static void ValidateGraphCycles(CombatGraphAsset graph, Result result)
+    {
+        var edges = graph.FlowEdges;
+        if (edges == null || edges.Length == 0)
+        {
+            return;
+        }
+
+        var autoAdj = new Dictionary<string, List<string>>();
+        var allAdj = new Dictionary<string, List<string>>();
+
+        for (var i = 0; i < edges.Length; i++)
+        {
+            var e = edges[i];
+            if (string.IsNullOrEmpty(e.FromNodeId) || string.IsNullOrEmpty(e.ToNodeId))
+            {
+                continue;
+            }
+
+            AddAdjacency(allAdj, e.FromNodeId, e.ToNodeId);
+            if (IsAutoFlowTransition(e.Transition))
+            {
+                AddAdjacency(autoAdj, e.FromNodeId, e.ToNodeId);
+            }
+        }
+
+        if (HasDirectedCycle(autoAdj))
+        {
+            result.Errors.Add(
+                "Infinite Auto Flow Loop：纯 OnSegmentComplete/Immediate 边构成环，运行时可能死循环。");
+            result.IsValid = false;
+            return;
+        }
+
+        if (HasDirectedCycle(allAdj))
+        {
+            result.Warnings.Add(
+                "检测到含 OnInput 的 Flow 环（Loop Combo 允许）；确认有 End/Idle 出口且运行时不会死循环。");
+        }
+    }
+
+    static bool IsAutoFlowTransition(CombatFlowTransitionMode mode) =>
+        mode == CombatFlowTransitionMode.OnSegmentComplete
+        || mode == CombatFlowTransitionMode.Immediate;
+
+    static void AddAdjacency(Dictionary<string, List<string>> adj, string from, string to)
+    {
+        if (!adj.TryGetValue(from, out var list))
+        {
+            list = new List<string>(4);
+            adj[from] = list;
+        }
+
+        list.Add(to);
+    }
+
+    static bool HasDirectedCycle(Dictionary<string, List<string>> adj)
+    {
+        var visiting = new HashSet<string>();
+        var visited = new HashSet<string>();
+
+        foreach (var start in adj.Keys)
+        {
+            if (visited.Contains(start))
+            {
+                continue;
+            }
+
+            if (DfsCycle(start, adj, visiting, visited))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    static bool DfsCycle(
+        string node,
+        Dictionary<string, List<string>> adj,
+        HashSet<string> visiting,
+        HashSet<string> visited)
+    {
+        if (!visiting.Add(node))
+        {
+            return true;
+        }
+
+        visited.Add(node);
+        if (adj.TryGetValue(node, out var next))
+        {
+            for (var i = 0; i < next.Count; i++)
+            {
+                if (DfsCycle(next[i], adj, visiting, visited))
+                {
+                    return true;
+                }
+            }
+        }
+
+        visiting.Remove(node);
+        return false;
+    }
+
     static void ValidateConditionRefs(
         CombatGraphAsset graph,
+        Dictionary<string, CombatFlowNodeAuthoring> nodesById,
         in CombatFlowEdgeAuthoring e,
         int index,
         Result result)
@@ -179,19 +291,20 @@ public static class CombatFlowGraphValidator
             return;
         }
 
+        var edgeLabel = CombatFlowEdgeKindRules.FormatEdgeLabel(index, in e, nodesById);
         var pool = graph.ConditionPool;
         for (var r = 0; r < refs.Length; r++)
         {
             if (refs[r] == null)
             {
-                result.Warnings.Add($"flowEdges[{index}] ConditionRefs[{r}] 为空");
+                result.Warnings.Add($"{edgeLabel}: ConditionRefs[{r}] 为空");
                 continue;
             }
 
             if (pool != null && pool.Length > 0 && !ContainsCondition(pool, refs[r]))
             {
                 result.Warnings.Add(
-                    $"flowEdges[{index}] ConditionRefs[{r}]={refs[r].name} 不在 conditionPool");
+                    $"{edgeLabel}: ConditionRefs[{r}]={refs[r].name} 不在 conditionPool");
             }
         }
     }
@@ -209,8 +322,24 @@ public static class CombatFlowGraphValidator
         return false;
     }
 
+    static void ValidateEdgeKindRules(
+        Dictionary<string, CombatFlowNodeAuthoring> nodesById,
+        in CombatFlowEdgeAuthoring e,
+        int index,
+        Result result)
+    {
+        var label = CombatFlowEdgeKindRules.FormatEdgeLabel(index, in e, nodesById);
+        var before = result.Errors.Count;
+        CombatFlowEdgeKindRules.CollectErrors(in e, nodesById, label, result.Errors);
+        if (result.Errors.Count > before)
+        {
+            result.IsValid = false;
+        }
+    }
+
     static void ValidateComboSegmentAdvanceEdge(
         CombatGraphAsset graph,
+        Dictionary<string, CombatFlowNodeAuthoring> nodesById,
         in CombatFlowEdgeAuthoring e,
         int index,
         Result result)
@@ -226,6 +355,7 @@ public static class CombatFlowGraphValidator
             return;
         }
 
+        var edgeLabel = CombatFlowEdgeKindRules.FormatEdgeLabel(index, in e, nodesById);
         for (var r = 0; r < pool.Length; r++)
         {
             if (pool[r] is not ComboRouteDefinition combo || !combo.ContainsSubRoute(e.TargetRoute))
@@ -236,12 +366,41 @@ public static class CombatFlowGraphValidator
             if (!combo.AllowFlowSegmentAdvance)
             {
                 result.Errors.Add(
-                    $"flowEdges[{index}] OnSegmentComplete→{e.TargetRoute.name} 须 {combo.name}.AllowFlowSegmentAdvance=true");
+                    $"{edgeLabel}: OnSegmentComplete→{e.TargetRoute.name} 须 {combo.name}.AllowFlowSegmentAdvance=true");
                 result.IsValid = false;
             }
 
             return;
         }
+    }
+
+    static void ValidateComboChainStartEdge(
+        Dictionary<string, CombatFlowNodeAuthoring> nodesById,
+        in CombatFlowEdgeAuthoring e,
+        int index,
+        Result result)
+    {
+        if (e.Transition != CombatFlowTransitionMode.OnInput || e.EdgeKind != CombatFlowEdgeKind.Flow)
+        {
+            return;
+        }
+
+        if (!nodesById.TryGetValue(e.FromNodeId, out var fromNode) || fromNode.Kind != CombatFlowNodeKind.Start)
+        {
+            return;
+        }
+
+        if (!nodesById.TryGetValue(e.ToNodeId, out var toNode) || toNode.Kind != CombatFlowNodeKind.FlowAction)
+        {
+            return;
+        }
+
+        var edgeLabel = CombatFlowEdgeKindRules.FormatEdgeLabel(index, in e, nodesById);
+        var entryName = toNode.Action != null ? toNode.Action.name : e.ToNodeId;
+        result.Warnings.Add(
+            $"{edgeLabel}: Graph 单链 Combo 起手勿用 Start OnInput→{entryName}；" +
+            "请改 Entry.NormalRoute 起手 + Start→首段 OnSegmentComplete（无 Route）或删除该边；" +
+            "连点重复首段多因此边在 Start 仍命中。");
     }
 
     static bool ContainsAction(ActionDataSO[] pool, ActionDataSO action)

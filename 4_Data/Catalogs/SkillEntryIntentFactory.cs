@@ -84,6 +84,15 @@ public static class SkillEntryIntentFactory
         return GameplayIntent.ForJump(time, 0.12f, requiredAll: 0UL, forbidden: forbidden);
     }
 
+    public static GameplayIntent ForMove(
+        float time,
+        Vector2 moveBuffered,
+        bool moveBufferValid,
+        ulong forbidden = 0UL)
+    {
+        return GameplayIntent.ForMove(time, 0.12f, moveBuffered, moveBufferValid, forbidden);
+    }
+
     static ulong ResolveRequiredAbilityTags(SkillEntrySlot slot)
     {
         switch (slot)

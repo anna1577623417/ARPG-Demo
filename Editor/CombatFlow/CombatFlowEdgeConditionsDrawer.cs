@@ -13,6 +13,12 @@ public static class CombatFlowEdgeConditionsDrawer
         EditorGUILayout.LabelField("Conditions (AND)", EditorStyles.boldLabel);
 
         SkillTransitionConditionAuthoringDrawer.DrawArray(ref edge.Conditions);
+
+        if (CombatFlowConditionDragDrop.DrawDropZoneAndPoolPicker(conditionPool, ref edge.ConditionRefs))
+        {
+            GUI.changed = true;
+        }
+
         DrawConditionRefs(ref edge.ConditionRefs, conditionPool);
 
         var merged = CombatFlowConditionMerge.Merge(edge.Conditions, edge.ConditionRefs);

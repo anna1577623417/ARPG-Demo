@@ -67,12 +67,7 @@ public static class MotionMigrationTool
     {
         if (!profile.UsesAxisCurves)
         {
-            profile.ApplyDefaultForwardAxis(4f);
-        }
-
-        if (profile.AxisCurves.ZScale < 0.001f)
-        {
-            profile.ApplyDefaultForwardAxis(4f);
+            profile.ApplyDefaultZeroAxisDisplacement();
         }
     }
 }

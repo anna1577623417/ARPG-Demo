@@ -10,10 +10,31 @@ using UnityEngine;
 public enum ActionCategory : ushort
 {
     None = 0,
+    /// <summary>战斗位移（翻滚、突进等 SkillEntry 位移）。</summary>
     Movement = 1 << 0,
     Offense = 1 << 1,
     Defensive = 1 << 2,
     Utility = 1 << 3,
+    /// <summary>基础 Locomotion（WASD 走/跑、Jump 等全局移动能力）。157.2 B 轴。</summary>
+    Locomotion = 1 << 4,
+}
+
+/// <summary>A 轴：仲裁车道 — 决定走 Combat Graph 路由还是全局 Action 仲裁。</summary>
+public enum ActionIntentCategory : byte
+{
+    Locomotion = 0,
+    Combat = 1,
+    Reaction = 2,
+    Interaction = 3,
+}
+
+/// <summary>C 轴：Action 在 Combat Flow Graph 中的参与身份（157.2 + 157.3）。</summary>
+public enum GraphParticipation : sbyte
+{
+    Auto = -1,
+    None = 0,
+    SourceOnly = 1,
+    Full = 2,
 }
 
 /// <summary>
@@ -45,9 +66,12 @@ public class ActionDataSO : ScriptableObject
     [Range(0f, 0.5f)]
     public float CrossfadeTime = 0.08f;
 
-    [Tooltip("Clip 播放倍率。(Clip×Ratio)÷Duration；Inspector「按 Duration 匹配 Clip 速率」写入，可手调。")]
+    [Tooltip("Clip 播放倍率。(Clip×Ratio)÷Duration；AutoSync 开启时由 MainClip.length÷Duration 自动写入。")]
     [Range(0.1f, 20f)]
     public float AnimSpeed = 1f;
+
+    [Tooltip("勾选 = 自动算 AnimSpeed 让 MainClip 在 Duration 内播完（AnimSpeed = Clip.length ÷ Duration）。")]
+    public bool AutoSyncAnimSpeedToDuration = true;
 
     [Tooltip("逻辑时长（秒）。与动画长度可不同，用于先行手感调参。")]
     public float Duration = 0.4f;
@@ -62,8 +86,16 @@ public class ActionDataSO : ScriptableObject
     [Tooltip("编舞/速率计算用的主轴位移（米），取自 MotionProfile.AxisCurves t=0→1。")]
     public MotionPrincipalAxis PrincipalAxis = MotionPrincipalAxis.Z;
 
+    [Header("Intent Lane (157.2 A-axis)")]
+    [Tooltip("仲裁车道：Combat 走 SkillEntry→Graph；Locomotion/Reaction/Interaction 走全局仲裁。")]
+    public ActionIntentCategory IntentCategory = ActionIntentCategory.Combat;
+
+    [Header("Graph Participation (157.2 C-axis)")]
+    [Tooltip("Auto：按 IntentCategory 派生（Combat→Full，Locomotion→SourceOnly，其余→None）。")]
+    public GraphParticipation GraphParticipation = GraphParticipation.Auto;
+
     [Header("Interrupt Semantics (abstract)")]
-    [Tooltip("Identity：该动作属于哪类语义（Movement / Offense / Defensive / Utility）。")]
+    [Tooltip("Identity：该动作属于哪类语义（Movement / Offense / Defensive / Utility / Locomotion）。")]
     public ActionCategory Category = ActionCategory.Offense;
 
     [Tooltip("动作优先级（越大越高）。用于跨技能硬打断比较。")]
@@ -74,6 +106,26 @@ public class ActionDataSO : ScriptableObject
 
     [Tooltip("动作级别自打断开关。窗口未单独允许时，可用它统一放行同动作重入。")]
     public bool AllowSelfInterrupt;
+
+    [Header("Locomotion Mode (164.1)")]
+    [Tooltip("勾选 = Locomotion State 内循环播放（不切 ActionState）；隐藏离散时长/窗口字段。")]
+    public bool IsContinuousLocomotion;
+
+    [Tooltip("L6：本 Action 使用 Clip RootMotion 驱动 transform（与 MotionProfile 曲线二选一，默认关）。")]
+    public bool UseClipRootMotion;
+
+    [Tooltip("Continuous Locomotion 期间是否允许 LookAtDirection 逻辑旋转。")]
+    public bool CanRotateDuringLocomotion = true;
+
+    [Tooltip("Continuous Locomotion 期间是否允许 Locomotion 程序位移（Walk/Run Loop 通常为 true）。")]
+    public bool CanMoveDuringLocomotion = true;
+
+    [Header("Phase Variants (164.1 L10 — 设施就位，默认未通电)")]
+    [Tooltip("左脚支撑相位急停变体；空 = MainClip。需 Tuning.EnableFootPhasedStopVariants。")]
+    public AnimationClip LeftFootSupportClip;
+
+    [Tooltip("右脚支撑相位急停变体；空 = MainClip。")]
+    public AnimationClip RightFootSupportClip;
 
     [Header("Motion")]
     [Tooltip(
@@ -91,16 +143,27 @@ public class ActionDataSO : ScriptableObject
     [Tooltip("FX / Audio / Camera / TimeScale 标记；在时间轴编辑器中配置。")]
     public List<ActionTimelineMarker> TimelineMarkers = new List<ActionTimelineMarker>();
 
+    /// <summary>运行时 AnimSpeed：AutoSync 时让 Clip 墙钟对齐 <see cref="Duration"/>。</summary>
+    public float ResolveEffectiveAnimSpeed()
+    {
+        if (AutoSyncAnimSpeedToDuration && MainClip != null && Duration > 0.001f)
+        {
+            return Mathf.Max(0.01f, MainClip.length / Duration);
+        }
+
+        return Mathf.Max(0.01f, AnimSpeed);
+    }
+
     /// <summary>
-    /// Dodge/SwordDash 等「无 MotionProfile」时：<strong>不与 Duration 争抢</strong>，优先 MainClip 墙钟，语义为按动画实况播完再走逻辑。
+    /// Dodge/SwordDash 等「无 MotionProfile」时：AutoSync 下墙钟 = Duration；否则 Clip÷AnimSpeed。
     /// </summary>
     public float ResolveAnimWallClockSeconds()
     {
         if (MainClip != null)
         {
-            if (Duration > 0.001f)
+            if (AutoSyncAnimSpeedToDuration && Duration > 0.001f)
             {
-                return MainClip.length / Mathf.Max(0.01f, AnimSpeed);
+                return Duration;
             }
 
             return MainClip.length / Mathf.Max(0.01f, AnimSpeed);
@@ -147,6 +210,29 @@ public class ActionDataSO : ScriptableObject
 #if UNITY_EDITOR
     void OnValidate()
     {
+        if (IsContinuousLocomotion)
+        {
+            IntentCategory = ActionIntentCategory.Locomotion;
+            GraphParticipation = GraphParticipation.SourceOnly;
+            Category = ActionCategory.Locomotion;
+            Duration = 0f;
+            UseClipRootMotion = false;
+            AutoSyncAnimSpeedToDuration = false;
+        }
+        else if (!AutoSyncAnimSpeedToDuration
+                 && MainClip != null
+                 && Duration > 0.001f)
+        {
+            var expectedWall = MainClip.length / Mathf.Max(0.01f, AnimSpeed);
+            if (Mathf.Abs(expectedWall - Duration) > 0.05f)
+            {
+                Debug.LogWarning(
+                    $"[ActionData] Duration({Duration:F3}s) 与 Clip÷AnimSpeed({expectedWall:F3}s) 偏差 >0.05s；" +
+                    $"建议勾选 AutoSyncAnimSpeedToDuration 或手调 AnimSpeed。 asset={name}",
+                    this);
+            }
+        }
+
         if (Windows == null)
         {
             return;
@@ -163,7 +249,7 @@ public class ActionDataSO : ScriptableObject
             }
         }
 
-        if (dirty)
+        if (dirty || IsContinuousLocomotion)
         {
             UnityEditor.EditorUtility.SetDirty(this);
         }

@@ -138,6 +138,129 @@ public static class BatchOutputPathUtil
         EditorGUILayout.LabelField("Motion 解析", motionResolved, EditorStyles.wordWrappedMiniLabel);
     }
 
+    /// <summary>Action → Stage → Route 三联输出：Stage / SkillUnit 根目录独立，选中文件夹可分别填入。</summary>
+    public static void DrawActionStageRouteTripleOutputSection(
+        ref Settings shared,
+        ref string customStageRoot,
+        ref string customRouteRoot,
+        string defaultStageRoot,
+        string defaultRouteRoot,
+        Action inferBatchFromSelection)
+    {
+        EditorGUILayout.LabelField("输出目录", EditorStyles.boldLabel);
+        EditorGUILayout.HelpBox(
+            "未勾选自定义时：Stage / Route(SkillUnit) 各用默认库路径 + 批次子夹。\n" +
+            "选中 Project 中 Stage 或 SkillUnit 文件夹可自动填入对应路径；选中角色包根目录时尝试 Stage + SkillUnit 子夹。",
+            MessageType.None);
+        EditorGUILayout.LabelField($"默认 Stage：{defaultStageRoot}", EditorStyles.miniLabel);
+        EditorGUILayout.LabelField($"默认 Route(SkillUnit)：{defaultRouteRoot}", EditorStyles.miniLabel);
+
+        shared.UseCustomRoot = EditorGUILayout.Toggle("自定义输出根目录", shared.UseCustomRoot);
+        using (new EditorGUI.IndentLevelScope())
+        {
+            using (new EditorGUI.DisabledScope(!shared.UseCustomRoot))
+            {
+                DrawPathRowWithFill(ref customStageRoot, "Stage 输出根目录", "ActStageOut", ref shared.UseCustomRoot);
+                DrawPathRowWithFill(ref customRouteRoot, "Route 输出根目录 (SkillUnit)", "ActRouteOut", ref shared.UseCustomRoot);
+            }
+        }
+
+        EditorGUILayout.Space(4f);
+        shared.SubfolderMode = (BatchSubfolderMode)EditorGUILayout.EnumPopup("子夹模式", shared.SubfolderMode);
+        using (new EditorGUI.DisabledScope(shared.SubfolderMode == BatchSubfolderMode.RootOnly))
+        {
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                shared.BatchFolderContent = EditorGUILayout.TextField("批次内容名", shared.BatchFolderContent);
+                if (GUILayout.Button("从选中推断", GUILayout.Width(100f)))
+                {
+                    inferBatchFromSelection?.Invoke();
+                }
+            }
+        }
+
+        shared.CreateDirectoryIfMissing = EditorGUILayout.Toggle("不存在时创建输出目录", shared.CreateDirectoryIfMissing);
+
+        var stageResolved = ResolveClipOutputDirectory(defaultStageRoot, customStageRoot, in shared, shared.BatchFolderContent);
+        var routeResolved = ResolveClipOutputDirectory(defaultRouteRoot, customRouteRoot, in shared, shared.BatchFolderContent);
+        EditorGUILayout.LabelField("Stage 解析", stageResolved, EditorStyles.wordWrappedMiniLabel);
+        EditorGUILayout.LabelField("Route 解析", routeResolved, EditorStyles.wordWrappedMiniLabel);
+    }
+
+    /// <summary>选中 Stage / SkillUnit / 含二者子夹的角色包目录时填入三联输出路径。</summary>
+    public static bool TryApplySelectedFolderToActionStageRouteOutputs(
+        ref string customStageRoot,
+        ref string customRouteRoot,
+        ref Settings shared,
+        bool onlyIfEmpty = true)
+    {
+        if (!TryGetSelectedProjectFolder(out var folder))
+        {
+            return false;
+        }
+
+        var filledAny = false;
+        var folderName = Path.GetFileName(folder.TrimEnd('/', '\\'));
+
+        if (string.Equals(folderName, "Stage", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!onlyIfEmpty || string.IsNullOrWhiteSpace(customStageRoot))
+            {
+                customStageRoot = folder;
+                filledAny = true;
+            }
+        }
+        else if (string.Equals(folderName, "SkillUnit", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!onlyIfEmpty || string.IsNullOrWhiteSpace(customRouteRoot))
+            {
+                customRouteRoot = folder;
+                filledAny = true;
+            }
+        }
+        else
+        {
+            var stageSub = NormalizeAssetsFolder(folder + "/Stage");
+            var routeSub = NormalizeAssetsFolder(folder + "/SkillUnit");
+            if (AssetDatabase.IsValidFolder(stageSub)
+                && (!onlyIfEmpty || string.IsNullOrWhiteSpace(customStageRoot)))
+            {
+                customStageRoot = stageSub;
+                filledAny = true;
+            }
+
+            if (AssetDatabase.IsValidFolder(routeSub)
+                && (!onlyIfEmpty || string.IsNullOrWhiteSpace(customRouteRoot)))
+            {
+                customRouteRoot = routeSub;
+                filledAny = true;
+            }
+
+            if (!filledAny)
+            {
+                if (!onlyIfEmpty || string.IsNullOrWhiteSpace(customStageRoot))
+                {
+                    customStageRoot = folder;
+                    filledAny = true;
+                }
+
+                if (!onlyIfEmpty || string.IsNullOrWhiteSpace(customRouteRoot))
+                {
+                    customRouteRoot = folder;
+                    filledAny = true;
+                }
+            }
+        }
+
+        if (filledAny)
+        {
+            shared.UseCustomRoot = true;
+            shared.SubfolderMode = BatchSubfolderMode.RootOnly;
+        }
+
+        return filledAny;
+    }
+
     public static string ResolveClipOutputDirectory(
         string defaultRoot,
         string customRoot,

@@ -36,12 +36,15 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
     public bool IsAttackHeld { get; private set; }
     public bool IsInteractHeld { get; private set; }
     public bool IsJumpHeld { get; private set; }
+    /// <summary>165.1 L7：LeftCtrl/RightCtrl 按住（Hold）或 Toggle 边沿；对应 .inputactions GamePlay/Sprint。</summary>
+    public bool IsRunHeld { get; private set; }
 
     public InputFocusMode CurrentFocus => _currentFocus;
     public InputActionAsset ActionAsset => _inputActions?.asset;
 
     // ═══ 离散脉冲 ═══
     bool _jumpPressedPulse;
+    bool _runToggleEdge;
     bool _partyNextPulse;
     bool _partyPrevPulse;
     int _partySlotPulseIndex = -1;
@@ -58,6 +61,18 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
     {
         if (!_jumpPressedPulse) return false;
         _jumpPressedPulse = false;
+        return true;
+    }
+
+    /// <summary>165.1 L7：Toggle 模式下 Sprint 按下边沿。</summary>
+    public bool ConsumeRunToggled()
+    {
+        if (!_runToggleEdge)
+        {
+            return false;
+        }
+
+        _runToggleEdge = false;
         return true;
     }
 
@@ -411,8 +426,20 @@ public class InputReader : ScriptableObject, PlayerInputSystem.IGamePlayActions,
         else if (c.canceled) WriteSlotEdge(slot, false);
     }
 
-    // ─── Legacy InputAction 名（.inputactions 中遗留绑定）→ 转发到新槽位 ───
-    public void OnSprint(InputAction.CallbackContext c) => SlotEdge(c, SkillEntrySlot.Shift);
+    // ─── 跑步（165.1 L7：GamePlay/Sprint Action → LeftCtrl/RightCtrl；Shift 仅 SlotAbility_07 技能）───
+    public void OnSprint(InputAction.CallbackContext c)
+    {
+        if (c.started)
+        {
+            IsRunHeld = true;
+            _runToggleEdge = true;
+        }
+        else if (c.canceled)
+        {
+            IsRunHeld = false;
+        }
+    }
+
     public void OnDodge(InputAction.CallbackContext c)  => SlotEdge(c, SkillEntrySlot.Space);
     public void OnSlotAbility1(InputAction.CallbackContext c) => SlotEdge(c, SkillEntrySlot.Q);
     public void OnSlotUltimate(InputAction.CallbackContext c) => SlotEdge(c, SkillEntrySlot.R);

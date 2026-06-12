@@ -1,0 +1,1001 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3a671dfaf1df2a74f8f7c0df9f59d23e, type: 3}
+  m_Name: CombatFlow_Player
+  m_EditorClassIdentifier: 
+  actionPool:
+  - {fileID: 11400000, guid: b593c025fbf702745b572c1ddf1e514d, type: 2}
+  - {fileID: 11400000, guid: 95bd99fc98d124f46a1bb00585de5848, type: 2}
+  - {fileID: 11400000, guid: de6a0e116f8716341b0b22800fddafb6, type: 2}
+  - {fileID: 11400000, guid: b9908ccc13ade0f458ee05de489a28d8, type: 2}
+  - {fileID: 11400000, guid: 5b3f5417c52bde043aca483b2c205da8, type: 2}
+  - {fileID: 11400000, guid: bd776364e6b57624387ca71af85d89f0, type: 2}
+  - {fileID: 11400000, guid: fbe85d0d833dea140a70e84ebdfc92f5, type: 2}
+  - {fileID: 11400000, guid: e1dde7a6d737aae45ba52355b8c94e3f, type: 2}
+  - {fileID: 11400000, guid: 47b67f64ebba8ea4ab0b0e1020ab888f, type: 2}
+  - {fileID: 11400000, guid: b6869f94cd03db34bb077725dd49f7da, type: 2}
+  - {fileID: 11400000, guid: f3a8b2c1d4e5f6789012345678abcd01, type: 2}
+  - {fileID: 11400000, guid: f3a8b2c1d4e5f6789012345678abcd02, type: 2}
+  - {fileID: 11400000, guid: f3a8b2c1d4e5f6789012345678abcd03, type: 2}
+  - {fileID: 11400000, guid: 0fbf9d52fe76af3458f333018da9b249, type: 2}
+  routePool:
+  - {fileID: 11400000, guid: c80acb7a875f4d44bb65466bab901e16, type: 2}
+  - {fileID: 11400000, guid: d05961ef8805c0246bc35fc644e734a1, type: 2}
+  - {fileID: 11400000, guid: a15bb2a18c83d8f4ba54a5d510489f62, type: 2}
+  - {fileID: 11400000, guid: db4eed8bc926fd84c9779557195b4361, type: 2}
+  - {fileID: 11400000, guid: 3e79830fa1e3f2f4a8847ce457a01fcc, type: 2}
+  - {fileID: 11400000, guid: 6aef75815099a3f46b7460ead1361696, type: 2}
+  - {fileID: 11400000, guid: bc398cefcd202cf47ba9920d1d3303a1, type: 2}
+  - {fileID: 11400000, guid: fc8b1f7d79fe7164c9178814e500f385, type: 2}
+  - {fileID: 11400000, guid: b7ef73920aa795242a7ea5682f23c6e3, type: 2}
+  - {fileID: 11400000, guid: 6914c26b4e2acc548aa4cd152626b858, type: 2}
+  - {fileID: 11400000, guid: 9eef56a803d4bf24fa36529d257de6db, type: 2}
+  - {fileID: 11400000, guid: f3a8b2c1d4e5f6789012345678abcd05, type: 2}
+  conditionPool: []
+  nodes:
+  - NodeId: Start
+    Kind: 0
+    Action: {fileID: 0}
+    Route: {fileID: 0}
+    GraphPosition: {x: -1758.3188, y: -548}
+  - NodeId: SlideExit_Action
+    Kind: 1
+    Action: {fileID: 11400000, guid: 95bd99fc98d124f46a1bb00585de5848, type: 2}
+    Route: {fileID: 0}
+    GraphPosition: {x: -1124.5927, y: -740.5444}
+  - NodeId: End
+    Kind: 3
+    Action: {fileID: 0}
+    Route: {fileID: 0}
+    GraphPosition: {x: 1714.093, y: -457.00012}
+  - NodeId: SlideStart_Action
+    Kind: 1
+    Action: {fileID: 11400000, guid: b9908ccc13ade0f458ee05de489a28d8, type: 2}
+    Route: {fileID: 0}
+    GraphPosition: {x: -1130.5925, y: -1055.5444}
+  - NodeId: SlideLoop_Action
+    Kind: 1
+    Action: {fileID: 11400000, guid: de6a0e116f8716341b0b22800fddafb6, type: 2}
+    Route: {fileID: 0}
+    GraphPosition: {x: -1131.5925, y: -894.54443}
+  - NodeId: ComboA_Action
+    Kind: 1
+    Action: {fileID: 11400000, guid: 5b3f5417c52bde043aca483b2c205da8, type: 2}
+    Route: {fileID: 0}
+    GraphPosition: {x: -1202.5925, y: -419.5444}
+  - NodeId: ComboB_Action
+    Kind: 1
+    Action: {fileID: 11400000, guid: bd776364e6b57624387ca71af85d89f0, type: 2}
+    Route: {fileID: 0}
+    GraphPosition: {x: -1200.5927, y: -254.54443}
+  - NodeId: ActionC_Action
+    Kind: 1
+    Action: {fileID: 11400000, guid: fbe85d0d833dea140a70e84ebdfc92f5, type: 2}
+    Route: {fileID: 0}
+    GraphPosition: {x: -1201.5927, y: -105.54437}
+  - NodeId: GhostSamurai_APose_Attack01_1_ALL_Action
+    Kind: 1
+    Action: {fileID: 11400000, guid: e1dde7a6d737aae45ba52355b8c94e3f, type: 2}
+    Route: {fileID: 0}
+    GraphPosition: {x: -574.00006, y: -533.99994}
+  - NodeId: GhostSamurai_APose_Attack01_2_Action
+    Kind: 1
+    Action: {fileID: 11400000, guid: 47b67f64ebba8ea4ab0b0e1020ab888f, type: 2}
+    Route: {fileID: 0}
+    GraphPosition: {x: -574.00006, y: -395.20038}
+  - NodeId: GhostSamurai_APose_Attack01_3_ActionData
+    Kind: 1
+    Action: {fileID: 11400000, guid: b6869f94cd03db34bb077725dd49f7da, type: 2}
+    Route: {fileID: 0}
+    GraphPosition: {x: -574.0001, y: -254.99998}
+  - NodeId: Locomotion_JumpStart_Action
+    Kind: 1
+    Action: {fileID: 11400000, guid: f3a8b2c1d4e5f6789012345678abcd01, type: 2}
+    Route: {fileID: 0}
+    GraphPosition: {x: -1750, y: 120}
+  - NodeId: Locomotion_JumpLoop_Action
+    Kind: 1
+    Action: {fileID: 11400000, guid: f3a8b2c1d4e5f6789012345678abcd02, type: 2}
+    Route: {fileID: 0}
+    GraphPosition: {x: -1550, y: 120}
+  - NodeId: Locomotion_JumpLand_Action
+    Kind: 1
+    Action: {fileID: 11400000, guid: f3a8b2c1d4e5f6789012345678abcd03, type: 2}
+    Route: {fileID: 0}
+    GraphPosition: {x: -1350, y: 120}
+  - NodeId: GhostSamurai_APose_JumpAttack01_Action
+    Kind: 1
+    Action: {fileID: 11400000, guid: 0fbf9d52fe76af3458f333018da9b249, type: 2}
+    Route: {fileID: 0}
+    GraphPosition: {x: -1350, y: 280}
+  flowEdges:
+  - FromNodeId: SlideExit_Action
+    ToNodeId: End
+    EdgeKind: 1
+    Transition: 1
+    Label: 
+    InputSlot: 6
+    InputSemantic: 1
+    Conditions: []
+    ConditionRefs: []
+    Priority: 0
+    TargetRoute: {fileID: 11400000, guid: 3e79830fa1e3f2f4a8847ce457a01fcc, type: 2}
+    LateWindowSeconds: 0.1
+  - FromNodeId: Start
+    ToNodeId: SlideStart_Action
+    EdgeKind: 0
+    Transition: 0
+    Label: 
+    InputSlot: 2
+    InputSemantic: 0
+    Conditions: []
+    ConditionRefs: []
+    Priority: 0
+    TargetRoute: {fileID: 0}
+    LateWindowSeconds: 0
+  - FromNodeId: SlideStart_Action
+    ToNodeId: SlideLoop_Action
+    EdgeKind: 0
+    Transition: 0
+    Label: 
+    InputSlot: 2
+    InputSemantic: 0
+    Conditions: []
+    ConditionRefs: []
+    Priority: 0
+    TargetRoute: {fileID: 11400000, guid: d05961ef8805c0246bc35fc644e734a1, type: 2}
+    LateWindowSeconds: 0
+  - FromNodeId: SlideLoop_Action
+    ToNodeId: SlideExit_Action
+    EdgeKind: 0
+    Transition: 0
+    Label: 
+    InputSlot: 2
+    InputSemantic: 0
+    Conditions: []
+    ConditionRefs: []
+    Priority: 0
+    TargetRoute: {fileID: 11400000, guid: a15bb2a18c83d8f4ba54a5d510489f62, type: 2}
+    LateWindowSeconds: 0
+  - FromNodeId: Start
+    ToNodeId: ComboA_Action
+    EdgeKind: 0
+    Transition: 0
+    Label: 
+    InputSlot: 0
+    InputSemantic: 1
+    Conditions: []
+    ConditionRefs: []
+    Priority: 0
+    TargetRoute: {fileID: 0}
+    LateWindowSeconds: 0
+  - FromNodeId: ComboA_Action
+    ToNodeId: ComboB_Action
+    EdgeKind: 0
+    Transition: 1
+    Label: 
+    InputSlot: 0
+    InputSemantic: 1
+    Conditions: []
+    ConditionRefs: []
+    Priority: 0
+    TargetRoute: {fileID: 11400000, guid: bc398cefcd202cf47ba9920d1d3303a1, type: 2}
+    LateWindowSeconds: 0.5
+  - FromNodeId: ComboB_Action
+    ToNodeId: ActionC_Action
+    EdgeKind: 0
+    Transition: 1
+    Label: 
+    InputSlot: 0
+    InputSemantic: 1
+    Conditions: []
+    ConditionRefs: []
+    Priority: 0
+    TargetRoute: {fileID: 11400000, guid: fc8b1f7d79fe7164c9178814e500f385, type: 2}
+    LateWindowSeconds: 0.5
+  - FromNodeId: ActionC_Action
+    ToNodeId: End
+    EdgeKind: 0
+    Transition: 0
+    Label: 
+    InputSlot: 2
+    InputSemantic: 0
+    Conditions: []
+    ConditionRefs: []
+    Priority: 0
+    TargetRoute: {fileID: 0}
+    LateWindowSeconds: 0
+  - FromNodeId: ComboB_Action
+    ToNodeId: GhostSamurai_APose_Attack01_1_ALL_Action
+    EdgeKind: 0
+    Transition: 1
+    Label: 
+    InputSlot: 3
+    InputSemantic: 1
+    Conditions: []
+    ConditionRefs: []
+    Priority: 0
+    TargetRoute: {fileID: 11400000, guid: b7ef73920aa795242a7ea5682f23c6e3, type: 2}
+    LateWindowSeconds: 0.5
+  - FromNodeId: GhostSamurai_APose_Attack01_1_ALL_Action
+    ToNodeId: GhostSamurai_APose_Attack01_2_Action
+    EdgeKind: 0
+    Transition: 1
+    Label: 
+    InputSlot: 3
+    InputSemantic: 1
+    Conditions: []
+    ConditionRefs: []
+    Priority: 0
+    TargetRoute: {fileID: 11400000, guid: 6914c26b4e2acc548aa4cd152626b858, type: 2}
+    LateWindowSeconds: 0.5
+  - FromNodeId: GhostSamurai_APose_Attack01_2_Action
+    ToNodeId: GhostSamurai_APose_Attack01_3_ActionData
+    EdgeKind: 0
+    Transition: 1
+    Label: 
+    InputSlot: 3
+    InputSemantic: 1
+    Conditions: []
+    ConditionRefs: []
+    Priority: 0
+    TargetRoute: {fileID: 11400000, guid: 9eef56a803d4bf24fa36529d257de6db, type: 2}
+    LateWindowSeconds: 0.5
+  - FromNodeId: GhostSamurai_APose_Attack01_3_ActionData
+    ToNodeId: End
+    EdgeKind: 0
+    Transition: 0
+    Label: 
+    InputSlot: 2
+    InputSemantic: 0
+    Conditions: []
+    ConditionRefs: []
+    Priority: 0
+    TargetRoute: {fileID: 0}
+    LateWindowSeconds: 0
+  - FromNodeId: Locomotion_JumpLoop_Action
+    ToNodeId: GhostSamurai_APose_JumpAttack01_Action
+    EdgeKind: 0
+    Transition: 0
+    Label: JumpLoop->DownSlash
+    InputSlot: 0
+    InputSemantic: 1
+    Conditions: []
+    ConditionRefs: []
+    Priority: 0
+    TargetRoute: {fileID: 11400000, guid: f3a8b2c1d4e5f6789012345678abcd05, type: 2}
+    LateWindowSeconds: 0.3
+  - FromNodeId: GhostSamurai_APose_JumpAttack01_Action
+    ToNodeId: End
+    EdgeKind: 0
+    Transition: 0
+    Label: 
+    InputSlot: 2
+    InputSemantic: 0
+    Conditions: []
+    ConditionRefs: []
+    Priority: 0
+    TargetRoute: {fileID: 0}
+    LateWindowSeconds: 0
+  missPolicy: 0
+  compiledData:
+    StartNodeId: Start
+    IdleNodeId: End
+    Nodes:
+    - NodeId: Start
+      Kind: 0
+      Action: {fileID: 0}
+      Route: {fileID: 0}
+    - NodeId: SlideExit_Action
+      Kind: 1
+      Action: {fileID: 11400000, guid: 95bd99fc98d124f46a1bb00585de5848, type: 2}
+      Route: {fileID: 0}
+    - NodeId: End
+      Kind: 3
+      Action: {fileID: 0}
+      Route: {fileID: 0}
+    - NodeId: SlideStart_Action
+      Kind: 1
+      Action: {fileID: 11400000, guid: b9908ccc13ade0f458ee05de489a28d8, type: 2}
+      Route: {fileID: 0}
+    - NodeId: SlideLoop_Action
+      Kind: 1
+      Action: {fileID: 11400000, guid: de6a0e116f8716341b0b22800fddafb6, type: 2}
+      Route: {fileID: 0}
+    - NodeId: ComboA_Action
+      Kind: 1
+      Action: {fileID: 11400000, guid: 5b3f5417c52bde043aca483b2c205da8, type: 2}
+      Route: {fileID: 0}
+    - NodeId: ComboB_Action
+      Kind: 1
+      Action: {fileID: 11400000, guid: bd776364e6b57624387ca71af85d89f0, type: 2}
+      Route: {fileID: 0}
+    - NodeId: ActionC_Action
+      Kind: 1
+      Action: {fileID: 11400000, guid: fbe85d0d833dea140a70e84ebdfc92f5, type: 2}
+      Route: {fileID: 0}
+    - NodeId: GhostSamurai_APose_Attack01_1_ALL_Action
+      Kind: 1
+      Action: {fileID: 11400000, guid: e1dde7a6d737aae45ba52355b8c94e3f, type: 2}
+      Route: {fileID: 0}
+    - NodeId: GhostSamurai_APose_Attack01_2_Action
+      Kind: 1
+      Action: {fileID: 11400000, guid: 47b67f64ebba8ea4ab0b0e1020ab888f, type: 2}
+      Route: {fileID: 0}
+    - NodeId: GhostSamurai_APose_Attack01_3_ActionData
+      Kind: 1
+      Action: {fileID: 11400000, guid: b6869f94cd03db34bb077725dd49f7da, type: 2}
+      Route: {fileID: 0}
+    - NodeId: Locomotion_JumpStart_Action
+      Kind: 1
+      Action: {fileID: 11400000, guid: f3a8b2c1d4e5f6789012345678abcd01, type: 2}
+      Route: {fileID: 0}
+    - NodeId: Locomotion_JumpLoop_Action
+      Kind: 1
+      Action: {fileID: 11400000, guid: f3a8b2c1d4e5f6789012345678abcd02, type: 2}
+      Route: {fileID: 0}
+    - NodeId: Locomotion_JumpLand_Action
+      Kind: 1
+      Action: {fileID: 11400000, guid: f3a8b2c1d4e5f6789012345678abcd03, type: 2}
+      Route: {fileID: 0}
+    - NodeId: GhostSamurai_APose_JumpAttack01_Action
+      Kind: 1
+      Action: {fileID: 11400000, guid: 0fbf9d52fe76af3458f333018da9b249, type: 2}
+      Route: {fileID: 0}
+    Edges:
+    - FromNodeId: SlideExit_Action
+      ToNodeId: End
+      EdgeKind: 1
+      Transition: 1
+      Label: 
+      InputSlot: 6
+      InputSemantic: 1
+      Conditions: []
+      Priority: 0
+      TargetRoute: {fileID: 11400000, guid: 3e79830fa1e3f2f4a8847ce457a01fcc, type: 2}
+      LateWindowSeconds: 0.1
+    - FromNodeId: Start
+      ToNodeId: SlideStart_Action
+      EdgeKind: 0
+      Transition: 0
+      Label: 
+      InputSlot: 2
+      InputSemantic: 0
+      Conditions: []
+      Priority: 0
+      TargetRoute: {fileID: 0}
+      LateWindowSeconds: 0
+    - FromNodeId: SlideStart_Action
+      ToNodeId: SlideLoop_Action
+      EdgeKind: 0
+      Transition: 0
+      Label: 
+      InputSlot: 2
+      InputSemantic: 0
+      Conditions: []
+      Priority: 0
+      TargetRoute: {fileID: 11400000, guid: d05961ef8805c0246bc35fc644e734a1, type: 2}
+      LateWindowSeconds: 0
+    - FromNodeId: SlideLoop_Action
+      ToNodeId: SlideExit_Action
+      EdgeKind: 0
+      Transition: 0
+      Label: 
+      InputSlot: 2
+      InputSemantic: 0
+      Conditions: []
+      Priority: 0
+      TargetRoute: {fileID: 11400000, guid: a15bb2a18c83d8f4ba54a5d510489f62, type: 2}
+      LateWindowSeconds: 0
+    - FromNodeId: Start
+      ToNodeId: ComboA_Action
+      EdgeKind: 0
+      Transition: 0
+      Label: 
+      InputSlot: 0
+      InputSemantic: 1
+      Conditions: []
+      Priority: 0
+      TargetRoute: {fileID: 0}
+      LateWindowSeconds: 0
+    - FromNodeId: ComboA_Action
+      ToNodeId: ComboB_Action
+      EdgeKind: 0
+      Transition: 1
+      Label: 
+      InputSlot: 0
+      InputSemantic: 1
+      Conditions: []
+      Priority: 0
+      TargetRoute: {fileID: 11400000, guid: bc398cefcd202cf47ba9920d1d3303a1, type: 2}
+      LateWindowSeconds: 0.5
+    - FromNodeId: ComboB_Action
+      ToNodeId: ActionC_Action
+      EdgeKind: 0
+      Transition: 1
+      Label: 
+      InputSlot: 0
+      InputSemantic: 1
+      Conditions: []
+      Priority: 0
+      TargetRoute: {fileID: 11400000, guid: fc8b1f7d79fe7164c9178814e500f385, type: 2}
+      LateWindowSeconds: 0.5
+    - FromNodeId: ActionC_Action
+      ToNodeId: End
+      EdgeKind: 0
+      Transition: 0
+      Label: 
+      InputSlot: 2
+      InputSemantic: 0
+      Conditions: []
+      Priority: 0
+      TargetRoute: {fileID: 0}
+      LateWindowSeconds: 0
+    - FromNodeId: ComboB_Action
+      ToNodeId: GhostSamurai_APose_Attack01_1_ALL_Action
+      EdgeKind: 0
+      Transition: 1
+      Label: 
+      InputSlot: 3
+      InputSemantic: 1
+      Conditions: []
+      Priority: 0
+      TargetRoute: {fileID: 11400000, guid: b7ef73920aa795242a7ea5682f23c6e3, type: 2}
+      LateWindowSeconds: 0.5
+    - FromNodeId: GhostSamurai_APose_Attack01_1_ALL_Action
+      ToNodeId: GhostSamurai_APose_Attack01_2_Action
+      EdgeKind: 0
+      Transition: 1
+      Label: 
+      InputSlot: 3
+      InputSemantic: 1
+      Conditions: []
+      Priority: 0
+      TargetRoute: {fileID: 11400000, guid: 6914c26b4e2acc548aa4cd152626b858, type: 2}
+      LateWindowSeconds: 0.5
+    - FromNodeId: GhostSamurai_APose_Attack01_2_Action
+      ToNodeId: GhostSamurai_APose_Attack01_3_ActionData
+      EdgeKind: 0
+      Transition: 1
+      Label: 
+      InputSlot: 3
+      InputSemantic: 1
+      Conditions: []
+      Priority: 0
+      TargetRoute: {fileID: 11400000, guid: 9eef56a803d4bf24fa36529d257de6db, type: 2}
+      LateWindowSeconds: 0.5
+    - FromNodeId: GhostSamurai_APose_Attack01_3_ActionData
+      ToNodeId: End
+      EdgeKind: 0
+      Transition: 0
+      Label: 
+      InputSlot: 2
+      InputSemantic: 0
+      Conditions: []
+      Priority: 0
+      TargetRoute: {fileID: 0}
+      LateWindowSeconds: 0
+    - FromNodeId: Locomotion_JumpLoop_Action
+      ToNodeId: GhostSamurai_APose_JumpAttack01_Action
+      EdgeKind: 0
+      Transition: 0
+      Label: JumpLoop->DownSlash
+      InputSlot: 0
+      InputSemantic: 1
+      Conditions: []
+      Priority: 0
+      TargetRoute: {fileID: 11400000, guid: f3a8b2c1d4e5f6789012345678abcd05, type: 2}
+      LateWindowSeconds: 0.3
+    - FromNodeId: GhostSamurai_APose_JumpAttack01_Action
+      ToNodeId: End
+      EdgeKind: 0
+      Transition: 0
+      Label: 
+      InputSlot: 2
+      InputSemantic: 0
+      Conditions: []
+      Priority: 0
+      TargetRoute: {fileID: 0}
+      LateWindowSeconds: 0
+  compileValid: 1
+  lastCompileReport: VALID
+  idleNodeId: Idle
+  processorView: {fileID: 2420065971872678998}
+--- !u!114 &2420065971872678998
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a6d23b041f39d3144a27837deea8828e, type: 3}
+  m_Name: CombatFlow_Player_View
+  m_EditorClassIdentifier: 
+  serializedNodes: []
+  nodes:
+  - rid: 5495880405974253586
+  - rid: 5495880405974253587
+  - rid: 5495880405974253590
+  - rid: 5495880405974253592
+  - rid: 5495880405974253593
+  - rid: 5495880450610298880
+  - rid: 5495880450610298881
+  - rid: 5495880450610298882
+  - rid: 5495880450610298884
+  - rid: 5495880450610298885
+  - rid: 5495880450610298886
+  edges:
+  - GUID: 95bf4db9-257e-48af-b0d0-84f6f4b1390c
+    owner: {fileID: 2420065971872678998}
+    inputNodeGUID: fce01f0d-f253-450e-a222-563d388ba79d
+    outputNodeGUID: 06072244-d05f-4d61-8c29-0cf5c65b90d9
+    inputFieldName: input
+    outputFieldName: output
+    inputPortIdentifier: 
+    outputPortIdentifier: 
+  - GUID: 0f1f2b39-9dfe-4a62-bb48-db78fe49e5e9
+    owner: {fileID: 2420065971872678998}
+    inputNodeGUID: 6b5da622-b311-41a1-a5ba-6d344e6c9067
+    outputNodeGUID: 3754a66d-cff6-4560-b728-8c0478087a63
+    inputFieldName: input
+    outputFieldName: output
+    inputPortIdentifier: 
+    outputPortIdentifier: 
+  - GUID: 348abf98-053e-406b-ab8c-7034d9d106db
+    owner: {fileID: 2420065971872678998}
+    inputNodeGUID: 42277d03-2038-4783-a526-88303acc12c3
+    outputNodeGUID: 6b5da622-b311-41a1-a5ba-6d344e6c9067
+    inputFieldName: input
+    outputFieldName: output
+    inputPortIdentifier: 
+    outputPortIdentifier: 
+  - GUID: 37d9d7dc-8bf9-40be-8e51-76c1253354e1
+    owner: {fileID: 2420065971872678998}
+    inputNodeGUID: 06072244-d05f-4d61-8c29-0cf5c65b90d9
+    outputNodeGUID: 42277d03-2038-4783-a526-88303acc12c3
+    inputFieldName: input
+    outputFieldName: output
+    inputPortIdentifier: 
+    outputPortIdentifier: 
+  - GUID: 676e9654-57f5-4dd9-87cf-94912eac14d5
+    owner: {fileID: 2420065971872678998}
+    inputNodeGUID: 680a4c87-a634-4682-9956-d4ab7467cbd5
+    outputNodeGUID: 3754a66d-cff6-4560-b728-8c0478087a63
+    inputFieldName: input
+    outputFieldName: output
+    inputPortIdentifier: 
+    outputPortIdentifier: 
+  - GUID: 95c24e7e-f248-45bb-9789-a003afa0af89
+    owner: {fileID: 2420065971872678998}
+    inputNodeGUID: 45034365-7257-487b-a8a6-444f17362124
+    outputNodeGUID: 680a4c87-a634-4682-9956-d4ab7467cbd5
+    inputFieldName: input
+    outputFieldName: output
+    inputPortIdentifier: 
+    outputPortIdentifier: 
+  - GUID: 9322f49a-c2c6-47ce-847e-4a8b3a7a74f3
+    owner: {fileID: 2420065971872678998}
+    inputNodeGUID: 8f9d4e44-bbb4-47b8-b7d9-aa70148119d8
+    outputNodeGUID: 45034365-7257-487b-a8a6-444f17362124
+    inputFieldName: input
+    outputFieldName: output
+    inputPortIdentifier: 
+    outputPortIdentifier: 
+  - GUID: c7d68087-2db0-48f4-93e7-45c234a1ebe9
+    owner: {fileID: 2420065971872678998}
+    inputNodeGUID: fce01f0d-f253-450e-a222-563d388ba79d
+    outputNodeGUID: 8f9d4e44-bbb4-47b8-b7d9-aa70148119d8
+    inputFieldName: input
+    outputFieldName: output
+    inputPortIdentifier: 
+    outputPortIdentifier: 
+  - GUID: 1690daac-6fcc-42f0-ae77-5610eb68ec87
+    owner: {fileID: 2420065971872678998}
+    inputNodeGUID: 2c8b0753-b7d6-49a4-938e-5051252523f9
+    outputNodeGUID: 45034365-7257-487b-a8a6-444f17362124
+    inputFieldName: input
+    outputFieldName: output
+    inputPortIdentifier: 
+    outputPortIdentifier: 
+  - GUID: f9289919-e6b0-4ec4-996a-3e5998a77fb8
+    owner: {fileID: 2420065971872678998}
+    inputNodeGUID: 310c402d-25c0-45d5-a96d-acf6f3bc27c5
+    outputNodeGUID: 2c8b0753-b7d6-49a4-938e-5051252523f9
+    inputFieldName: input
+    outputFieldName: output
+    inputPortIdentifier: 
+    outputPortIdentifier: 
+  - GUID: 6ce7d2fa-3beb-4625-b6f2-85519b36f05d
+    owner: {fileID: 2420065971872678998}
+    inputNodeGUID: 11172334-9757-4623-9a00-5a31c6bd2ab8
+    outputNodeGUID: 310c402d-25c0-45d5-a96d-acf6f3bc27c5
+    inputFieldName: input
+    outputFieldName: output
+    inputPortIdentifier: 
+    outputPortIdentifier: 
+  - GUID: 24b13500-c94d-4bb2-87bf-fdc67c9608b6
+    owner: {fileID: 2420065971872678998}
+    inputNodeGUID: fce01f0d-f253-450e-a222-563d388ba79d
+    outputNodeGUID: 11172334-9757-4623-9a00-5a31c6bd2ab8
+    inputFieldName: input
+    outputFieldName: output
+    inputPortIdentifier: 
+    outputPortIdentifier: 
+  groups: []
+  stackNodes: []
+  pinnedElements: []
+  exposedParameters: []
+  serializedParameterList: []
+  stickyNotes: []
+  nodeInspectorReference: {fileID: 0}
+  position: {x: 739, y: 528, z: 0}
+  scale: {x: 0.8695652, y: 0.8695652, z: 1}
+  ownerAsset: {fileID: 11400000}
+  edgeMeta:
+  - EdgeGuid: 95bf4db9-257e-48af-b0d0-84f6f4b1390c
+    Authoring:
+      FromNodeId: 
+      ToNodeId: 
+      EdgeKind: 1
+      Transition: 1
+      Label: 
+      InputSlot: 6
+      InputSemantic: 1
+      Conditions: []
+      ConditionRefs: []
+      Priority: 0
+      TargetRoute: {fileID: 11400000, guid: 3e79830fa1e3f2f4a8847ce457a01fcc, type: 2}
+      LateWindowSeconds: 0.1
+  - EdgeGuid: 0f1f2b39-9dfe-4a62-bb48-db78fe49e5e9
+    Authoring:
+      FromNodeId: 
+      ToNodeId: 
+      EdgeKind: 0
+      Transition: 0
+      Label: 
+      InputSlot: 2
+      InputSemantic: 0
+      Conditions: []
+      ConditionRefs: []
+      Priority: 0
+      TargetRoute: {fileID: 0}
+      LateWindowSeconds: 0
+  - EdgeGuid: 348abf98-053e-406b-ab8c-7034d9d106db
+    Authoring:
+      FromNodeId: 
+      ToNodeId: 
+      EdgeKind: 0
+      Transition: 0
+      Label: 
+      InputSlot: 2
+      InputSemantic: 0
+      Conditions: []
+      ConditionRefs: []
+      Priority: 0
+      TargetRoute: {fileID: 11400000, guid: d05961ef8805c0246bc35fc644e734a1, type: 2}
+      LateWindowSeconds: 0
+  - EdgeGuid: 37d9d7dc-8bf9-40be-8e51-76c1253354e1
+    Authoring:
+      FromNodeId: 
+      ToNodeId: 
+      EdgeKind: 0
+      Transition: 0
+      Label: 
+      InputSlot: 2
+      InputSemantic: 0
+      Conditions: []
+      ConditionRefs: []
+      Priority: 0
+      TargetRoute: {fileID: 11400000, guid: a15bb2a18c83d8f4ba54a5d510489f62, type: 2}
+      LateWindowSeconds: 0
+  - EdgeGuid: 676e9654-57f5-4dd9-87cf-94912eac14d5
+    Authoring:
+      FromNodeId: 
+      ToNodeId: 
+      EdgeKind: 0
+      Transition: 0
+      Label: 
+      InputSlot: 0
+      InputSemantic: 1
+      Conditions: []
+      ConditionRefs: []
+      Priority: 0
+      TargetRoute: {fileID: 0}
+      LateWindowSeconds: 0
+  - EdgeGuid: 95c24e7e-f248-45bb-9789-a003afa0af89
+    Authoring:
+      FromNodeId: 
+      ToNodeId: 
+      EdgeKind: 0
+      Transition: 1
+      Label: 
+      InputSlot: 0
+      InputSemantic: 1
+      Conditions: []
+      ConditionRefs: []
+      Priority: 0
+      TargetRoute: {fileID: 11400000, guid: bc398cefcd202cf47ba9920d1d3303a1, type: 2}
+      LateWindowSeconds: 0.5
+  - EdgeGuid: 9322f49a-c2c6-47ce-847e-4a8b3a7a74f3
+    Authoring:
+      FromNodeId: 
+      ToNodeId: 
+      EdgeKind: 0
+      Transition: 1
+      Label: 
+      InputSlot: 0
+      InputSemantic: 1
+      Conditions: []
+      ConditionRefs: []
+      Priority: 0
+      TargetRoute: {fileID: 11400000, guid: fc8b1f7d79fe7164c9178814e500f385, type: 2}
+      LateWindowSeconds: 0.5
+  - EdgeGuid: c7d68087-2db0-48f4-93e7-45c234a1ebe9
+    Authoring:
+      FromNodeId: 
+      ToNodeId: 
+      EdgeKind: 0
+      Transition: 0
+      Label: 
+      InputSlot: 2
+      InputSemantic: 0
+      Conditions: []
+      ConditionRefs: []
+      Priority: 0
+      TargetRoute: {fileID: 0}
+      LateWindowSeconds: 0
+  - EdgeGuid: 1690daac-6fcc-42f0-ae77-5610eb68ec87
+    Authoring:
+      FromNodeId: 
+      ToNodeId: 
+      EdgeKind: 0
+      Transition: 1
+      Label: 
+      InputSlot: 3
+      InputSemantic: 1
+      Conditions: []
+      ConditionRefs: []
+      Priority: 0
+      TargetRoute: {fileID: 11400000, guid: b7ef73920aa795242a7ea5682f23c6e3, type: 2}
+      LateWindowSeconds: 0.5
+  - EdgeGuid: f9289919-e6b0-4ec4-996a-3e5998a77fb8
+    Authoring:
+      FromNodeId: 
+      ToNodeId: 
+      EdgeKind: 0
+      Transition: 1
+      Label: 
+      InputSlot: 3
+      InputSemantic: 1
+      Conditions: []
+      ConditionRefs: []
+      Priority: 0
+      TargetRoute: {fileID: 11400000, guid: 6914c26b4e2acc548aa4cd152626b858, type: 2}
+      LateWindowSeconds: 0.5
+  - EdgeGuid: 6ce7d2fa-3beb-4625-b6f2-85519b36f05d
+    Authoring:
+      FromNodeId: 
+      ToNodeId: 
+      EdgeKind: 0
+      Transition: 1
+      Label: 
+      InputSlot: 3
+      InputSemantic: 1
+      Conditions: []
+      ConditionRefs: []
+      Priority: 0
+      TargetRoute: {fileID: 11400000, guid: 9eef56a803d4bf24fa36529d257de6db, type: 2}
+      LateWindowSeconds: 0.5
+  - EdgeGuid: 24b13500-c94d-4bb2-87bf-fdc67c9608b6
+    Authoring:
+      FromNodeId: 
+      ToNodeId: 
+      EdgeKind: 0
+      Transition: 0
+      Label: 
+      InputSlot: 2
+      InputSemantic: 0
+      Conditions: []
+      ConditionRefs: []
+      Priority: 0
+      TargetRoute: {fileID: 0}
+      LateWindowSeconds: 0
+  references:
+    version: 2
+    RefIds:
+    - rid: 5495880405974253586
+      type: {class: CombatFlowStartNode, ns: , asm: Assembly-CSharp}
+      data:
+        nodeCustomName: 
+        GUID: 3754a66d-cff6-4560-b728-8c0478087a63
+        computeOrder: 0
+        position:
+          serializedVersion: 2
+          x: -1758.3188
+          y: -548
+          width: 170
+          height: 94
+        expanded: 0
+        debug: 0
+        nodeLock: 0
+        nodeId: Start
+    - rid: 5495880405974253587
+      type: {class: CombatFlowActionNode, ns: , asm: Assembly-CSharp}
+      data:
+        nodeCustomName: 
+        GUID: 06072244-d05f-4d61-8c29-0cf5c65b90d9
+        computeOrder: 3
+        position:
+          serializedVersion: 2
+          x: -1124.5927
+          y: -740.5444
+          width: 475
+          height: 114
+        expanded: 0
+        debug: 0
+        nodeLock: 0
+        nodeId: SlideExit_Action
+        action: {fileID: 11400000, guid: 95bd99fc98d124f46a1bb00585de5848, type: 2}
+    - rid: 5495880405974253590
+      type: {class: CombatFlowEndNode, ns: , asm: Assembly-CSharp}
+      data:
+        nodeCustomName: 
+        GUID: fce01f0d-f253-450e-a222-563d388ba79d
+        computeOrder: 10
+        position:
+          serializedVersion: 2
+          x: 1714.093
+          y: -457.00012
+          width: 164
+          height: 94
+        expanded: 0
+        debug: 0
+        nodeLock: 0
+        nodeId: End
+    - rid: 5495880405974253592
+      type: {class: CombatFlowActionNode, ns: , asm: Assembly-CSharp}
+      data:
+        nodeCustomName: 
+        GUID: 6b5da622-b311-41a1-a5ba-6d344e6c9067
+        computeOrder: 1
+        position:
+          serializedVersion: 2
+          x: -1130.5925
+          y: -1055.5444
+          width: 481
+          height: 114
+        expanded: 0
+        debug: 0
+        nodeLock: 0
+        nodeId: SlideStart_Action
+        action: {fileID: 11400000, guid: b9908ccc13ade0f458ee05de489a28d8, type: 2}
+    - rid: 5495880405974253593
+      type: {class: CombatFlowActionNode, ns: , asm: Assembly-CSharp}
+      data:
+        nodeCustomName: 
+        GUID: 42277d03-2038-4783-a526-88303acc12c3
+        computeOrder: 2
+        position:
+          serializedVersion: 2
+          x: -1131.5925
+          y: -894.54443
+          width: 482
+          height: 114
+        expanded: 0
+        debug: 0
+        nodeLock: 0
+        nodeId: SlideLoop_Action
+        action: {fileID: 11400000, guid: de6a0e116f8716341b0b22800fddafb6, type: 2}
+    - rid: 5495880450610298880
+      type: {class: CombatFlowActionNode, ns: , asm: Assembly-CSharp}
+      data:
+        nodeCustomName: 
+        GUID: 680a4c87-a634-4682-9956-d4ab7467cbd5
+        computeOrder: 4
+        position:
+          serializedVersion: 2
+          x: -1202.5925
+          y: -419.5444
+          width: 553
+          height: 114
+        expanded: 0
+        debug: 0
+        nodeLock: 0
+        nodeId: ComboA_Action
+        action: {fileID: 11400000, guid: 5b3f5417c52bde043aca483b2c205da8, type: 2}
+    - rid: 5495880450610298881
+      type: {class: CombatFlowActionNode, ns: , asm: Assembly-CSharp}
+      data:
+        nodeCustomName: 
+        GUID: 45034365-7257-487b-a8a6-444f17362124
+        computeOrder: 5
+        position:
+          serializedVersion: 2
+          x: -1200.5927
+          y: -254.54443
+          width: 552
+          height: 114
+        expanded: 0
+        debug: 0
+        nodeLock: 0
+        nodeId: ComboB_Action
+        action: {fileID: 11400000, guid: bd776364e6b57624387ca71af85d89f0, type: 2}
+    - rid: 5495880450610298882
+      type: {class: CombatFlowActionNode, ns: , asm: Assembly-CSharp}
+      data:
+        nodeCustomName: 
+        GUID: 8f9d4e44-bbb4-47b8-b7d9-aa70148119d8
+        computeOrder: 6
+        position:
+          serializedVersion: 2
+          x: -1201.5927
+          y: -105.54437
+          width: 553
+          height: 114
+        expanded: 0
+        debug: 0
+        nodeLock: 0
+        nodeId: ActionC_Action
+        action: {fileID: 11400000, guid: fbe85d0d833dea140a70e84ebdfc92f5, type: 2}
+    - rid: 5495880450610298884
+      type: {class: CombatFlowActionNode, ns: , asm: Assembly-CSharp}
+      data:
+        nodeCustomName: 
+        GUID: 2c8b0753-b7d6-49a4-938e-5051252523f9
+        computeOrder: 7
+        position:
+          serializedVersion: 2
+          x: -574.00006
+          y: -533.99994
+          width: 524
+          height: 114
+        expanded: 0
+        debug: 0
+        nodeLock: 0
+        nodeId: GhostSamurai_APose_Attack01_1_ALL_Action
+        action: {fileID: 11400000, guid: e1dde7a6d737aae45ba52355b8c94e3f, type: 2}
+    - rid: 5495880450610298885
+      type: {class: CombatFlowActionNode, ns: , asm: Assembly-CSharp}
+      data:
+        nodeCustomName: 
+        GUID: 310c402d-25c0-45d5-a96d-acf6f3bc27c5
+        computeOrder: 8
+        position:
+          serializedVersion: 2
+          x: -574.00006
+          y: -395.20038
+          width: 501
+          height: 114
+        expanded: 0
+        debug: 0
+        nodeLock: 0
+        nodeId: GhostSamurai_APose_Attack01_2_Action
+        action: {fileID: 11400000, guid: 47b67f64ebba8ea4ab0b0e1020ab888f, type: 2}
+    - rid: 5495880450610298886
+      type: {class: CombatFlowActionNode, ns: , asm: Assembly-CSharp}
+      data:
+        nodeCustomName: 
+        GUID: 11172334-9757-4623-9a00-5a31c6bd2ab8
+        computeOrder: 9
+        position:
+          serializedVersion: 2
+          x: -574.0001
+          y: -254.99998
+          width: 501
+          height: 114
+        expanded: 0
+        debug: 0
+        nodeLock: 0
+        nodeId: GhostSamurai_APose_Attack01_3_ActionData
+        action: {fileID: 11400000, guid: b6869f94cd03db34bb077725dd49f7da, type: 2}

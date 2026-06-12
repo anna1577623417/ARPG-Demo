@@ -8,7 +8,7 @@ using UnityEngine;
 public sealed class CombatFlowData
 {
     public string StartNodeId = "Start";
-    public string IdleNodeId = "Idle";
+    public string IdleNodeId = "End";
 
     public CombatFlowCompiledNode[] Nodes = Array.Empty<CombatFlowCompiledNode>();
     public CombatFlowCompiledEdge[] Edges = Array.Empty<CombatFlowCompiledEdge>();
@@ -77,4 +77,5 @@ public struct CombatFlowCompiledEdge
     public SkillTransitionCondition[] Conditions;
     public int Priority;
     public SkillRouteDefinition TargetRoute;
+    public float LateWindowSeconds;
 }

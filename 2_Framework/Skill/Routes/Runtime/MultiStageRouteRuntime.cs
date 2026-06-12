@@ -185,24 +185,14 @@ public sealed class MultiStageRouteRuntime : SkillRouteRuntime
         }
 
         var lastIdx = (def.Stages?.Length ?? 1) - 1;
-        var owner = ctx.Self as Player;
-        var debug = owner != null && owner.DebugSkillRoute;
 
         switch (def.ChainMode)
         {
             case MultiStageChainMode.AutoInRoute:
                 if (CurrentStageIndex >= lastIdx)
                 {
-                    if (debug) Debug.Log($"[MultiStage][Auto] LAST stage complete idx={CurrentStageIndex} → IsActive=false", owner);
                     CompleteRouteNaturally(in ctx);
                     IsActive = false;
-                }
-                else if (debug)
-                {
-                    Debug.LogWarning(
-                        $"[MultiStage][Auto] Stage {CurrentStageIndex}/{lastIdx} 完成但**未推进**！" +
-                        $" 检查 Stage.Transitions[0] 是否配置 Trigger=Auto + NextStage=stages[{CurrentStageIndex + 1}]",
-                        owner);
                 }
                 break;
 
@@ -210,10 +200,6 @@ public sealed class MultiStageRouteRuntime : SkillRouteRuntime
             case MultiStageChainMode.HitToAdvance:
                 if (CurrentStageIndex == 0 || CurrentStageIndex >= lastIdx)
                 {
-                    if (debug) Debug.Log(
-                        $"[MultiStage][{def.ChainMode}] Stage idx={CurrentStageIndex} complete → IsActive=false " +
-                        $"(pendingNextStage={_pendingEntryStageIndex} winRemain={PendingWindowRemainingSeconds:F2}s)",
-                        owner);
                     CompleteRouteNaturally(in ctx);
                     IsActive = false;
                 }

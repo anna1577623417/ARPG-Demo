@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dc44221e6d158b148ad988016a948ef4, type: 3}
+  m_Name: Execution03_ActionData
+  m_EditorClassIdentifier: 
+  MainClip: {fileID: 7400002, guid: 3e0a1d5dae6723c4480c3db5e814a41b, type: 3}
+  CrossfadeTime: 0.08
+  AnimSpeed: 1
+  Duration: 4.1000004
+  AnimationEndRatio: 1
+  DurationStatScaling: 0
+  PrincipalAxis: 2
+  IntentCategory: 1
+  GraphParticipation: -1
+  Category: 2
+  InterruptPriority: 10
+  InterruptStability: 10
+  AllowSelfInterrupt: 0
+  MotionProfile: {fileID: 11400000, guid: 9be8db90286d15d4ca945d359f2c5456, type: 2}
+  Windows: []
+  TeleportTriggers: []
+  TimelineMarkers: []

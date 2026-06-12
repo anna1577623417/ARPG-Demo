@@ -16,6 +16,13 @@ using UnityEngine;
 /// 2. 配置条目：StateName 填状态类名（如 "PlayerLocomotionState"）
 /// 3. 拖入对应 Clip，调整过渡时长和速度
 /// 4. 将资产拖到 PlayerAnimController.animLibrary 字段
+///
+/// ═══ 158.2 L5 迁移路标（Migration Notice）═══
+///
+/// 本 SO 在 158.2 全切片完成后将被 <see cref="LocomotionProfile"/>（含 LocomotionStateBinding 数组）取代，
+/// 由 LocomotionStateFlag → AnimationClip/ActionDataSO 直接映射，不再依赖 StateName 字符串键。
+/// 当前 L5 保留本类作为兼容入口；下一切片完成 PlayerAnimController 双源读取（Profile 优先 → AnimLibrary 回落）后，
+/// 本类标 [Obsolete]，再下一切片删除资产并清理 PlayerAnimController.animLibrary 字段。
 /// </summary>
 [CreateAssetMenu(fileName = "PlayerAnimLibrary", menuName = "GameMain/Animation/Player Anim Manager")]
 public class PlayerAnimManagerSO : ScriptableObject

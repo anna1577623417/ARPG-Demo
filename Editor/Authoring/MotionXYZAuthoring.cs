@@ -3,52 +3,10 @@ using System.IO;
 using UnityEditor;
 using UnityEngine;
 
-/// <summary>三轴 Motion：验收资产、批量迁移、Scene 轨迹预览。</summary>
+/// <summary>三轴 Motion：验收资产、Scene 轨迹预览。</summary>
 public static class MotionXYZAuthoring
 {
     const string VerifyRoot = "Assets/_Verification/MotionProfiles";
-
-    [MenuItem("Tools/Motion XYZ/Migrate Selected Profile (Legacy → AxisCurves)")]
-    public static void MigrateSelectedProfile()
-    {
-        var profile = Selection.activeObject as MotionProfileSO;
-        if (profile == null)
-        {
-            Debug.LogWarning("[MotionXYZ] Select a MotionProfileSO asset.");
-            return;
-        }
-
-        Undo.RecordObject(profile, "Migrate MotionProfile to AxisCurves");
-        var r = MotionProfileLegacyMigration.TryMigrate(profile);
-        AssetDatabase.SaveAssets();
-        Debug.Log(r.Changed
-            ? $"[MotionXYZ] Migrated {profile.name} — {r.Note}"
-            : $"[MotionXYZ] No change on {profile.name} — {r.Note}");
-    }
-
-    [MenuItem("Tools/Motion XYZ/Migrate All Profiles In Project")]
-    public static void MigrateAllProfiles()
-    {
-        if (!EditorUtility.DisplayDialog(
-                "Motion XYZ 批量迁移",
-                "将 Displacement/Lateral/Warp/GravityBehavior 写入 AxisCurves + YPolicy。\n" +
-                "L5 删字段后须先执行本菜单。继续？",
-                "迁移",
-                "取消"))
-        {
-            return;
-        }
-
-        var n = MotionProfileLegacyMigration.MigrateAllInProject(dryRun: false, out var report);
-        Debug.Log($"[MotionXYZ] Migrate All done. migrated={n}\n{report}");
-    }
-
-    [MenuItem("Tools/Motion XYZ/Report Unmigrated Profiles (Dry Run)")]
-    public static void ReportUnmigrated()
-    {
-        MotionProfileLegacyMigration.MigrateAllInProject(dryRun: true, out var report);
-        Debug.Log($"[MotionXYZ] Dry run:\n{report}");
-    }
 
     [MenuItem("Tools/Motion XYZ/Create Verification Profiles")]
     public static void CreateVerificationProfiles()

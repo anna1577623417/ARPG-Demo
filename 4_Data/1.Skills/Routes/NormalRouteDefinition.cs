@@ -9,5 +9,18 @@ using UnityEngine;
 [CreateAssetMenu(menuName = "GameMain/SkillRoute/Route/Normal Route", fileName = "Route_Normal_")]
 public sealed class NormalRouteDefinition : SkillRouteDefinition
 {
+    [Header("Graph (153.2)")]
+    [SerializeField,
+     Tooltip("单动作模式：开启时 Stage 数组锁定为 1，Graph Flow 边仅使用 Stage[0]。")]
+    bool singleAction = true;
+
+    public bool SingleActionMode => singleAction;
+
     public override RouteKind Kind => RouteKind.Normal;
+
+    public override RouteGraphType GraphType => RouteGraphType.SingleAction;
+
+    /// <summary>Graph Validator：Flow 边引用时须满足单 Stage。</summary>
+    public bool IsSingleStageForGraph =>
+        singleAction || StageCount <= 1;
 }

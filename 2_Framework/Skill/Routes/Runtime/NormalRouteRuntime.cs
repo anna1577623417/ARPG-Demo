@@ -8,12 +8,6 @@ public sealed class NormalRouteRuntime : SkillRouteRuntime
     public override void OnEnter(in SkillRouteContext ctx)
     {
         base.OnEnter(in ctx);
-        if (ctx.Self is Player p && p.DebugSkillRoute)
-        {
-            Debug.Log(
-                $"[Normal] OnEnter route={Definition?.name} stage={Stage?.Definition?.name ?? "<null>"} " +
-                $"stageDur={Stage?.DurationSeconds:F2}s transitions={Stage?.Definition?.Transitions?.Length ?? 0}", p);
-        }
     }
 
     public override void OnTick(in SkillRouteContext ctx)
@@ -21,9 +15,9 @@ public sealed class NormalRouteRuntime : SkillRouteRuntime
         base.OnTick(in ctx);
         var wasActive = IsActive;
         TryEndRouteWhenLastStageComplete(in ctx);
-        if (wasActive && !IsActive && ctx.Self is Player p && p.DebugSkillRoute)
+        if (Stage != null && Stage.Completed && wasActive != IsActive)
         {
-            Debug.Log($"[Normal] LastStage完成 → IsActive=false route={Definition?.name}", p);
+            CombatGraphFinisherDiagnostics.LogStageComplete(ctx.Self as Player, this, Stage, IsActive);
         }
     }
 }

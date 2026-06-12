@@ -100,15 +100,6 @@ public static class RouteResolver
         float now)
     {
         var r = Resolve(entry, in input, comboState, now);
-        if (owner != null && owner.DebugSkillRoute)
-        {
-            var chosen = r.Chosen != null ? r.Chosen.name : "(null)";
-            Debug.Log(
-                $"[Resolver] slot={input.TriggerSlot} pressEdge={input.TriggerPressedEdge} releaseEdge={input.TriggerReleasedEdge} " +
-                $"hold={input.TriggerHoldSeconds:F3} held={input.TriggerHolding} | " +
-                $"chosen={chosen} kind={r.ChosenKind} reason={r.DebugReason}",
-                owner);
-        }
         return r;
     }
 

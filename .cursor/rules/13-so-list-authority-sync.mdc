@@ -1,0 +1,110 @@
+---
+description: SO 双列表「源 Authority → 目标 Target」Editor 安全同步；Validate/Sync/AutoFix 强制规范
+globs: Assets/GameMain/Scripts/Editor/**/*,Assets/GameMain/Scripts/4_Data/**/*
+alwaysApply: false
+---
+
+# SO 列表源→目标安全同步（Authority → Target）
+
+> 设计来源：`6.AI/Cursor/BluePrint/151-160/160.2【蓝图】SO列表源目标安全同步机制落地蓝图.md`  
+> 与 `11-unity-editor-tool-authoring.mdc`（Undo/SetDirty）、`10-so-inspector-authoring-foldout.mdc`（Validation 区常驻）配套。
+
+凡 ScriptableObject（或 Inspector 列表）存在 **「上层勾选/注册集合」驱动「下层明细列表」** 的上下对应关系，**必须**启用本机制，禁止双源手工维护。
+
+---
+
+## 1. 何时必须启用
+
+满足 **全部** 条件：
+
+1. 存在 **Authority**（Flags、注册表、Enabled 集合、槽位枚举集合等）表达「有没有这项能力」
+2. 存在 **Target 列表**（Bindings、Entry 行、子项数组等）表达「这项怎么配」
+3. 二者 **不是** 同一字段（双数据源）
+
+典型：`LocomotionProfile.EnabledStates` → `bindings[]`；未来 `SkillEntryLoadout` 槽位 → Entry 行。
+
+**不必启用**：单列表无 Authority；纯 Dictionary Key-Value 已无漂移；Runtime-only 配置。
+
+---
+
+## 2. 单一真相（硬规则）
+
+| 规则 | 要求 |
+|---|---|
+| A1 | **Authority 为唯一真相**；Target 不得反向定义启用集合 |
+| A2 | **Sync 只追加缺失**；已有 Target 行的资源引用与数值 **禁止覆盖** |
+| A3 | **Duplicate → Error**；Missing / Unused → Warning |
+| A4 | 删除 Unused **必须** `DisplayDialog` 确认 |
+| A5 | 写 SO 必须 `Undo.RecordObject` + `SetDirty` |
+| A6 | Composite Key（同一 Authority 项对应多行，如 Strafe 8 向×Walk/Run）**禁止** Simple 1:1 Sync 压成一行；用独立 **Expand Templates** 按钮 |
+
+---
+
+## 3. 必须提供的 Editor 能力
+
+### 3.1 校验 `Validate`
+
+- 产出：`Missing`（Authority − Target）、`Unused`（Target − Authority）、`Duplicate`（Target 内同 Key >1）
+- 实现：优先复用 `Editor/Utilities/AuthorityTargetListSync.cs` + `IAuthorityTargetSyncAdapter<TKey,TRow>`
+- **禁止**每个 SO 手写第二套 set 差集逻辑
+
+### 3.2 同步 `[ Sync … ]`
+
+- 行为：对 Missing 项 **append** 默认行；已存在 Key **原样保留**
+- **禁止**：全量重建列表、按 Authority 排序后覆盖、清空再填
+
+### 3.3 告警（Inspector 顶栏，常驻）
+
+```csharp
+// Missing / Unused → MessageType.Warning
+// Duplicate → MessageType.Error
+EditorGUILayout.HelpBox(...);
+```
+
+Validation 区 **默认展开**（非可选 Foldout）。
+
+### 3.4 修复 `[ Auto Fix ]` / `[ Remove Unused… ]`
+
+- AutoFix：补 Missing + 去 Duplicate（**保留第一条**）
+- Remove Unused：仅对话框确认后执行
+- **禁止** AutoFix 静默删除 Unused
+
+### 3.5 保存时二次校验 `OnValidate`
+
+- SO 的 `OnValidate`（`#if UNITY_EDITOR`）调用 Validate，结果写入 **只读** 缓存字段供 Inspector 展示
+- **禁止** OnValidate 内自动改 Target 列表（避免 import 时静默改资产）
+
+---
+
+## 4. 实现约定
+
+| 项 | 约定 |
+|---|---|
+| 通用逻辑 | `Editor/Utilities/AuthorityTargetListSync.cs` |
+| SO 特化 | `{SoName}SyncAdapter.cs` 实现 Key 提取与 `factory` |
+| CustomEditor | `{SoName}Editor.cs`：Validation 区 + 按钮；业务字段在其下 |
+| 日志前缀 | `[{SoName}Sync]`，仅 Editor |
+| 菜单 | **禁止**新增全项目 Migrate/SyncAll MenuItem（见 `12-no-unrequested-scaffolding.mdc`） |
+
+Composite Key 示例（Locomotion）：`(State, StrafeDirection, RunRequirement)` / `(State, TurnDirection)`。
+
+---
+
+## 5. 交付自检（Editor PR / 会话结束前）
+
+- [ ] Authority 变更后，Missing 在 Inspector 立即可见
+- [ ] Sync 后原有 Clip/Action/引用未被改动（Diff 验证）
+- [ ] Duplicate 显示 Error 且 AutoFix 后归零
+- [ ] Remove Unused 取消时不删
+- [ ] Ctrl+Z 可撤销 Sync/AutoFix
+- [ ] Runtime 程序集 **无** Sync/Validate 调用（Editor-only）
+- [ ] 未复制粘贴第三套 Validate 实现
+
+---
+
+## 6. AI 写 SO / CustomEditor 时
+
+1. 先判定是否存在 Authority→Target 双列表 → **是**则本 Rule 生效  
+2. 先建 Adapter + 复用 `AuthorityTargetListSync`，再写 Inspector UI  
+3. 向用户说明：Simple Sync 与 Composite Expand 的分工  
+4. **禁止**用 Runtime fallback 掩盖 Missing Binding

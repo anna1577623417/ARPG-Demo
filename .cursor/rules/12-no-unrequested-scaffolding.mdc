@@ -22,7 +22,7 @@ alwaysApply: true
 
 **可保留**（重复劳动、批量、日常 authoring）：
 
-- 批处理窗口：`Action → SkillStage Batch`、`Stage → NormalRoute Batch` 等
+- 批处理窗口：`Tools/Skill/` 下 `Action → Stage → Route Batch`、`Action → SkillStage Batch`、`Stage → NormalRoute Batch`；`Tools/Action/` 下 `Clip → Action + Motion Batch`
 - 可视化编辑器入口：`Window/Combat Flow Graph`、Inspector **Open Graph Editor**
 - Inspector 内按钮：Validate、Validate & Compile、Sync（**不要**再挂 `Tools/SkillRoute/Setup …`）
 
@@ -36,7 +36,7 @@ alwaysApply: true
 ## 重构 / 新系统交付时
 
 1. **设施 + 运行时单轨** → Inspector / Graph 编辑器内完成 compile/sync  
-2. **握手表 + Play 验收 Log** → 写 `6.AI/Cursor/Log/...`，**不**默认补 EditMode 测试  
+2. **握手表 + Play 验收** → 用户原始 Log 放 `Log/Test/`（只读）；AI 对照产出写 `Log/Record/Output/{主题}/`，**不**写 `Test/`，**不**默认补 EditMode 测试  
 3. 用户说「以后没有说明不要生成迁移工具和测试」→ 本 Rule 优先级高于「验收完整性」直觉
 
 ## AI 自检（会话结束前）

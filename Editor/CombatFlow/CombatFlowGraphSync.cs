@@ -257,6 +257,7 @@ public static class CombatFlowGraphSync
             ConditionRefs = src.ConditionRefs,
             Priority = src.Priority,
             TargetRoute = src.TargetRoute,
+            LateWindowSeconds = src.LateWindowSeconds,
         };
     }
 
@@ -291,6 +292,7 @@ public static class CombatFlowGraphSync
             el.FindPropertyRelative(nameof(CombatFlowEdgeAuthoring.InputSemantic)).enumValueIndex = (int)e.InputSemantic;
             el.FindPropertyRelative(nameof(CombatFlowEdgeAuthoring.Priority)).intValue = e.Priority;
             el.FindPropertyRelative(nameof(CombatFlowEdgeAuthoring.TargetRoute)).objectReferenceValue = e.TargetRoute;
+            el.FindPropertyRelative(nameof(CombatFlowEdgeAuthoring.LateWindowSeconds)).floatValue = e.LateWindowSeconds;
             WriteConditions(el.FindPropertyRelative(nameof(CombatFlowEdgeAuthoring.Conditions)), e.Conditions);
             WriteConditionRefs(el.FindPropertyRelative(nameof(CombatFlowEdgeAuthoring.ConditionRefs)), e.ConditionRefs);
         }

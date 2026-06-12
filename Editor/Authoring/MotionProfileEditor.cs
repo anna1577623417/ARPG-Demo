@@ -7,7 +7,7 @@ public sealed partial class MotionProfileEditor : Editor
 {
     private CurvePresetType _preset = CurvePresetType.EaseInOut;
     private float _power = 2f;
-    private float _defaultForwardMeters = 4f;
+    private float _defaultForwardMeters = 0f;
 
     static bool s_yAxisFoldout;
     static bool s_landingFoldout;
@@ -66,14 +66,8 @@ public sealed partial class MotionProfileEditor : Editor
         if (!profile.UsesAxisCurves && !profile.UsesGroundTargetedLanding)
         {
             EditorGUILayout.HelpBox(
-                "未配置 AxisCurves — 运行时位移为 0。请点下方迁移或生成默认 Z 轴。",
+                "未配置 AxisCurves — 运行时位移为 0。请生成默认 Z 轴，或从 Clip 提取 / 手调曲线。",
                 MessageType.Warning);
-            if (GUILayout.Button("从旧字段迁移（若资产仍含 DisplacementCurve 序列化数据）"))
-            {
-                Undo.RecordObject(profile, "Migrate MotionProfile");
-                var r = MotionProfileLegacyMigration.TryMigrate(profile);
-                Debug.Log($"[MotionXYZ] {profile.name}: {r.Note}");
-            }
 
             _defaultForwardMeters = EditorGUILayout.FloatField("默认前进距离 (m)", _defaultForwardMeters);
             if (GUILayout.Button("生成默认 Z 轴 (0→1 × 距离)"))
@@ -131,12 +125,8 @@ public sealed partial class MotionProfileEditor : Editor
         if (!serializedObject.FindProperty("yAxisV2Configured").boolValue)
         {
             EditorGUILayout.HelpBox(
-                "当前仍从旧 YPolicy 映射；修改上方字段或点「从 YPolicy 烘焙」后写入三权。",
-                MessageType.Warning);
-            if (GUILayout.Button("从 YPolicy 烘焙为三权（本资产）"))
-            {
-                MotionYAxisV2Applicator.ApplyLegacyToV2(profile);
-            }
+                "yAxisV2Configured 未标记：修改上方 YMotion / Gravity / GroundConstraint 后将自动写入三权。",
+                MessageType.Info);
         }
 
         EditorGUILayout.EndFoldoutHeaderGroup();

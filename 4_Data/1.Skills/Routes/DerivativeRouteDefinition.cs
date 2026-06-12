@@ -32,4 +32,6 @@ public sealed class DerivativeRouteDefinition : SkillRouteDefinition
     public DerivativeFlags Flags => flags;
 
     public override RouteKind Kind => RouteKind.Derivative;
+
+    public override RouteGraphType GraphType => RouteGraphType.Derived;
 }

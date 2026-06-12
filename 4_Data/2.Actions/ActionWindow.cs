@@ -27,7 +27,7 @@ public struct ActionWindow
     public List<ActionWindowEvent> RuntimeEvents;
 
     [Header("Interrupt Semantics (new)")]
-    [Tooltip("谁能断我：抽象类别掩码（Movement / Offense / Defensive / Utility）。留空表示该窗口不放行打断。")]
+    [Tooltip("谁能断我：抽象类别掩码（Movement / Locomotion / Offense / Defensive / Utility）。留空表示该窗口不放行打断。")]
     public ActionCategory InterruptibleByCategories;
 
     [Tooltip("该窗口要求的最小来袭优先级（来袭动作优先级 >= 该值才可打断）。")]

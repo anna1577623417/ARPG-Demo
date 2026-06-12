@@ -27,7 +27,24 @@ public sealed class CombatFlowActionNode : BaseNode
     public CombatFlowPort output;
 
     public override string name => string.IsNullOrEmpty(nodeId) ? "FlowAction" : nodeId;
-    public override Color color => new(0.35f, 0.55f, 0.95f);
+
+    public override Color color
+    {
+        get
+        {
+            if (action == null)
+            {
+                return new Color(0.35f, 0.55f, 0.95f);
+            }
+
+            return ActionIntentRouting.ResolveGraphParticipation(action) switch
+            {
+                GraphParticipation.SourceOnly => new Color(0.42f, 0.82f, 0.62f),
+                GraphParticipation.None => new Color(0.55f, 0.55f, 0.55f),
+                _ => new Color(0.35f, 0.55f, 0.95f),
+            };
+        }
+    }
 }
 
 [Serializable, NodeMenuItem("Combat Flow/Route Switch")]
@@ -49,7 +66,7 @@ public sealed class CombatFlowRouteSwitchNode : BaseNode
 [Serializable, NodeMenuItem("Combat Flow/End")]
 public sealed class CombatFlowEndNode : BaseNode
 {
-    public string nodeId = "Idle";
+    public string nodeId = "End";
 
     [Input(name = "In", allowMultiple = true)]
     public CombatFlowPort input;

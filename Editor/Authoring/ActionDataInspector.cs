@@ -22,6 +22,21 @@ public sealed partial class ActionDataInspector : Editor
         nameof(ActionDataSO.TimelineMarkers),
     };
 
+    static readonly string[] HiddenWhenContinuousLocomotion =
+    {
+        nameof(ActionDataSO.Duration),
+        nameof(ActionDataSO.AnimationEndRatio),
+        nameof(ActionDataSO.DurationStatScaling),
+        nameof(ActionDataSO.PrincipalAxis),
+        nameof(ActionDataSO.Windows),
+        nameof(ActionDataSO.TeleportTriggers),
+        nameof(ActionDataSO.TimelineMarkers),
+        nameof(ActionDataSO.MotionProfile),
+        nameof(ActionDataSO.UseClipRootMotion),
+        nameof(ActionDataSO.LeftFootSupportClip),
+        nameof(ActionDataSO.RightFootSupportClip),
+    };
+
     public override void OnInspectorGUI()
     {
         var action = (ActionDataSO)target;
@@ -31,12 +46,56 @@ public sealed partial class ActionDataInspector : Editor
         }
 
         serializedObject.Update();
-        DrawPropertiesExcluding(serializedObject, HiddenInDefaultInspector);
-        DrawTimelineSection(action);
-        serializedObject.ApplyModifiedProperties();
 
-        DrawTimeAuthoritySection(action);
-        DrawMotionPassSection(action);
+        var isContinuous = action.IsContinuousLocomotion;
+        if (isContinuous)
+        {
+            EditorGUILayout.HelpBox(
+                "Continuous Locomotion：循环态由 Locomotion 支柱驱动；离散时长/窗口/MotionProfile 已隐藏。",
+                MessageType.Info);
+            DrawPropertiesExcluding(serializedObject, HiddenWhenContinuousLocomotion);
+        }
+        else
+        {
+            DrawPropertiesExcluding(serializedObject, HiddenInDefaultInspector);
+            DrawTimelineSection(action);
+        }
+
+        if (serializedObject.ApplyModifiedProperties() && isContinuous)
+        {
+            TrySyncMainClipLoop(action);
+        }
+
+        if (!isContinuous)
+        {
+            DrawTimeAuthoritySection(action);
+            DrawMotionPassSection(action);
+        }
+    }
+
+    static void TrySyncMainClipLoop(ActionDataSO action)
+    {
+        var clip = action.MainClip;
+        if (clip == null)
+        {
+            return;
+        }
+
+        var path = AssetDatabase.GetAssetPath(clip);
+        if (string.IsNullOrEmpty(path) || !path.EndsWith(".anim", System.StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var settings = AnimationUtility.GetAnimationClipSettings(clip);
+        if (settings.loopTime)
+        {
+            return;
+        }
+
+        settings.loopTime = true;
+        AnimationUtility.SetAnimationClipSettings(clip, settings);
+        EditorUtility.SetDirty(clip);
     }
 
     void DrawTimelineSection(ActionDataSO action)

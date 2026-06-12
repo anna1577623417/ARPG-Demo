@@ -22,6 +22,7 @@ alwaysApply: true
 - `Assets/AI Agent/Output/**`
 - `Assets/GameMain/Scripts/6.AI/Cursor/Output/**`
 - `Assets/GameMain/Scripts/6.AI/Cursor/BluePrint/**`
+- `Assets/GameMain/Scripts/6.AI/Cursor/Log/Record/Output/**`（AI 落盘；`Log/Test/**` 为用户只读原始 Log，不适用本规则）
 - 其它由任务明确要求落盘的 `.md` 分析 / 评审 / 版本总结 / 施工日志
 
 **不适用**：源码（`.cs` 等）、Unity 资产（`.asset`）、仅对话内回复不落盘的文字。

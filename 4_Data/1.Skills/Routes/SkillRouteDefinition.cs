@@ -209,9 +209,30 @@ public abstract class SkillRouteDefinition : ScriptableObject, ISkillUnit
     /// <summary>子类自报"我是哪种 Route"，用于 RouteResolver 类型分支（避免反射）。</summary>
     public abstract RouteKind Kind { get; }
 
+    /// <summary>Combat Graph 配置资格（153.2）；默认不可进图。</summary>
+    public virtual RouteGraphType GraphType => RouteGraphType.Unsupported;
+
+    public int StageCount => stages != null ? stages.Length : 0;
+
     public SkillStageDefinition FirstStage()
     {
         return stages != null && stages.Length > 0 ? stages[0] : null;
+    }
+
+    /// <summary>图入口 Action（Flow 边 To 节点须与之匹配）。</summary>
+    public virtual bool TryResolveGraphEntryAction(out ActionDataSO entryAction, out string error)
+    {
+        entryAction = null;
+        error = null;
+        var first = FirstStage();
+        if (first == null || first.Action == null)
+        {
+            error = $"{name} 无有效 Stage[0].Action";
+            return false;
+        }
+
+        entryAction = first.Action;
+        return true;
     }
 
 #if UNITY_EDITOR

@@ -76,6 +76,7 @@ public static class CombatFlowGraphCompiler
                 Conditions = CombatFlowConditionMerge.Merge(e.Conditions, e.ConditionRefs),
                 Priority = e.Priority,
                 TargetRoute = e.TargetRoute,
+                LateWindowSeconds = e.LateWindowSeconds,
             };
         }
 

@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 68aa9736e2d13184ba7ad069dc7e0d8d, type: 3}
+  m_Name: Entry_LM
+  m_EditorClassIdentifier: 
+  slot: 0
+  displayName: 
+  fallbackIcon: {fileID: 0}
+  chargeRoute: {fileID: 11400000, guid: 9d3dd363997f34f4b8f48527c5784d82, type: 2}
+  comboRoute: {fileID: 0}
+  extendedComboRoute: {fileID: 0}
+  airComboRoute: {fileID: 0}
+  multiStageRoute: {fileID: 0}
+  normalRoute: {fileID: 11400000, guid: 6aef75815099a3f46b7460ead1361696, type: 2}
+  extendedHandoffWindowSeconds: 1.2
+  extendedHandoffMinGap: 0
+  extendedHandoffMaxGap: 0
+  derivativeRoutes: []
+  primaryUnit: {fileID: 0}
