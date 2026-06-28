@@ -185,7 +185,7 @@ public sealed class ChargeRouteDefinition : SkillRouteDefinition
             }
         }
 
-        // 7) SingleClip 模式必须有 Stages[0]；多段时提示 Stages[1+] 用 Auto Transition
+        // 7) SingleClip 模式必须有 Stages[0]
         if (presentationMode == ChargePresentationMode.SingleClip)
         {
             var first = FirstStage();
@@ -196,13 +196,6 @@ public sealed class ChargeRouteDefinition : SkillRouteDefinition
                     this);
             }
 
-            if (Stages != null && Stages.Length > 1)
-            {
-                Debug.Log(
-                    $"[ChargeRoute] '{name}' SingleClip：仅 Stages[0] 承担蓄力时间线；" +
-                    $"Stages[1..{Stages.Length - 1}] 请在各 Stage 资产配置 Transition → Auto 衔接下一段（收招/后摇），以达到最佳效果。",
-                    this);
-            }
         }
     }
 #endif

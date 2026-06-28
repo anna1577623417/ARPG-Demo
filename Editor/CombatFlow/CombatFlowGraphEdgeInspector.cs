@@ -216,20 +216,17 @@ public static class CombatFlowGraphEdgeInspector
 
         if (DrawFoldoutSection(PrefFoldRouting, "Routing", true))
         {
-            edge.TargetRoute = (SkillRouteDefinition)EditorGUILayout.ObjectField(
+            edge.TargetRoute = CombatFlowInspectorDragDrop.DrawObjectField(
                 "Target Route",
                 edge.TargetRoute,
-                typeof(SkillRouteDefinition),
-                false);
+                ownerAsset?.RoutePool);
 
             DrawRouteEntryPreview(edge.TargetRoute);
             DrawLiveConnectionHint(serialEdge);
 
             if (edge.Transition == CombatFlowTransitionMode.OnInput)
             {
-                EditorGUILayout.LabelField("Context Input", EditorStyles.miniBoldLabel);
-                edge.InputSlot = (SkillEntrySlot)EditorGUILayout.EnumPopup("Input Slot", edge.InputSlot);
-                edge.InputSemantic = (InputSemanticType)EditorGUILayout.EnumPopup("Input Semantic", edge.InputSemantic);
+                DrawContextInputSection(ref edge);
             }
 
             if (edge.Transition == CombatFlowTransitionMode.OnSegmentComplete && edge.TargetRoute != null)
@@ -268,7 +265,10 @@ public static class CombatFlowGraphEdgeInspector
 
         if (DrawFoldoutSection(PrefFoldConditions, "Conditions", true))
         {
-            CombatFlowEdgeConditionsDrawer.Draw(ref edge, ownerAsset?.ConditionPool);
+            CombatFlowEdgeConditionsDrawer.Draw(
+                ref edge,
+                ownerAsset?.ConditionPool,
+                ownerAsset?.EdgeConditionPool);
             EndFoldoutSection();
             CombatFlowGraphInspectorLayout.SectionGap();
         }
@@ -288,6 +288,12 @@ public static class CombatFlowGraphEdgeInspector
         }
 
         var changed = EditorGUI.EndChangeCheck();
+        if (CombatFlowInputConditionSync.TryGetPrimaryInputCondition(edge.EdgeConditions, out var inputCond))
+        {
+            CombatFlowInputConditionSync.SyncEdgeFromInputCondition(ref edge, inputCond);
+            changed = true;
+        }
+
         if (changed)
         {
             var lateBefore = meta.Authoring.LateWindowSeconds;
@@ -324,6 +330,64 @@ public static class CombatFlowGraphEdgeInspector
             "多选时不编辑单条边属性。请单选一条边或一个节点。\n" +
             "框选多个对象时与此一致（同 Animator）。",
             MessageType.Info);
+    }
+
+    static void DrawContextInputSection(ref CombatFlowEdgeAuthoring edge)
+    {
+        var drivenBySo = CombatFlowInputConditionSync.TryGetPrimaryInputCondition(
+            edge.EdgeConditions,
+            out var inputCond);
+
+        if (drivenBySo)
+        {
+            CombatFlowInputConditionSync.SyncEdgeFromInputCondition(ref edge, inputCond);
+        }
+
+        EditorGUILayout.LabelField("Context Input", EditorStyles.miniBoldLabel);
+
+        if (drivenBySo)
+        {
+            using (new EditorGUI.DisabledScope(true))
+            {
+                var prevColor = GUI.color;
+                GUI.color = new Color(prevColor.r, prevColor.g, prevColor.b, 0.55f);
+                DrawContextInputFields(ref edge);
+                GUI.color = prevColor;
+            }
+
+            EditorGUILayout.ObjectField(
+                "Source (InputConditionSO)",
+                inputCond,
+                typeof(InputConditionSO),
+                false);
+            EditorGUILayout.HelpBox(
+                "已配置 InputConditionSO：Context Input 只读，数值与下方 Edge Conditions 内 Input 资产同步。\n" +
+                "未配置 InputCondition 时，才使用 Context Input 手填解析。",
+                MessageType.Info);
+            return;
+        }
+
+        DrawContextInputFields(ref edge);
+        EditorGUILayout.HelpBox(
+            "未配置 InputConditionSO：按 Context Input 手填过滤。\n" +
+            "推荐在 Conditions → Edge Conditions 拖入 InputCondition 资产以收敛配置。",
+            MessageType.None);
+    }
+
+    static void DrawContextInputFields(ref CombatFlowEdgeAuthoring edge)
+    {
+        edge.InputSlot = (SkillEntrySlot)EditorGUILayout.EnumPopup("Input Slot", edge.InputSlot);
+        edge.InputSemantic = (InputSemanticType)EditorGUILayout.EnumPopup("Input Semantic", edge.InputSemantic);
+        edge.InputModifier = (CombatFlowInputModifier)EditorGUILayout.EnumPopup(
+            new GUIContent("Input Modifier", "组合键修饰：Any=不检查；None=无修饰；Shift=Shift+InputSlot"),
+            edge.InputModifier);
+        if (edge.InputModifier == CombatFlowInputModifier.Shift
+            && edge.InputSemantic != InputSemanticType.Chord)
+        {
+            EditorGUILayout.HelpBox(
+                "修饰键边建议将 Input Semantic 设为 Chord；运行时 Shift+主键松开将派发 Chord 意图。",
+                MessageType.Info);
+        }
     }
 
     static void DrawEdgeKindSemantics(CombatFlowEdgeKind kind)

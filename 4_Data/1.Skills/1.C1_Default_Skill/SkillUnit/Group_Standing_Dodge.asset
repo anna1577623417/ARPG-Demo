@@ -22,9 +22,19 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 907ecbf7443cb3c4d852a82f6eae23fe, type: 2}
   - {fileID: 11400000, guid: 961d3be9662bc0643818a9de2798684f, type: 2}
   - {fileID: 11400000, guid: 619ee5b1b379641418e349f8fc4e00c3, type: 2}
+  - {fileID: 11400000, guid: a99c053ec7c4c1d48b3d72d4305e0569, type: 2}
+  - {fileID: 11400000, guid: ce737cb4d837a9240956a311dc1f37fd, type: 2}
   forward: {fileID: 11400000, guid: bd5f64a19af7c6641949cc1a024638c1, type: 2}
+  forwardLeft: {fileID: 0}
+  forwardRight: {fileID: 0}
   backward: {fileID: 11400000, guid: 907ecbf7443cb3c4d852a82f6eae23fe, type: 2}
+  backwardLeft: {fileID: 0}
+  backwardRight: {fileID: 0}
   left: {fileID: 11400000, guid: 961d3be9662bc0643818a9de2798684f, type: 2}
   right: {fileID: 11400000, guid: 619ee5b1b379641418e349f8fc4e00c3, type: 2}
-  defaultToForwardWhenNeutral: 1
-  fallbackRoute: {fileID: 11400000, guid: bd5f64a19af7c6641949cc1a024638c1, type: 2}
+  useFallbackOnNeutral: 1
+  fallbackRoute: {fileID: 11400000, guid: ce737cb4d837a9240956a311dc1f37fd, type: 2}
+  motionForwardRoute: {fileID: 11400000, guid: a99c053ec7c4c1d48b3d72d4305e0569, type: 2}
+  abilityGateRules: []
+  defaultToForwardWhenNeutral: 0
+  _1733NeutralMigrated: 1

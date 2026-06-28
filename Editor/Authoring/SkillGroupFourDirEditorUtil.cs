@@ -4,6 +4,7 @@ using UnityEngine;
 
 /// <summary>
 /// Editor 共用：创建/更新四向 SkillGroup 并绑定 Entry.primaryUnit。
+/// 173.3 起中性语义由 <see cref="SkillGroupDefinition.UseFallbackOnNeutral"/> 控制。
 /// </summary>
 public static class SkillGroupFourDirEditorUtil
 {
@@ -15,7 +16,8 @@ public static class SkillGroupFourDirEditorUtil
         NormalRouteDefinition backward,
         NormalRouteDefinition left,
         NormalRouteDefinition right,
-        bool defaultToForwardWhenNeutral = true)
+        bool useFallbackOnNeutral = false,
+        NormalRouteDefinition fallbackRoute = null)
     {
         if (forward == null)
         {
@@ -26,6 +28,7 @@ public static class SkillGroupFourDirEditorUtil
         var group = AssetDatabase.LoadAssetAtPath<SkillGroupDefinition>(groupPath)
                     ?? CreateAsset<SkillGroupDefinition>(groupPath);
 
+        var resolvedFallback = fallbackRoute != null ? fallbackRoute : forward;
         var soGroup = new SerializedObject(group);
         soGroup.FindProperty("displayName").stringValue = displayName;
         soGroup.FindProperty("baseCooldownSeconds").floatValue = groupCooldownSeconds;
@@ -33,11 +36,12 @@ public static class SkillGroupFourDirEditorUtil
         soGroup.FindProperty("backward").objectReferenceValue = backward != null ? backward : forward;
         soGroup.FindProperty("left").objectReferenceValue = left != null ? left : forward;
         soGroup.FindProperty("right").objectReferenceValue = right != null ? right : forward;
-        soGroup.FindProperty("defaultToForwardWhenNeutral").boolValue = defaultToForwardWhenNeutral;
-        soGroup.FindProperty("fallbackRoute").objectReferenceValue = forward;
+        soGroup.FindProperty("useFallbackOnNeutral").boolValue = useFallbackOnNeutral;
+        soGroup.FindProperty("fallbackRoute").objectReferenceValue = resolvedFallback;
+        soGroup.FindProperty("_1733NeutralMigrated").boolValue = true;
         soGroup.ApplyModifiedPropertiesWithoutUndo();
 
-        foreach (var r in new[] { forward, backward, left, right })
+        foreach (var r in new[] { forward, backward, left, right, resolvedFallback })
         {
             if (r == null)
             {

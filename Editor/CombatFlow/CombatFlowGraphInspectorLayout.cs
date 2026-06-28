@@ -42,6 +42,8 @@ public static class CombatFlowGraphInspectorLayout
         AppendCategory(sb, categories, ActionCategory.Offense, "Offense");
         AppendCategory(sb, categories, ActionCategory.Defensive, "Defensive");
         AppendCategory(sb, categories, ActionCategory.Utility, "Utility");
+        AppendCategory(sb, categories, ActionCategory.Locomotion, "Locomotion");
+        AppendCategory(sb, categories, ActionCategory.IdleFallback, "IdleFallback");
         return sb.Length > 0 ? sb.ToString() : categories.ToString();
     }
 

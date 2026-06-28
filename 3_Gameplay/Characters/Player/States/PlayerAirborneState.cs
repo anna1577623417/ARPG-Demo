@@ -18,20 +18,15 @@ public sealed class PlayerAirborneState : PlayerState
     private float _airborneStartY;
     private float _airbornePeakY;
 
-    private readonly ActionCategory m_ascendingAllowedCategories;
-    private readonly ActionCategory m_descendingAllowedCategories;
+    // 168.3 W3：旧 ascending/descending mask 字段已删除；改由 SkillEntryLoadoutSO.AirInterruptPolicy 提供。
+    private readonly ActionCategory m_hardFloorBlock;
 
-    public PlayerAirborneState(ActionCategory ascendingAllowed, ActionCategory descendingAllowed)
-    {
-        m_ascendingAllowedCategories = ascendingAllowed;
-        m_descendingAllowedCategories = descendingAllowed;
-    }
+    // 168.3 一对一探针：仅在 "phase × kind × cat × verdict" 四元组发生翻转时输出一行
+    string m_lastAirIntrKey;
 
-    private ActionCategory GetCurrentPhaseAllowedCategories(Player player)
+    public PlayerAirborneState(ActionCategory hardFloorBlock)
     {
-        return player.VerticalSpeed > 0f
-            ? m_ascendingAllowedCategories
-            : m_descendingAllowedCategories;
+        m_hardFloorBlock = hardFloorBlock;
     }
 
     public override bool TryConsumeGameplayIntent(Player player, in FrameContext ctx, in GameplayIntent intent)
@@ -48,20 +43,38 @@ public sealed class PlayerAirborneState : PlayerState
 
         var incomingAction = IntentRouter.PeekActionDataForRouting(player, in intent);
         var incomingCategory = ActionInterruptResolver.ResolveIncomingCategory(in intent, incomingAction);
-        var allowed = GetCurrentPhaseAllowedCategories(player);
-        if (incomingCategory != ActionCategory.None && (allowed & incomingCategory) == 0)
+
+        // 168.3 L1 — Loadout 空中可中断
+        var r = AirInterruptResolver.Evaluate(player, incomingCategory, m_hardFloorBlock);
+        LogAirIntrIfFlipped(player, in r, intent.Kind, incomingCategory);
+
+        if (r.Code != AirInterruptResolver.Verdict.Allow)
         {
             if (player.DebugInterruptFlow)
             {
-                var phase = player.VerticalSpeed > 0f ? "Ascending" : "Descending";
                 Debug.Log(
-                    $"[Airborne/{phase}] REJECT | intent={intent.Kind} | category={incomingCategory} | reason=not allowed in phase categories",
+                    $"[Airborne/{r.Phase}] REJECT | intent={intent.Kind} | category={incomingCategory} | verdict={r.Code} | allowed={r.AllowedMaskForPhase}",
                     player);
             }
             return false;
         }
 
+        // 168.3 L2 — Ability 白名单由 IntentRouter.Route → SkillEntryService → AbilityGateService 链路负责（不动）
         return IntentRouter.Route(player, in intent, forceActionReentry: false);
+    }
+
+    void LogAirIntrIfFlipped(
+        Player player, in AirInterruptResolver.Result r,
+        GameplayIntentKind kind, ActionCategory incomingCat)
+    {
+        if (!player.DebugComboAirGate) return;
+        var key = $"{r.Phase}|{kind}|{incomingCat}|{r.Code}";
+        if (key == m_lastAirIntrKey) return;
+        m_lastAirIntrKey = key;
+        Debug.Log(
+            $"[AirIntr] phase={r.Phase} intent={kind} incomingCat={incomingCat} " +
+            $"verdict={r.Code} allowedMask={r.AllowedMaskForPhase} vy={player.VerticalSpeed:F2} frame={Time.frameCount}",
+            player);
     }
 
     protected override void OnEnter(Player player)

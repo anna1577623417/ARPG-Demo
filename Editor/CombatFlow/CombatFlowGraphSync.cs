@@ -45,6 +45,14 @@ public static class CombatFlowGraphSync
             var authoring = meta.Authoring;
             authoring.FromNodeId = fromId;
             authoring.ToNodeId = toId;
+            if (CombatFlowInputConditionSync.TryGetPrimaryInputCondition(
+                    authoring.EdgeConditions,
+                    out var inputCond))
+            {
+                CombatFlowInputConditionSync.SyncEdgeFromInputCondition(ref authoring, inputCond);
+            }
+
+            meta.Authoring = authoring;
             edgeList.Add(authoring);
         }
 
@@ -173,6 +181,8 @@ public static class CombatFlowGraphSync
                     NodeId = string.IsNullOrEmpty(action.nodeId) ? action.name : action.nodeId,
                     Kind = CombatFlowNodeKind.FlowAction,
                     Action = action.action,
+                    TerminalOnComplete = action.terminalOnComplete,
+                    TerminalPolicy = action.terminalPolicy,
                 };
                 return true;
             case CombatFlowRouteSwitchNode route:
@@ -226,7 +236,13 @@ public static class CombatFlowGraphSync
                 node = new CombatFlowStartNode { nodeId = src.NodeId };
                 break;
             case CombatFlowNodeKind.FlowAction:
-                node = new CombatFlowActionNode { nodeId = src.NodeId, action = src.Action };
+                node = new CombatFlowActionNode
+                {
+                    nodeId = src.NodeId,
+                    action = src.Action,
+                    terminalOnComplete = src.TerminalOnComplete,
+                    terminalPolicy = src.TerminalPolicy,
+                };
                 break;
             case CombatFlowNodeKind.RouteSwitch:
                 node = new CombatFlowRouteSwitchNode { nodeId = src.NodeId, route = src.Route };
@@ -253,8 +269,10 @@ public static class CombatFlowGraphSync
             Label = src.Label,
             InputSlot = src.InputSlot,
             InputSemantic = src.InputSemantic,
+            InputModifier = src.InputModifier,
             Conditions = src.Conditions,
             ConditionRefs = src.ConditionRefs,
+            EdgeConditions = src.EdgeConditions,
             Priority = src.Priority,
             TargetRoute = src.TargetRoute,
             LateWindowSeconds = src.LateWindowSeconds,
@@ -290,11 +308,23 @@ public static class CombatFlowGraphSync
             el.FindPropertyRelative(nameof(CombatFlowEdgeAuthoring.Label)).stringValue = e.Label;
             el.FindPropertyRelative(nameof(CombatFlowEdgeAuthoring.InputSlot)).enumValueIndex = (int)e.InputSlot;
             el.FindPropertyRelative(nameof(CombatFlowEdgeAuthoring.InputSemantic)).enumValueIndex = (int)e.InputSemantic;
+            el.FindPropertyRelative(nameof(CombatFlowEdgeAuthoring.InputModifier)).enumValueIndex = (int)e.InputModifier;
             el.FindPropertyRelative(nameof(CombatFlowEdgeAuthoring.Priority)).intValue = e.Priority;
             el.FindPropertyRelative(nameof(CombatFlowEdgeAuthoring.TargetRoute)).objectReferenceValue = e.TargetRoute;
             el.FindPropertyRelative(nameof(CombatFlowEdgeAuthoring.LateWindowSeconds)).floatValue = e.LateWindowSeconds;
             WriteConditions(el.FindPropertyRelative(nameof(CombatFlowEdgeAuthoring.Conditions)), e.Conditions);
             WriteConditionRefs(el.FindPropertyRelative(nameof(CombatFlowEdgeAuthoring.ConditionRefs)), e.ConditionRefs);
+            WriteEdgeConditions(el.FindPropertyRelative(nameof(CombatFlowEdgeAuthoring.EdgeConditions)), e.EdgeConditions);
+        }
+    }
+
+    static void WriteEdgeConditions(SerializedProperty arr, EdgeConditionSO[] refs)
+    {
+        var len = refs != null ? refs.Length : 0;
+        arr.arraySize = len;
+        for (var i = 0; i < len; i++)
+        {
+            arr.GetArrayElementAtIndex(i).objectReferenceValue = refs[i];
         }
     }
 

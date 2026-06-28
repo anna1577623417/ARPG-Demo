@@ -31,8 +31,12 @@ public class MotionProfileSO : ScriptableObject
     public MotionAxisExtractSource ZExtractSource = MotionAxisExtractSource.Auto;
 
     [Header("XYZ 局部空间位置曲线")]
-    [Tooltip("三轴位置曲线：Evaluate(t)×Scale=米。X=左右，Y=上下，Z=前后（负=后撤）。")]
+    [Tooltip("三轴位置曲线：Evaluate(t)×Scale=米。InheritPhysics 策略下 Scale 表节奏；MotionProfile 策略下表作者米数。")]
     public MotionAxisCurves AxisCurves;
+
+    [Header("Stop Authoring (182.1)")]
+    [Tooltip("启用后本 Profile 参与 Stop 系统；须与 Action.EnableStopFeature 同时开启（Snap 策略除外）。")]
+    public bool EnableStopAuthoring;
 
     [Header("Y Axis (V2 · 三权分离)")]
     [Tooltip("Y 位移来源：None / Curve / GroundTargeted。")]
@@ -48,8 +52,9 @@ public class MotionProfileSO : ScriptableObject
     bool yAxisV2Configured;
 
     [UnityEngine.Serialization.FormerlySerializedAs("YPolicy")]
+    [UnityEngine.Serialization.FormerlySerializedAs("legacyYPolicy")]
     [SerializeField, HideInInspector]
-    YAxisPolicy legacyYPolicy = YAxisPolicy.UseGravity;
+    byte legacyYPolicyRaw;
 
     [Header("Ground Targeted Landing")]
     [Tooltip("GroundTargeted：落地高度 = 探测地面 Y + 本偏移（米）。")]
@@ -65,10 +70,11 @@ public class MotionProfileSO : ScriptableObject
     [Tooltip(
         "局部节奏倍率（与 Action.AnimSpeed 相乘）：\n" +
         "  Constant — 恒 1；\n" +
-        "  Curve — SpeedOverTime(motionT)，控制段内先慢后快等节奏。")]
+        "  Curve — SpeedOverTime(motionT)，控制段内先慢后快等节奏。\n" +
+        "【171.7】仅当绑定 Action 的 ClipAnimSpeedMode=Free 时生效；AutoFitDuration 下运行时忽略本曲线。")]
     public AnimSpeedMode AnimSpeedMode = AnimSpeedMode.Constant;
 
-    [Tooltip("AnimSpeedMode = Curve：归一化 Motion 时间 t→局部速率倍率。Clip 墙钟对齐见 Action Time Authority。")]
+    [Tooltip("AnimSpeedMode=Curve：归一化 Motion 时间 t→局部速率倍率。仅 Action ClipAnimSpeedMode=Free 时参与运行时合成。")]
     public AnimationCurve SpeedOverTime = AnimationCurve.Constant(0f, 1f, 1f);
 
     [Header("Stat Scaling (displacement only)")]
@@ -84,6 +90,56 @@ public class MotionProfileSO : ScriptableObject
         "· LockTarget — 锁敌朝向（未接入时回落角色前）。\n" +
         "· WorldSpace — 世界 +Z 为曲线 Z 轴。")]
     public MotionSpace MotionSpace = MotionSpace.CharacterForward;
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // 174.2 V2 · Motion Profile 动作导演层 —— 七曲线 + 三策略
+    //   默认值均退化为 V1 行为；既有资产升级后零回归。
+    // ═══════════════════════════════════════════════════════════════════════
+
+    [Header("V2 · Physics Weight (174.2)")]
+    [Tooltip("重力参与权重模式。\n" +
+             "  DefaultPolicy — 不启用 V2 曲线，沿用旧 GravityMode 三档（默认）。\n" +
+             "  Curve — 按 GravityWeight 曲线连续加权。")]
+    public GravityWeightMode V2GravityWeightMode = GravityWeightMode.DefaultPolicy;
+
+    [Tooltip("重力权重曲线（0=Suspend / 1=Use / >1=强化下坠）。仅 V2GravityWeightMode=Curve 生效。")]
+    public AnimationCurve V2GravityWeight = AnimationCurve.Constant(0f, 1f, 1f);
+
+    [Header("V2 · Rotation (174.2)")]
+    [Tooltip("Yaw 旋转模式：None / YawCurve / AlignToVelocity / AlignToTargetLock。")]
+    public RotationMode V2RotationMode = RotationMode.None;
+
+    [Tooltip("Yaw 旋转曲线（度，相对动作起手朝向）。仅 V2RotationMode=YawCurve 生效。")]
+    public AnimationCurve V2YawOverTime = AnimationCurve.Linear(0f, 0f, 1f, 0f);
+
+    [Header("V2 · Control (174.2)")]
+    [Tooltip("玩家输入对角色朝向的影响权重 0~1。0=完全锁朝向；1=完全跟随输入。\n" +
+             "默认 1 = 与 V1 一致（动作期间锁朝向由外层 PlayerState 决定）。")]
+    public AnimationCurve V2FacingInputWeight = AnimationCurve.Constant(0f, 1f, 1f);
+
+    [Tooltip("玩家输入对位移的影响权重 0~1。0=完全锁移动；1=完全跟随输入。\n" +
+             "默认 0 = 与 V1 一致（动作期间不叠加玩家位移）。")]
+    public AnimationCurve V2MoveInputWeight = AnimationCurve.Constant(0f, 1f, 0f);
+
+    [Header("V2 · Target Tracking (174.2)")]
+    [Tooltip("锁定目标追踪权重 0~1。仅 MotionSpace=LockTarget 时生效。\n" +
+             "0=锁定起手方向；1=每帧旋转对准目标。")]
+    public AnimationCurve V2TargetTrackingWeight = AnimationCurve.Constant(0f, 1f, 1f);
+
+    [Header("V2 · Animator Root Motion Blend (174.2)")]
+    [Tooltip("与 Animator Root Motion 的混合权重 0~1。\n" +
+             "0=纯 MotionProfile 驱动（默认）；1=纯 Animator RM。")]
+    public AnimationCurve V2RootMotionBlend = AnimationCurve.Constant(0f, 1f, 0f);
+
+    [Header("V2 · Hitstop Response (174.2)")]
+    [Tooltip("被外部 Hitstop 事件减速的强度倍率。\n" +
+             "0=Hitstop 不影响本动作；1=默认；>1=放大震屏感（终结技用）。\n" +
+             "本字段不主动触发 Hitstop，仅响应。")]
+    public AnimationCurve V2HitstopMultiplier = AnimationCurve.Constant(0f, 1f, 1f);
+
+    [Header("V2 · Runtime Strategy (174.2)")]
+    [Tooltip("高级 Y 策略扩展：Default / HoverHold / ApexSnap。")]
+    public YStrategyV2 V2YStrategy = YStrategyV2.Default;
 
     [Header("Burst authoring (obsolete)")]
     [Tooltip("已过时：时长见 ActionData.Duration；离散闪现见 ActionData.TeleportTriggers。")]
@@ -169,20 +225,18 @@ public class MotionProfileSO : ScriptableObject
             return new MotionYAxisConfig(YMotion, Gravity, GroundConstraint);
         }
 
-#pragma warning disable 0618
-        return MotionYAxisLegacyMapping.FromLegacy(legacyYPolicy);
-#pragma warning restore 0618
+        return MotionYAxisLegacyMapping.FromLegacy(legacyYPolicyRaw);
     }
 
     [System.Obsolete("Use GetYAxisConfig")]
     public YAxisPolicy GetEffectiveYPolicy()
     {
-#pragma warning disable 0618
-        return legacyYPolicy;
-#pragma warning restore 0618
+#pragma warning disable CS0618
+        return (YAxisPolicy)legacyYPolicyRaw;
+#pragma warning restore CS0618
     }
 
-    /// <summary>Curve 模式下按归一化 Motion 时间采样局部节奏倍率。</summary>
+    /// <summary>Curve 模式下按归一化 Motion 时间采样局部节奏倍率（不含 Action 层门控）。</summary>
     public float SampleAnimSpeed(float t)
     {
         if (AnimSpeedMode != AnimSpeedMode.Curve
@@ -193,6 +247,156 @@ public class MotionProfileSO : ScriptableObject
         }
 
         return Mathf.Max(0f, SpeedOverTime.Evaluate(Mathf.Clamp01(t)));
+    }
+
+    /// <summary>171.7：Action 非 Free 时恒 1；Free 时走 <see cref="SampleAnimSpeed"/> 曲线。</summary>
+    public float SampleAnimSpeed(ActionDataSO action, float t) =>
+        ActionAnimSpeedAuthority.ResolveProfileAnimSpeedFactor(action, this, t);
+
+    // ═══ 174.2 V2 采样接口 ═══
+    // 所有方法默认返回 V1 等价值；启用 V2 字段后才生效。
+
+    /// <summary>174.2 — 重力权重；DefaultPolicy 返回 1（不改变 V1 行为），Curve 走曲线。</summary>
+    public float SampleGravityWeight(float t)
+    {
+        if (V2GravityWeightMode != GravityWeightMode.Curve
+            || V2GravityWeight == null
+            || V2GravityWeight.length == 0)
+        {
+            return 1f;
+        }
+
+        return Mathf.Max(0f, V2GravityWeight.Evaluate(Mathf.Clamp01(t)));
+    }
+
+    /// <summary>174.2 — Yaw 旋转覆盖（度）。仅 RotationMode=YawCurve 时返回曲线值；其余返回 0。</summary>
+    public float SampleYawOverride(float t)
+    {
+        if (V2RotationMode != RotationMode.YawCurve
+            || V2YawOverTime == null
+            || V2YawOverTime.length == 0)
+        {
+            return 0f;
+        }
+
+        return V2YawOverTime.Evaluate(Mathf.Clamp01(t));
+    }
+
+    /// <summary>174.2 — 玩家朝向输入权重 0~1。默认 1（V1 由外层 PlayerState 决定）。</summary>
+    public float SampleFacingInputWeight(float t)
+        => SafeEval01(V2FacingInputWeight, t, fallback: 1f);
+
+    /// <summary>174.2 — 玩家位移输入权重 0~1。默认 0（V1 动作期间不叠加玩家位移）。</summary>
+    public float SampleMoveInputWeight(float t)
+        => SafeEval01(V2MoveInputWeight, t, fallback: 0f);
+
+    /// <summary>174.2 — 锁定目标追踪权重 0~1。默认 1。</summary>
+    public float SampleTargetTrackingWeight(float t)
+        => SafeEval01(V2TargetTrackingWeight, t, fallback: 1f);
+
+    /// <summary>174.2 — Animator Root Motion 混合权重 0~1。默认 0。</summary>
+    public float SampleRootMotionBlend(float t)
+        => SafeEval01(V2RootMotionBlend, t, fallback: 0f);
+
+    /// <summary>174.2 — Hitstop 响应倍率。默认 1。</summary>
+    public float SampleHitstopMultiplier(float t)
+    {
+        if (V2HitstopMultiplier == null || V2HitstopMultiplier.length == 0)
+        {
+            return 1f;
+        }
+
+        return Mathf.Max(0f, V2HitstopMultiplier.Evaluate(Mathf.Clamp01(t)));
+    }
+
+    static float SafeEval01(AnimationCurve curve, float t, float fallback)
+    {
+        if (curve == null || curve.length == 0)
+        {
+            return fallback;
+        }
+
+        return Mathf.Clamp01(curve.Evaluate(Mathf.Clamp01(t)));
+    }
+
+    // ═══ 174.2 V2 · Y Strategy 后处理 ═══
+
+    [System.NonSerialized] float _v2CachedYPeakT = -1f;
+    [System.NonSerialized] float _v2CachedYPeakValue;
+    [System.NonSerialized] AnimationCurve _v2CachedYCurveRef;
+
+    /// <summary>HoverHold 在 [PeakT, HoverReleaseT] 区间保持峰值不下降；之后按曲线衰减。</summary>
+    const float HoverReleaseT = 0.75f;
+
+    /// <summary>174.2 — 是否启用了 Y Strategy 后处理（用于运行时短路判断）。</summary>
+    public bool UsesV2YStrategy => V2YStrategy != YStrategyV2.Default && AxisCurves.YCurve != null;
+
+    /// <summary>
+    /// 174.2 — 采样应用 V2 Y Strategy 后的局部 Y 位置（米，已包含 YScale）。
+    /// 调用方差分两点即得 strategy 下的 Y 位移。
+    /// </summary>
+    public float SampleV2LocalYPosition(float t)
+    {
+        var rawY = AxisCurves.YCurve != null
+            ? AxisCurves.YCurve.Evaluate(Mathf.Clamp01(t)) * AxisCurves.YScale
+            : 0f;
+
+        if (V2YStrategy == YStrategyV2.Default || AxisCurves.YCurve == null)
+        {
+            return rawY;
+        }
+
+        EnsureYPeakCache();
+
+        switch (V2YStrategy)
+        {
+            case YStrategyV2.HoverHold:
+                if (t >= _v2CachedYPeakT && t <= HoverReleaseT)
+                {
+                    return _v2CachedYPeakValue * AxisCurves.YScale;
+                }
+                return rawY;
+
+            case YStrategyV2.ApexSnap:
+                if (_v2CachedYPeakValue <= 0.0001f)
+                {
+                    return rawY;
+                }
+                return (AxisCurves.YCurve.Evaluate(Mathf.Clamp01(t)) / _v2CachedYPeakValue) * AxisCurves.YScale;
+
+            default:
+                return rawY;
+        }
+    }
+
+    void EnsureYPeakCache()
+    {
+        if (_v2CachedYCurveRef == AxisCurves.YCurve && _v2CachedYPeakT >= 0f)
+        {
+            return;
+        }
+
+        _v2CachedYCurveRef = AxisCurves.YCurve;
+        _v2CachedYPeakT = 0f;
+        _v2CachedYPeakValue = 0f;
+
+        if (AxisCurves.YCurve == null)
+        {
+            return;
+        }
+
+        // 扫描 30 步找峰值
+        const int samples = 30;
+        for (var i = 0; i <= samples; i++)
+        {
+            var t = i / (float)samples;
+            var v = AxisCurves.YCurve.Evaluate(t);
+            if (v > _v2CachedYPeakValue)
+            {
+                _v2CachedYPeakValue = v;
+                _v2CachedYPeakT = t;
+            }
+        }
     }
 
     [System.Obsolete("爆发段已迁至 ActionData.TeleportTriggers；连续位移仅用 AxisCurves。")]

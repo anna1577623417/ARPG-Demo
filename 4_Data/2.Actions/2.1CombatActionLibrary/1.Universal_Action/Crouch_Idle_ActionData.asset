@@ -16,7 +16,7 @@ MonoBehaviour:
   CrossfadeTime: 0.08
   AnimSpeed: 1
   Duration: 0.4
-  Category: 2
+  Category: 32
   InterruptPriority: 10
   InterruptStability: 10
   AllowSelfInterrupt: 0

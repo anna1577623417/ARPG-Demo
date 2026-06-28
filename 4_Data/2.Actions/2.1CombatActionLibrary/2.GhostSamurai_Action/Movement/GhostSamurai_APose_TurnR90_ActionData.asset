@@ -26,6 +26,8 @@ MonoBehaviour:
   InterruptStability: 10
   AllowSelfInterrupt: 0
   IsContinuousLocomotion: 0
+  TransitionType: 3
+  OverrideGrammar: 0
   UseClipRootMotion: 0
   CanRotateDuringLocomotion: 1
   CanMoveDuringLocomotion: 1

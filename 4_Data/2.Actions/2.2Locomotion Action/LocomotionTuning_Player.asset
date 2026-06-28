@@ -19,9 +19,16 @@ MonoBehaviour:
   AirMoveMultiplier: 0.6
   GroundAcceleration: 12
   GroundDeceleration: 22
-  RotationSpeedDegPerSec: 540
+  RotationMode: 1
+  RotationSpeedDegPerSec: 720
+  SnapSpeedThreshold: 0.2
+  UseTuningRotationSpeed: 1
+  SkipTurnPresentationWhenWantsRun: 1
+  TapMaxDuration: 0.15
+  HoldEnterDelay: 0.08
+  VisualMaxAngularSpeedDeg: 540
   Turn180ThresholdDeg: 135
-  Turn90ThresholdDeg: 70
+  Turn90ThresholdDeg: 60
   JumpForce: 12
   FallGravityScale: 1.3
   AttackMoveMultiplier: 0

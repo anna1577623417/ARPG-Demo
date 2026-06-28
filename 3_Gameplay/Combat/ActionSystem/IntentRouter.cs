@@ -37,23 +37,37 @@ public static class IntentRouter
         {
             if (player.States?.Current is PlayerLocomotionState)
             {
+                InputActionProbe.LogRoute(player, intent.Kind.ToString(), true, "already-Loco");
                 return true;
             }
 
             player.States.Change<PlayerLocomotionState>();
+            InputActionProbe.LogRoute(player, intent.Kind.ToString(), true, "→Loco");
             return true;
         }
 
         if (intent.Kind == GameplayIntentKind.Jump)
         {
+            if (player.States?.Current is PlayerLocomotionState)
+            {
+                player.InterruptTurnPresentation(nameof(GameplayIntentKind.Jump));
+            }
+
             player.RequestJumpFromIntent();
             player.States.Change<PlayerAirborneState>();
+            InputActionProbe.LogRoute(player, intent.Kind.ToString(), true, "→Airborne");
             return true;
         }
 
         if (!GameplayIntent.TryIntentKindToSlot(intent.Kind, out _))
         {
+            InputActionProbe.LogIntentDropped(player, intent.Kind.ToString(), "IntentRouter", "no-slot-mapping");
             return false;
+        }
+
+        if (player.States?.Current is PlayerLocomotionState)
+        {
+            player.InterruptTurnPresentation(intent.Kind.ToString());
         }
 
         if (forceActionReentry)
@@ -65,6 +79,7 @@ public static class IntentRouter
             player.States.Change<PlayerActionState>();
         }
 
+        InputActionProbe.LogRoute(player, intent.Kind.ToString(), true, forceActionReentry ? "→ActionForce" : "→Action");
         return true;
     }
 }

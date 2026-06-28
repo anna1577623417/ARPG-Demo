@@ -51,6 +51,22 @@ public class SkillEntryLoadoutSO : ScriptableObject
         "技能起手见 Route.abilityGateRules；Action 打断见 ActionWindow。")]
     AbilityMapSO abilityMap;
 
+    [Header("Airborne Interrupt Policy (168.3 — 角色画像)")]
+    [SerializeField, Tooltip(
+        "声明本 Loadout 对应的角色在空中三阶段（Ascending/ApexHold/Descending）允许被哪些 ActionCategory 中断。\n" +
+        "仅决定『空中状态能否被打断』；具体技能能否释放仍由 AbilityGateService 白名单判定。\n" +
+        "未配置（全 None）→ 运行时 fallback 到 Universal 预设，保持现行手感。")]
+    AirInterruptPolicy airInterruptPolicy = new()
+    {
+        AscendingAllowed  = ActionCategoryPresets.AllPillar,
+        ApexAllowed       = ActionCategoryPresets.AllPillar,
+        DescendingAllowed = ActionCategoryPresets.AllPillar,
+        ApexVyThreshold   = 1.5f,
+        GroundCoyoteSeconds = 0.08f,
+    };
+
+    public AirInterruptPolicy AirInterruptPolicy => airInterruptPolicy;
+
     public EntryBinding[] Bindings => bindings;
     public bool CombatFlowEnabled => combatFlowEnabled;
     public CombatGraphAsset CombatFlow => combatFlow;

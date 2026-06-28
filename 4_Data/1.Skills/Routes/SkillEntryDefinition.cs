@@ -71,8 +71,8 @@ public class SkillEntryDefinition : ScriptableObject
     private DerivativeRouteDefinition[] derivativeRoutes;
 
     [Header("Primary Skill Unit (Ver4.3.7+)")]
-    [SerializeField, Tooltip("【主单位】SkillRouteDefinition 或 SkillGroupDefinition；配置后优先于仅 CombatGraph 的裸 Route 列表。")]
-    private UnityEngine.Object primaryUnit;
+    [SerializeField, Tooltip("【主单位】仅 SkillGroupDefinition 或 SkillRouteDefinition；八向翻滚绑 Group。留空则走 Loadout ContextGroup。")]
+    private ScriptableObject primaryUnit;
 
     // ── 公有只读暴露 ──
     public SkillEntrySlot Slot => slot;
@@ -106,6 +106,7 @@ public class SkillEntryDefinition : ScriptableObject
             AddIfNotNull(buffer, PrimaryGroup.Backward);
             AddIfNotNull(buffer, PrimaryGroup.Left);
             AddIfNotNull(buffer, PrimaryGroup.Right);
+            AddIfNotNull(buffer, PrimaryGroup.MotionForwardRoute);
 
             var routes = PrimaryGroup.Routes;
             if (routes != null)
@@ -233,4 +234,18 @@ public class SkillEntryDefinition : ScriptableObject
 
         return n;
     }
+
+#if UNITY_EDITOR
+    void OnValidate()
+    {
+        if (primaryUnit != null && primaryUnit is not ISkillUnit)
+        {
+            Debug.LogWarning(
+                $"[SkillEntry] {name}: Primary Unit 类型无效 ({primaryUnit.GetType().Name})，已自动清空。",
+                this);
+            primaryUnit = null;
+            UnityEditor.EditorUtility.SetDirty(this);
+        }
+    }
+#endif
 }

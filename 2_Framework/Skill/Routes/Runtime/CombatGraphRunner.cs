@@ -167,12 +167,31 @@ public sealed class CombatGraphRunner : IRouteRegistryQuery
             $"registered=[{registered}]");
     }
 
+    /// <summary>186.1 — 当前节点上一次被读到的 Terminal 标志（用于调用方区分 Policy 分支）。</summary>
+    public CombatFlowTerminalPolicy LastTerminalPolicy { get; private set; } = CombatFlowTerminalPolicy.FallbackToEntry;
+    public bool LastAdvanceHitTerminal { get; private set; }
+
     /// <summary>段自然结束：沿 OnSegmentComplete 边推进图位置；若边指定 TargetRoute 则尝试施放。</summary>
     public bool TryAdvanceOnSegmentComplete(
         in SkillRouteContext ctx,
         out SkillRouteRuntime runtime,
         out string reason)
     {
+        // 186.1 — Terminal 短路：节点勾 TerminalOnComplete 时视作"无 OnSegmentComplete 出边"，
+        // 让上层 MissPolicy（FallbackToEntry / Block）自然接管；Policy 暴露在 LastTerminalPolicy 供后续 GoIdle/KeepCurrent 扩展。
+        LastAdvanceHitTerminal = false;
+        if (_data != null
+            && !string.IsNullOrEmpty(_currentNodeId)
+            && _data.TryGetTerminalPolicy(_currentNodeId, out var terminalPolicy))
+        {
+            LastTerminalPolicy = terminalPolicy;
+            LastAdvanceHitTerminal = true;
+            runtime = null;
+            reason = $"terminal/{terminalPolicy} node={_currentNodeId}";
+            SkillRouteDebug.LogGraph(_owner, reason);
+            return false;
+        }
+
         return TryPickEdge(
             CombatFlowTransitionMode.OnSegmentComplete,
             default,
@@ -216,8 +235,7 @@ public sealed class CombatGraphRunner : IRouteRegistryQuery
         CollectMatchingEdges(
             CombatFlowTransitionMode.OnInput,
             nodeId,
-            slot,
-            intent.Semantic,
+            in intent,
             in ctx,
             _edgeScratch);
 
@@ -227,7 +245,7 @@ public sealed class CombatGraphRunner : IRouteRegistryQuery
             SkillRouteDebug.LogGraph(_owner, reason);
             CombatGraphComboChainDiagnostics.LogGraphMiss(
                 _owner, this, _entries.ActiveRoute, nodeId, slot, intent.Semantic);
-            LogOnInputMissDiagnostics(nodeId, slot, intent.Semantic, in ctx);
+            LogOnInputMissDiagnostics(nodeId, slot, intent.Semantic, intent.ModifierSlot, in ctx);
             return false;
         }
 
@@ -451,20 +469,27 @@ public sealed class CombatGraphRunner : IRouteRegistryQuery
         }
 
         _edgeScratch.Clear();
-        if (mode == CombatFlowTransitionMode.OnInput
-            && GameplayIntent.TryIntentKindToSlot(intent.Kind, out var slot))
+        if (mode == CombatFlowTransitionMode.OnInput)
         {
-            CollectMatchingEdges(mode, _currentNodeId, slot, intent.Semantic, in ctx, _edgeScratch);
+            if (GameplayIntent.TryIntentKindToSlot(intent.Kind, out _))
+            {
+                CollectMatchingEdges(mode, _currentNodeId, in intent, in ctx, _edgeScratch);
+            }
+            else
+            {
+                var anySlotIntent = new GameplayIntent
+                {
+                    Kind = GameplayIntentKind.None,
+                    EntrySlot = SkillEntrySlot.Any,
+                    Semantic = InputSemanticType.None,
+                };
+                CollectMatchingEdges(mode, _currentNodeId, in anySlotIntent, in ctx, _edgeScratch);
+            }
         }
         else
         {
-            CollectMatchingEdges(
-                mode,
-                _currentNodeId,
-                SkillEntrySlot.Any,
-                InputSemanticType.None,
-                in ctx,
-                _edgeScratch);
+            var emptyIntent = default(GameplayIntent);
+            CollectMatchingEdges(mode, _currentNodeId, in emptyIntent, in ctx, _edgeScratch);
         }
 
         return TryPickFromScratch(in ctx, out runtime, out reason);
@@ -475,6 +500,7 @@ public sealed class CombatGraphRunner : IRouteRegistryQuery
         string nodeId,
         SkillEntrySlot slot,
         InputSemanticType semantic,
+        SkillEntrySlot modifier,
         in SkillRouteContext ctx)
     {
         if (!SkillRouteDebug.IsEnabled(_owner) || _data?.Edges == null)
@@ -497,7 +523,17 @@ public sealed class CombatGraphRunner : IRouteRegistryQuery
             var semOk = e.InputSemantic == InputSemanticType.None
                 || e.InputSemantic == semantic
                 || semantic == InputSemanticType.None;
+            var modOk = MatchesInputModifier(e.InputModifier, modifier);
             var condOk = ConditionEvaluator.EvaluateAll(e.Conditions, in ctx, 0f);
+            var probeIntent = new GameplayIntent
+            {
+                Kind = GameplayIntent.SkillEntrySlotToIntentKind(slot),
+                EntrySlot = slot,
+                Semantic = semantic,
+                ModifierSlot = modifier,
+            };
+            var edgeCtx = EdgeContext.From(_owner, in probeIntent, Time.time);
+            var edgeCondOk = EdgeConditionEvaluator.Evaluate(in e, in edgeCtx, out var edgeFail);
 
             string reject;
             if (!slotOk)
@@ -508,9 +544,17 @@ public sealed class CombatGraphRunner : IRouteRegistryQuery
             {
                 reject = $"semantic-mismatch edgeSem={e.InputSemantic} want={semantic}";
             }
+            else if (!modOk)
+            {
+                reject = $"modifier-mismatch edgeMod={e.InputModifier} want={modifier}";
+            }
             else if (!condOk)
             {
                 reject = "condition-fail";
+            }
+            else if (!edgeCondOk)
+            {
+                reject = $"edge-condition-fail:{edgeFail ?? "?"}";
             }
             else if (e.LateWindowSeconds <= 0f && !string.IsNullOrEmpty(_lateWindowNodeId)
                 && Time.time <= _lateWindowExpireTime
@@ -526,7 +570,7 @@ public sealed class CombatGraphRunner : IRouteRegistryQuery
             SkillRouteDebug.LogGraph(
                 _owner,
                 $"DIAG OnInput from={nodeId} kind={e.EdgeKind} edgeSlot={e.InputSlot} edgeSem={e.InputSemantic} " +
-                $"route={routeName} late={e.LateWindowSeconds:F2}s → {reject}");
+                $"edgeMod={e.InputModifier} route={routeName} late={e.LateWindowSeconds:F2}s → {reject}");
         }
 
         if (!anyOnNode)
@@ -560,7 +604,7 @@ public sealed class CombatGraphRunner : IRouteRegistryQuery
             }
 
             var routeName = e.TargetRoute != null ? e.TargetRoute.name : "(null)";
-            summary.Append($"{e.InputSlot}/{e.InputSemantic}→{routeName}[{e.EdgeKind}]");
+            summary.Append($"{e.InputSlot}/{e.InputSemantic}+{e.InputModifier}→{routeName}[{e.EdgeKind}]");
         }
 
         if (summary.Length == 0)
@@ -620,8 +664,7 @@ public sealed class CombatGraphRunner : IRouteRegistryQuery
     void CollectMatchingEdges(
         CombatFlowTransitionMode mode,
         string fromNodeId,
-        SkillEntrySlot slot,
-        InputSemanticType semantic,
+        in GameplayIntent intent,
         in SkillRouteContext ctx,
         List<CombatFlowCompiledEdge> buffer)
     {
@@ -629,6 +672,26 @@ public sealed class CombatGraphRunner : IRouteRegistryQuery
         {
             return;
         }
+
+        var slot = SkillEntrySlot.Any;
+        var semantic = intent.Semantic;
+        if (mode == CombatFlowTransitionMode.OnInput)
+        {
+            if (GameplayIntent.TryIntentKindToSlot(intent.Kind, out slot))
+            {
+                // mapped from Kind
+            }
+            else if (intent.EntrySlot == SkillEntrySlot.Any)
+            {
+                slot = SkillEntrySlot.Any;
+            }
+            else
+            {
+                slot = intent.EntrySlot;
+            }
+        }
+
+        var edgeCtx = EdgeContext.From(_owner, in intent, Time.time);
 
         for (var i = 0; i < _data.Edges.Length; i++)
         {
@@ -651,10 +714,21 @@ public sealed class CombatGraphRunner : IRouteRegistryQuery
                 {
                     continue;
                 }
+
+                if (!MatchesInputModifier(edge.InputModifier, intent.ModifierSlot))
+                {
+                    continue;
+                }
             }
 
             if (!ConditionEvaluator.EvaluateAll(edge.Conditions, in ctx, 0f))
             {
+                continue;
+            }
+
+            if (!EdgeConditionEvaluator.Evaluate(in edge, in edgeCtx, out var failLabel))
+            {
+                EdgeConditionProbe.LogReject(_owner, in edge, failLabel, in edgeCtx);
                 continue;
             }
 
@@ -666,6 +740,7 @@ public sealed class CombatGraphRunner : IRouteRegistryQuery
                 continue;
             }
 
+            EdgeConditionProbe.LogPass(_owner, in edge, in edgeCtx);
             buffer.Add(edge);
         }
     }
@@ -923,6 +998,23 @@ public sealed class CombatGraphRunner : IRouteRegistryQuery
         if (!SkillRouteDebug.IsEnabled(_owner))
         {
             return;
+        }
+    }
+
+    static bool MatchesInputModifier(CombatFlowInputModifier edgeModifier, SkillEntrySlot intentModifier)
+    {
+        switch (edgeModifier)
+        {
+            case CombatFlowInputModifier.Any:
+                return true;
+            case CombatFlowInputModifier.None:
+                return intentModifier == SkillEntrySlot.Any;
+            case CombatFlowInputModifier.Shift:
+                return intentModifier == SkillEntrySlot.Shift;
+            case CombatFlowInputModifier.Space:
+                return intentModifier == SkillEntrySlot.Space;
+            default:
+                return false;
         }
     }
 }

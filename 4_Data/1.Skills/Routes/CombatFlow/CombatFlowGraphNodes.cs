@@ -20,13 +20,27 @@ public sealed class CombatFlowActionNode : BaseNode
     public string nodeId = "Action";
     public ActionDataSO action;
 
+    /// <summary>186.1 — 段结束后视为图终结（无需连 End 节点）。</summary>
+    public bool terminalOnComplete;
+
+    /// <summary>186.1 — 终结归位策略；仅 terminalOnComplete=true 时生效。</summary>
+    public CombatFlowTerminalPolicy terminalPolicy;
+
     [Input(name = "In", allowMultiple = true)]
     public CombatFlowPort input;
 
     [Output(name = "Out", allowMultiple = true)]
     public CombatFlowPort output;
 
-    public override string name => string.IsNullOrEmpty(nodeId) ? "FlowAction" : nodeId;
+    public override string name
+    {
+        get
+        {
+            var baseName = string.IsNullOrEmpty(nodeId) ? "FlowAction" : nodeId;
+            // 186.1 — 终结节点角标：⊥（FallbackToEntry / GoIdle / KeepCurrent 共用同一标记）
+            return terminalOnComplete ? baseName + " ⊥" : baseName;
+        }
+    }
 
     public override Color color
     {

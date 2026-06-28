@@ -459,6 +459,7 @@ MonoBehaviour:
     m_PostInfinity: 2
     m_RotationOrder: 4
   LandingDetectionRadius: 20
+  EnableStopAuthoring: 1
   AnimSpeedMode: 0
   SpeedOverTime:
     serializedVersion: 2

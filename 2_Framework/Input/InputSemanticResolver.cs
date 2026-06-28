@@ -139,6 +139,7 @@ public sealed class InputSemanticResolver
         st.IsHolding = true;
         st.PressStartTime = now;
         st.ChargeDispatched = false;
+        InputActionProbe.LogInputEdge(_owner, slot.ToString(), "Press", 0f);
     }
 
     /// <summary>持续帧：检测是否已越过 TapThreshold，若是则立即派发 Charge intent（按下即蓄力）。</summary>
@@ -174,12 +175,24 @@ public sealed class InputSemanticResolver
         var hold = now - st.PressStartTime;
         st.IsHolding = false;
         var cfg = _configs[idx];
+        InputActionProbe.LogInputEdge(_owner, slot.ToString(), "Release", hold);
 
         // 1) 蓄力已在 Hold 期间派发：本次松手只发 Release（供 Charge Runtime 解冻 / 收尾）
         if (st.ChargeDispatched)
         {
             st.ChargeDispatched = false;
             EnqueueSemantic(slot, now, InputSemanticType.Release, hold, comboIndex: 0);
+            return;
+        }
+
+        // 1.5) 组合键（Shift+LM 等）：短按且修饰键按住 → Chord，不参与 Combo 链计数。
+        if (InputEntryChordResolver.TryResolveModifierAtTrigger(_owner, slot, out var chordModifier))
+        {
+            st.ComboIndex = 0;
+            st.LastTapReleaseTime = now;
+            EnqueueSemantic(slot, now, InputSemanticType.Chord, hold, comboIndex: 0, modifierSlot: chordModifier);
+            SkillRouteDebug.Log(_owner, SkillRouteDebug.CatSemantic,
+                $"ENQUEUE Chord slot={slot} modifier={chordModifier} hold={hold:F2}s");
             return;
         }
 
@@ -232,6 +245,7 @@ public sealed class InputSemanticResolver
             EnqueueSemantic(slot, now, InputSemanticType.Directional, holdSeconds, comboIndex: 0,
                 directionAxis: moveBuffered, moveBuffered: moveBuffered, moveBufferValid: true);
             var chord = InputChordResolver.Resolve(moveBuffered);
+            DodgeChord8Probe.LogSemanticBranch(slot, InputSemanticType.Directional, moveBuffered, true, moveBuffered);
             SkillRouteDebug.LogDodge4(_owner, "Semantic",
                 $"ENQUEUE Directional slot={slot} axis={moveBuffered} chord={chord} hold={holdSeconds:F2}s bufferValid={moveBufferValid}");
             return;
@@ -256,8 +270,11 @@ public sealed class InputSemanticResolver
             detail = "Combo1→Combo2 需 Combo1 末段自然结束后再按";
         }
 
-        TryApplyComboOutcome(slot, now, holdSeconds, ref st, outcome, semantic, newComboIdx, detail,
-            moveBuffered, moveBufferValid);
+        if (TryApplyComboOutcome(slot, now, holdSeconds, ref st, outcome, semantic, newComboIdx, detail,
+                moveBuffered, moveBufferValid))
+        {
+            DodgeChord8Probe.LogSemanticBranch(slot, semantic, moveBuffered, moveBufferValid, default);
+        }
     }
 
     /// <summary>
@@ -472,16 +489,25 @@ public sealed class InputSemanticResolver
     // ─── 内部：入队带语义的 Intent ───
 
     void EnqueueSemantic(SkillEntrySlot slot, float now, InputSemanticType semantic, float hold, int comboIndex,
-        Vector2 directionAxis = default, Vector2 moveBuffered = default, bool moveBufferValid = false)
+        Vector2 directionAxis = default, Vector2 moveBuffered = default, bool moveBufferValid = false,
+        SkillEntrySlot modifierSlot = SkillEntrySlot.Any)
     {
         if (_owner == null) return;
+
+        if (semantic == InputSemanticType.Directional)
+        {
+            _owner.CommitDirectionalInputContext();
+        }
+
         var intent = SkillEntryIntentFactory.ForEntryWithSemantic(
             slot, now, semantic,
             holdSeconds: hold,
             comboIndex: comboIndex,
             directionAxis: directionAxis,
             moveBuffered: moveBuffered,
-            moveBufferValid: moveBufferValid);
+            moveBufferValid: moveBufferValid,
+            modifierSlot: modifierSlot);
+        InputActionProbe.LogSemanticDispatched(_owner, slot.ToString(), semantic.ToString(), comboIndex, hold);
         _owner.EnqueueGameplayIntent(intent);
     }
 }

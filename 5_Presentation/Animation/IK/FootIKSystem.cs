@@ -1,51 +1,57 @@
 using UnityEngine;
 
+/// <summary>
+/// è¿è¡Œæ—¶è„šéƒ¨ IK â€”â€” å¤ç”¨ <see cref="FootIKKernel"/>ï¼ŒEditor é¢„è§ˆä¹Ÿèµ°åŒä¸€å¥—ï¼ˆè§ EditorFootIKï¼‰ã€‚
+///
+/// 204.x é‡æ„ï¼šæ—§ç‰ˆç”¨ OnAnimatorIK + SetIKPositionï¼ŒEditor AnimationMode ä¸‹å®Œå…¨ä¸è§¦å‘ï¼›
+/// æ”¹ç”¨ LateUpdate ç›´æ¥æ“ä½œ boneï¼ˆHips æŠ¬å‡ + åŒè„šæ—‹è½¬è´´åœ°ï¼‰ï¼ŒRuntime / Editor è¡Œä¸ºä¸€è‡´ã€‚
+/// </summary>
 [RequireComponent(typeof(Animator))]
-public class FootIKSystem : MonoBehaviour {
-    private Animator anim;
+public sealed class FootIKSystem : MonoBehaviour
+{
+    [Header("IK å‚æ•°")]
+    [Tooltip("åœ°é¢æ‰€åœ¨çš„ Layerã€‚")]
+    [SerializeField] LayerMask groundLayer = ~0;
 
-    [Header("IK ÉèÖÃ")]
-    [Tooltip("Ö¸¶¨ÄÄĞ©²ãÊÇµØÃæ")]
-    public LayerMask groundLayer;
-    [Range(0, 1)] public float ikWeight = 1f;
-    [Tooltip("½Åµ×µ½µØÃæµÄÎ¢µ÷Æ«ÒÆÁ¿")]
-    public float footOffset = 0.05f;
+    [Range(0f, 1f)]
+    [Tooltip("IK å¼ºåº¦ï¼š0 å…³é—­ã€1 å…¨åŠ›è´´åœ°ã€‚")]
+    [SerializeField] float ikWeight = 1f;
 
-    void Start() {
-        anim = GetComponent<Animator>();
+    [Tooltip("è„šåº•åˆ°åœ°é¢çš„å¾®å°æŠ¬é«˜ï¼ˆé˜²ç©¿æ¨¡ï¼‰ã€‚")]
+    [SerializeField] float footOffset = 0.05f;
+
+    [Tooltip("ä»è„šå°–å¾€ä¸Šå¤šå°‘ç±³å¼€å§‹ raycastã€‚")]
+    [SerializeField] float upRaycastHeight = 0.5f;
+
+    [Tooltip("Raycast å‘ä¸‹æ€»è·ç¦»ã€‚")]
+    [SerializeField] float downRaycastDistance = 1.2f;
+
+    [Tooltip("æ˜¯å¦æ—‹è½¬è„šä»¥è´´åˆåœ°é¢æ³•çº¿ã€‚")]
+    [SerializeField] bool applyFootRotation = true;
+
+    public LayerMask GroundLayer => groundLayer;
+    public float IkWeight => ikWeight;
+    public float FootOffset => footOffset;
+    public float UpRaycastHeight => upRaycastHeight;
+    public float DownRaycastDistance => downRaycastDistance;
+    public bool ApplyFootRotation => applyFootRotation;
+
+    Animator _anim;
+
+    public FootIKKernel.Settings ResolveSettings() => new FootIKKernel.Settings(
+        groundLayer: groundLayer,
+        footOffset: footOffset,
+        upHeight: upRaycastHeight,
+        downDist: downRaycastDistance,
+        weight: ikWeight,
+        applyRotation: applyFootRotation);
+
+    void Awake() => _anim = GetComponent<Animator>();
+
+    void LateUpdate()
+    {
+        if (_anim == null) return;
+        if (!FootIKKernel.TryResolveHumanoidFeet(_anim, out var pelvis, out var leftFoot, out var rightFoot)) return;
+        FootIKKernel.Apply(pelvis, leftFoot, rightFoot, ResolveSettings());
     }
-
-    // µ± Animator ¿ªÆôÁË IK Pass ºó£¬Ã¿Ò»Ö¡»á×Ô¶¯µ÷ÓÃ´Ë·½·¨
-    void OnAnimatorIK(int layerIndex) {
-        if (anim == null) return;
-
-        // 1. ÉèÖÃ×óÓÒ½ÅµÄ IK È¨ÖØ (1±íÊ¾ÍêÈ«ÓÉ´úÂë¿ØÖÆ½ÅµÄÎ»ÖÃ)
-        anim.SetIKPositionWeight(AvatarIKGoal.LeftFoot, ikWeight);
-        anim.SetIKRotationWeight(AvatarIKGoal.LeftFoot, ikWeight);
-        anim.SetIKPositionWeight(AvatarIKGoal.RightFoot, ikWeight);
-        anim.SetIKRotationWeight(AvatarIKGoal.RightFoot, ikWeight);
-
-        // 2. ·Ö±ğµ÷Õû×óÓÒ½Å
-        AdjustFootTarget(AvatarIKGoal.LeftFoot);
-        AdjustFootTarget(AvatarIKGoal.RightFoot);
-    }
-
-    private void AdjustFootTarget(AvatarIKGoal foot) {
-        // »ñÈ¡¶¯»­µ±Ç°Ö¡Ô­±¾Ó¦¸ÃÔÚµÄ½Å²¿Î»ÖÃ
-        Vector3 footPos = anim.GetIKPosition(foot);
-        RaycastHit hit;
-
-        // ´Ó½Å²¿ÉÏ·½0.5Ã×´¦£¬ÏòÏÂ·¢ÉäÒ»Ìõ³¤¶ÈÎª1Ã×µÄÉäÏß¼ì²âµØÃæ
-        if (Physics.Raycast(footPos + Vector3.up * 0.5f, Vector3.down, out hit, 1f, groundLayer)) {
-            // ½«½ÅµÄÎ»ÖÃÇ¿ĞĞÉèÖÃÔÚÉäÏß»÷ÖĞµÄµØÃæÉÏ£¬²¢¼ÓÉÏÆ«ÒÆÁ¿·ÀÖ¹½ÅÃæÏİÈë
-            Vector3 newFootPos = hit.point;
-            newFootPos.y += footOffset;
-            anim.SetIKPosition(foot, newFootPos);
-
-            // ¡¾½ø½×¡¿Èç¹ûĞèÒª½Åõ×¸ù¾İµØĞÎÇãĞ±£¨±ÈÈçÕ¾ÔÚĞ±ÆÂÉÏ£©£º
-            Quaternion footRotation = Quaternion.LookRotation(transform.forward, hit.normal);
-            anim.SetIKRotation(foot, footRotation);
-        }
-    }
-
 }

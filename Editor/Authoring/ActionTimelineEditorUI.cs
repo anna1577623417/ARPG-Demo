@@ -23,6 +23,98 @@ internal static class ActionTimelineEditorUI
     const string PrefTimelineScrollX = "ActionTimelineEditor.TimelineScrollX";
     const string PrefTimelineScrollY = "ActionTimelineEditor.TimelineScrollY";
     const string PrefPropertiesScrollY = "ActionTimelineEditor.PropertiesScrollY";
+    const string PrefTrackVisibilityMask = "ActionTimelineEditor.TrackVisibilityMask";
+    const string PrefGizmoAnchorGlobalId = "ActionTimelineEditor.GizmoAnchorGlobalId";
+
+    public static void LightSectionSeparator(string title)
+    {
+        GUILayout.Space(2f);
+        EditorGUILayout.LabelField($"─── {title} ───", EditorStyles.miniBoldLabel);
+        GUILayout.Space(2f);
+    }
+
+    public static int GetResponsiveColumnCount(float width)
+    {
+        if (width >= 600f)
+        {
+            return 4;
+        }
+
+        if (width >= 400f)
+        {
+            return 2;
+        }
+
+        return 1;
+    }
+
+    public static void CompactRowFloat(SerializedProperty[] props, GUIContent[] labels, int columns)
+    {
+        if (props == null || labels == null || props.Length == 0)
+        {
+            return;
+        }
+
+        columns = Mathf.Max(1, columns);
+        var index = 0;
+        while (index < props.Length)
+        {
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                var rowCount = Mathf.Min(columns, props.Length - index);
+                for (var i = 0; i < rowCount; i++)
+                {
+                    using (new EditorGUILayout.VerticalScope(GUILayout.MinWidth(72f)))
+                    {
+                        EditorGUILayout.LabelField(labels[index + i], EditorStyles.miniLabel);
+                        EditorGUILayout.PropertyField(props[index + i], GUIContent.none);
+                    }
+                }
+            }
+
+            index += columns;
+        }
+    }
+
+    public static PreviewVisibilityMask LoadPreviewVisibilityMask() =>
+        ActionTimelinePreviewVisibility.Load();
+
+    public static void SavePreviewVisibilityMask(PreviewVisibilityMask mask)
+    {
+        ActionTimelinePreviewVisibility.Save(mask);
+    }
+
+    public static void SaveGizmoAnchor(Transform anchor)
+    {
+        if (anchor == null)
+        {
+            EditorPrefs.DeleteKey(PrefGizmoAnchorGlobalId);
+            return;
+        }
+
+        var gid = GlobalObjectId.GetGlobalObjectIdSlow(anchor);
+        EditorPrefs.SetString(PrefGizmoAnchorGlobalId, gid.ToString());
+    }
+
+    public static Transform LoadGizmoAnchor(Transform serializedFallback = null)
+    {
+        var idStr = EditorPrefs.GetString(PrefGizmoAnchorGlobalId, string.Empty);
+        if (!string.IsNullOrEmpty(idStr) && GlobalObjectId.TryParse(idStr, out var gid))
+        {
+            var obj = GlobalObjectId.GlobalObjectIdentifierToObjectSlow(gid);
+            if (obj is Transform t)
+            {
+                return t;
+            }
+
+            if (obj is GameObject go)
+            {
+                return go.transform;
+            }
+        }
+
+        return serializedFallback;
+    }
 
     /// <summary>属性栏绘制中为 true；PropertyDrawer 可省略 HelpBox、缩短行高。</summary>
     public static bool CompactPropertyContext { get; set; }
@@ -70,6 +162,17 @@ internal static class ActionTimelineEditorUI
         EditorPrefs.SetFloat(PrefPropertiesScrollY, y);
     }
 
+    public static ActionTimelinePreviewTrackVisibility LoadTrackVisibility()
+    {
+        var mask = EditorPrefs.GetInt(PrefTrackVisibilityMask, ActionTimelinePreviewTrackVisibility.DefaultAllOn.ToPrefsMask());
+        return ActionTimelinePreviewTrackVisibility.FromPrefsMask(mask);
+    }
+
+    public static void SaveTrackVisibility(in ActionTimelinePreviewTrackVisibility visibility)
+    {
+        EditorPrefs.SetInt(PrefTrackVisibilityMask, visibility.ToPrefsMask());
+    }
+
     public static float ClampPropertyWidth(float desired, float totalWidth, float horizontalPadding = 8f)
     {
         var max = Mathf.Max(
@@ -99,6 +202,55 @@ internal static class ActionTimelineEditorUI
     public static bool Foldout(bool state, string title)
     {
         return EditorGUILayout.Foldout(state, title, true, EditorStyles.foldoutHeader);
+    }
+
+    // ═══ 172.2 W0/W1：垂直字段布局 ═══
+    // label 顶置 + 控件全宽 + DelayedFloat 输入；解决中文 label 截断问题。
+
+    /// <summary>字段间距（块与块之间）。</summary>
+    public const float VerticalFieldSpacing = 4f;
+    /// <summary>label 与控件之间的间距。</summary>
+    public const float LabelToControlSpacing = 1f;
+
+    /// <summary>垂直布局：label 顶置 + 控件全宽。适合所有需要自适应宽度的字段。</summary>
+    public static void VerticalField(SerializedProperty prop, GUIContent label)
+    {
+        if (prop == null) return;
+        EditorGUILayout.LabelField(label, EditorStyles.miniLabel);
+        if (LabelToControlSpacing > 0f) GUILayout.Space(LabelToControlSpacing);
+        EditorGUILayout.PropertyField(prop, GUIContent.none, true);
+        GUILayout.Space(VerticalFieldSpacing);
+    }
+
+    /// <summary>垂直布局 + DelayedFloatField（Enter 提交，拖时不触发回调）。</summary>
+    public static float VerticalDelayedFloatField(GUIContent label, float current)
+    {
+        EditorGUILayout.LabelField(label, EditorStyles.miniLabel);
+        if (LabelToControlSpacing > 0f) GUILayout.Space(LabelToControlSpacing);
+        var next = EditorGUILayout.DelayedFloatField(GUIContent.none, current);
+        GUILayout.Space(VerticalFieldSpacing);
+        return next;
+    }
+
+    /// <summary>虚线分组分隔，替代 Foldout 的视觉重量；默认展开。</summary>
+    public static void SectionSeparator(string title)
+    {
+        GUILayout.Space(2f);
+        using (new EditorGUILayout.HorizontalScope())
+        {
+            DrawHorizontalLine(1f);
+            GUILayout.Space(4f);
+            EditorGUILayout.LabelField(title, EditorStyles.miniBoldLabel, GUILayout.Width(GUI.skin.label.CalcSize(new GUIContent(title)).x + 8f));
+            GUILayout.Space(4f);
+            DrawHorizontalLine(1f);
+        }
+        GUILayout.Space(2f);
+    }
+
+    static void DrawHorizontalLine(float thickness)
+    {
+        var rect = EditorGUILayout.GetControlRect(false, thickness, GUILayout.ExpandWidth(true));
+        EditorGUI.DrawRect(rect, new Color(0.35f, 0.35f, 0.35f, 1f));
     }
 
     /// <summary>属性栏 40% Label / 60% Control，禁止横向溢出。</summary>

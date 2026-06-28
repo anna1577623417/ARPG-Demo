@@ -42,6 +42,9 @@ public sealed class PlayerLocomotionState : PlayerState
     private int m_inputEdgeSuppressFrames;
     private const int EdgeSuppressFramesAfterEnd = 3;
 
+    // 182.1 W4：press→release 按住时长（Tail Segment Tap 判定）
+    private float m_movePressStartTime = -1f;
+
     public PlayerLocomotionState(ActionCategory allowedCategories, in TurnSettings turnSettings)
     {
         m_allowedCategories = allowedCategories;
@@ -79,7 +82,7 @@ public sealed class PlayerLocomotionState : PlayerState
     protected override void OnEnter(Player player)
     {
         RefreshLocomotionTags(player);
-        m_turnResolver.ClearLock();
+        m_turnResolver.ClearLock("locomotion_enter");
         player.SetTurnInfo(default);
         player.ClearGraphContextAction("enter-locomotion");
         CombatGraphFinisherDiagnostics.EndTrace(player, "Locomotion");
@@ -134,7 +137,7 @@ public sealed class PlayerLocomotionState : PlayerState
     protected override void OnExit(Player player)
     {
         // 离开 Locomotion 必须清除转身锁定，否则下次回到 Locomotion 第一帧仍会处于"locked"状态。
-        m_turnResolver.ClearLock();
+        m_turnResolver.ClearLock("locomotion_exit");
         player.SetTurnInfo(default);
     }
 
@@ -154,26 +157,41 @@ public sealed class PlayerLocomotionState : PlayerState
 
         RefreshLocomotionTags(player);
 
-        // ─── 162.1：转身意图先于旋转采样（单轨 TurnResolver + Tuning 阈值）───
-        var turnSettings = player.States.LocomotionTurnSettings;
-        var tuning = player.LocomotionProfile != null ? player.LocomotionProfile.Tuning : null;
-        var turnInfo = m_turnResolver.Tick(player, Time.deltaTime, in turnSettings, tuning);
-        player.SetTurnInfo(in turnInfo);
-        LogTurnFireDedupIfNeeded(player, in turnInfo);
-
-        if (turnSettings.DrawTurnDebugRays && player.HasMovementIntent)
+        if (player.ConsumeTurnPresentationInterruptRequest())
         {
-            var o = player.transform.position + Vector3.up * 0.08f;
-            var f = Vector3.ProjectOnPlane(player.transform.forward, Vector3.up);
-            var intent = Vector3.ProjectOnPlane(player.MovementIntent, Vector3.up);
-            if (f.sqrMagnitude > 1e-8f)
-            {
-                Debug.DrawRay(o, f.normalized * 1.25f, Color.cyan);
-            }
+            m_turnResolver.ClearLock("interrupt");
+            player.SetTurnInfo(default);
+        }
 
-            if (intent.sqrMagnitude > 1e-8f)
+        // ─── 173.1：Ability 输入上下文窗口内冻结 Locomotion 转向 ───
+        if (player.ShouldSuppressLocomotionRotation())
+        {
+            m_turnResolver.ClearLock("ability_context");
+            player.SetTurnInfo(default);
+        }
+        else
+        {
+            // ─── 162.1：转身意图先于旋转采样（单轨 TurnResolver + Tuning 阈值）───
+            var turnSettings = player.States.LocomotionTurnSettings;
+            var tuning = player.LocomotionProfile != null ? player.LocomotionProfile.Tuning : null;
+            var turnInfo = m_turnResolver.Tick(player, Time.deltaTime, in turnSettings, tuning);
+            player.SetTurnInfo(in turnInfo);
+            LogTurnFireDedupIfNeeded(player, in turnInfo);
+
+            if (turnSettings.DrawTurnDebugRays && player.HasMovementIntent)
             {
-                Debug.DrawRay(o, intent.normalized * 1.25f, Color.yellow);
+                var o = player.transform.position + Vector3.up * 0.08f;
+                var f = Vector3.ProjectOnPlane(player.transform.forward, Vector3.up);
+                var intent = Vector3.ProjectOnPlane(player.MovementIntent, Vector3.up);
+                if (f.sqrMagnitude > 1e-8f)
+                {
+                    Debug.DrawRay(o, f.normalized * 1.25f, Color.cyan);
+                }
+
+                if (intent.sqrMagnitude > 1e-8f)
+                {
+                    Debug.DrawRay(o, intent.normalized * 1.25f, Color.yellow);
+                }
             }
         }
 
@@ -188,6 +206,7 @@ public sealed class PlayerLocomotionState : PlayerState
             return;
         }
 
+        // 198.x — 167.1 VelocityDecay Tick 已删除；182.1 StopStrategy 在 Action 退出时唯一权威处理速度
         if (player.HasMovementIntent)
         {
             player.MoveByLocomotionIntent(1f, player.WantsRun);
@@ -198,7 +217,7 @@ public sealed class PlayerLocomotionState : PlayerState
         }
 
         player.ApplyMotor(MotorSolveContext.Locomotion);
-        LogLocomotionMoveTrace(player, in turnInfo);
+        LogLocomotionMoveTrace(player, player.CurrentTurnInfo);
     }
 
     void LogLocomotionMoveTrace(Player player, in TurnInfo turnInfo)
@@ -250,6 +269,11 @@ public sealed class PlayerLocomotionState : PlayerState
         PublishContinuousLocomotionIfNeeded(player, in decision);
 
         var wasHadInput = m_lastHadInput;
+        if (!wasHadInput && hasInput)
+        {
+            m_movePressStartTime = Time.time;
+        }
+
         m_lastHadInput = hasInput;
         if (hasInput)
         {
@@ -276,12 +300,14 @@ public sealed class PlayerLocomotionState : PlayerState
             return false;
         }
 
-        player.ArmPendingAction(GameplayIntentKind.Move, decision.DiscreteAction);
+        // 198.x — Tail Segment 退役；统一从 0 进入。短按手感由 RecoveryMoveLockSeconds 软屏蔽承担。
+        player.ArmPendingAction(GameplayIntentKind.Move, decision.DiscreteAction, 0f);
         LocomotionDebug.Log(
             player,
             LocomotionDebug.CatResolve,
             $"FIRE state={decision.ResolvedState} action={decision.DiscreteAction.name} (edge-triggered)");
 
+        player.InterruptTurnPresentation(decision.ResolvedState.ToString());
         player.States.Change<PlayerActionState>();
         return true;
     }
@@ -361,7 +387,7 @@ public sealed class PlayerLocomotionState : PlayerState
             m_inputEdgeSuppressFrames--;
             m_lastHadInput = hasInput;
             m_lastWantsRun = player.WantsRun;
-            return hasInput ? LocomotionStateId.Move : LocomotionStateId.Idle;
+            return hasInput ? LocomotionStateId.Walk : LocomotionStateId.Idle;
         }
 
         // 1) release 边沿 → WalkEnd / RunEnd
@@ -388,7 +414,7 @@ public sealed class PlayerLocomotionState : PlayerState
         // 3) LockedOn + 持续输入 → StrafeLocomotion + 8 向
         if (player.IsLockedOn && hasInput)
         {
-            strafeDir = ComputeStrafeDirection8(player.MovementIntent, player.transform.forward);
+            strafeDir = ComputeStrafeDirection8(player.MovementIntent, player.LogicForward);
             return LocomotionStateId.StrafeLocomotion;
         }
 
@@ -461,7 +487,7 @@ public sealed class PlayerLocomotionState : PlayerState
     private static float ComputeTurnAngleDeg(Player player)
     {
         if (!player.HasMovementIntent) return 0f;
-        var fwd = Vector3.ProjectOnPlane(player.transform.forward, Vector3.up);
+        var fwd = Vector3.ProjectOnPlane(player.LogicForward, Vector3.up);
         var intent = Vector3.ProjectOnPlane(player.MovementIntent, Vector3.up);
         if (fwd.sqrMagnitude < 1e-6f || intent.sqrMagnitude < 1e-6f) return 0f;
         return Vector3.Angle(fwd.normalized, intent.normalized);

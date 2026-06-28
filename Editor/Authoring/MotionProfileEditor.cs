@@ -43,7 +43,7 @@ public sealed partial class MotionProfileEditor : Editor
         "Gravity",
         "GroundConstraint",
         "yAxisV2Configured",
-        "legacyYPolicy",
+        "legacyYPolicyRaw",
         "AnimSpeedMode",
         "SpeedOverTime",
         "BurstDurationSeconds",
@@ -51,17 +51,131 @@ public sealed partial class MotionProfileEditor : Editor
         "UsePlanarVelocityShape",
         "PlanarVelocityMultiplier",
         "PlanarPeakSpeed",
+        // 174.2 V2 七小节 —— 各自折叠组渲染
+        nameof(MotionProfileSO.V2GravityWeightMode),
+        nameof(MotionProfileSO.V2GravityWeight),
+        nameof(MotionProfileSO.V2RotationMode),
+        nameof(MotionProfileSO.V2YawOverTime),
+        nameof(MotionProfileSO.V2FacingInputWeight),
+        nameof(MotionProfileSO.V2MoveInputWeight),
+        nameof(MotionProfileSO.V2TargetTrackingWeight),
+        nameof(MotionProfileSO.V2RootMotionBlend),
+        nameof(MotionProfileSO.V2HitstopMultiplier),
+        nameof(MotionProfileSO.V2YStrategy),
     };
+
+    static bool s_v2PhysicsFoldout;
+    static bool s_v2RotationFoldout;
+    static bool s_v2ControlFoldout;
+    static bool s_v2TrackingFoldout;
+    static bool s_v2RootMotionBlendFoldout;
+    static bool s_v2HitstopFoldout;
+    static bool s_v2StrategyFoldout;
+
+    void OnDisable()
+    {
+        // 204.1 W1：Inspector 失焦 / 切换 / 销毁时兜底清空 Scene 折线，避免 sticky
+        if (MotionPathGizmoDrawer.IsPreviewing(target as MotionProfileSO))
+        {
+            MotionPathGizmoDrawer.ClearPreviewProfile();
+        }
+    }
+
+    // ───────────────────────────────────────────────────────────────────
+    // 204.1 W8：MF → Action 反向导航（与 Action → MF 的"传递 MainClip"对偶）
+    // ───────────────────────────────────────────────────────────────────
+
+    ActionDataSO[] _referencingActions;
+    MotionProfileSO _referenceCachedFor;
+
+    void DrawActionNavigationSection(MotionProfileSO profile)
+    {
+        EnsureReferencingActionsCache(profile);
+
+        using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
+        {
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                EditorGUILayout.LabelField(
+                    $"被引用：{_referencingActions.Length} 个 Action",
+                    EditorStyles.boldLabel);
+                if (GUILayout.Button("刷新", EditorStyles.miniButton, GUILayout.Width(48f)))
+                {
+                    _referenceCachedFor = null;
+                    EnsureReferencingActionsCache(profile);
+                }
+            }
+
+            if (_referencingActions.Length == 0)
+            {
+                EditorGUILayout.HelpBox(
+                    "工程中没有 Action 引用此 MotionProfile。",
+                    MessageType.Info);
+            }
+            else
+            {
+                foreach (var action in _referencingActions)
+                {
+                    if (action == null) continue;
+                    using (new EditorGUILayout.HorizontalScope())
+                    {
+                        using (new EditorGUI.DisabledScope(true))
+                        {
+                            EditorGUILayout.ObjectField(action, typeof(ActionDataSO), false);
+                        }
+
+                        if (GUILayout.Button("跳转", EditorStyles.miniButton, GUILayout.Width(50f)))
+                        {
+                            Selection.activeObject = action;
+                            EditorGUIUtility.PingObject(action);
+                        }
+                    }
+                }
+            }
+        }
+
+        EditorGUILayout.Space(4f);
+    }
+
+    void EnsureReferencingActionsCache(MotionProfileSO profile)
+    {
+        if (_referenceCachedFor == profile && _referencingActions != null) return;
+        _referenceCachedFor = profile;
+        _referencingActions = FindActionsReferencing(profile);
+    }
+
+    static ActionDataSO[] FindActionsReferencing(MotionProfileSO profile)
+    {
+        if (profile == null) return System.Array.Empty<ActionDataSO>();
+
+        var guids = AssetDatabase.FindAssets("t:ActionDataSO");
+        var list = new System.Collections.Generic.List<ActionDataSO>(8);
+        for (var i = 0; i < guids.Length; i++)
+        {
+            var path = AssetDatabase.GUIDToAssetPath(guids[i]);
+            var action = AssetDatabase.LoadAssetAtPath<ActionDataSO>(path);
+            if (action != null && action.MotionProfile == profile)
+            {
+                list.Add(action);
+            }
+        }
+        return list.ToArray();
+    }
 
     public override void OnInspectorGUI()
     {
         var profile = (MotionProfileSO)target;
         serializedObject.Update();
 
+        // 204.1 W8：反向跳转 — Action ⇄ MotionProfile 双向导航
+        DrawActionNavigationSection(profile);
+
         EditorGUILayout.HelpBox(
             "【三轴位置曲线】局部空间：Evaluate(t)×Scale=米。\n" +
             "逻辑时长 / Clip 对齐 → Action Time Authority；本页 SpeedOverTime 仅作 motionT 局部节奏（先慢后快等）。",
             MessageType.Info);
+
+        DrawStopAuthoringSection(profile);
 
         if (!profile.UsesAxisCurves && !profile.UsesGroundTargetedLanding)
         {
@@ -79,12 +193,17 @@ public sealed partial class MotionProfileEditor : Editor
         }
 
         DrawPropertiesExcluding(serializedObject, s_excludeCustom);
+        DrawV2Sections(profile);
         DrawYAxisSection(profile);
         DrawLandingSettingsSection(profile);
         DrawAnimationSpeedSection(profile);
         DrawClipExtractSection(profile);
-        DrawManualCurveSection(profile);
+        using (new EditorGUI.DisabledScope(ShouldLockAxisCurvesForStopPreview(profile)))
+        {
+            DrawManualCurveSection(profile);
+        }
         MotionCurveSegmentPresetGUI.Draw(profile, serializedObject);
+        DrawV2CurveLibrarySection();
         DrawScenePreviewSection(profile);
         DrawWholeCurveGenerationSection(profile);
 
@@ -174,7 +293,8 @@ public sealed partial class MotionProfileEditor : Editor
         EditorGUILayout.PropertyField(serializedObject.FindProperty(nameof(MotionProfileSO.SpeedOverTime)));
         EditorGUILayout.HelpBox(
             "finalClipSpeed = Action.AnimSpeed × SpeedOverTime(motionT)。\n" +
-            "Constant 恒 1；Curve 按归一化 Motion 时间塑形段内节奏，不改变位移曲线采样时刻。",
+            "Constant 恒 1；Curve 按归一化 Motion 时间塑形段内节奏。\n" +
+            "【171.7】SpeedOverTime 仅当绑定 Action 的 ClipAnimSpeedMode=Free 时参与运行时；AutoFitDuration 下忽略。",
             MessageType.None);
         EditorGUILayout.EndFoldoutHeaderGroup();
     }

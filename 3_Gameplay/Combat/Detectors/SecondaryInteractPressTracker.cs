@@ -11,13 +11,11 @@ public sealed class SecondaryInteractPressTracker
     const SkillEntrySlot Slot = SkillEntrySlot.RM;
 
     bool _lastHeld;
-    bool _sessionOpen;
     float _pressStartedAt;
 
     public void SyncInitialHeldState(bool held)
     {
         _lastHeld = held;
-        if (!held) _sessionOpen = false;
     }
 
     public void Tick(float time, bool held, Player player)
@@ -30,7 +28,6 @@ public sealed class SecondaryInteractPressTracker
 
         if (rose)
         {
-            _sessionOpen = true;
             _pressStartedAt = time;
             player.InputSemantic.OnPressEdge(Slot, time);
         }
@@ -43,7 +40,6 @@ public sealed class SecondaryInteractPressTracker
         if (fell)
         {
             player.InputSemantic.OnReleaseEdge(Slot, time);
-            _sessionOpen = false;
         }
     }
 }

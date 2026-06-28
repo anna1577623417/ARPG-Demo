@@ -119,6 +119,16 @@ internal sealed class ActionWindowDrawer : PropertyDrawer
         EditorGUI.PropertyField(new Rect(x, y, width, catH), pCategories, new GUIContent("允许类别"));
         y += catH + space;
 
+        if (!ActionTimelineEditorUI.CompactPropertyContext)
+        {
+            const float helpH = 36f;
+            EditorGUI.HelpBox(
+                new Rect(x, y, width, helpH),
+                "IdleFallback 类不会被本字段消费（FSM 兜底不走打断路径）。WASD 打断勾 Movement / Locomotion。",
+                MessageType.Info);
+            y += helpH + space;
+        }
+
         var pMinPri = property.FindPropertyRelative(nameof(ActionWindow.MinIncomingPriority));
         var half = (width - 8f) * 0.5f;
         EditorGUI.PropertyField(new Rect(x, y, half, line), pMinPri, new GUIContent("最低优先级"));

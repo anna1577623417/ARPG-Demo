@@ -149,6 +149,7 @@ public sealed class SkillEntryRouteResolveTests
         SetPrivateField(group, "left", left);
         SetPrivateField(group, "right", right);
         SetPrivateField(group, "fallbackRoute", fwd);
+        SetPrivateField(group, "useFallbackOnNeutral", false);
         SetPrivateField(group, "routes", new[] { fwd, back, left, right });
 
         var entry = ScriptableObject.CreateInstance<SkillEntryDefinition>();
@@ -168,6 +169,76 @@ public sealed class SkillEntryRouteResolveTests
         Assert.AreEqual(back, ResolveDirectional(service, Vector2.down));
         Assert.AreEqual(left, ResolveDirectional(service, Vector2.left));
         Assert.AreEqual(right, ResolveDirectional(service, Vector2.right));
+    }
+
+    [Test]
+    public void Rebuild_RegistersMotionForwardRoute_WhenRoutesArrayIsStale()
+    {
+        var fwd = CreateNormalRoute("fwd");
+        var motion = CreateNormalRoute("motion");
+
+        var group = ScriptableObject.CreateInstance<SkillGroupDefinition>();
+        SetPrivateField(group, "forward", fwd);
+        SetPrivateField(group, "fallbackRoute", fwd);
+        SetPrivateField(group, "motionForwardRoute", motion);
+        SetPrivateField(group, "routes", new[] { fwd });
+
+        var entry = ScriptableObject.CreateInstance<SkillEntryDefinition>();
+        SetPrivateField(entry, "slot", SkillEntrySlot.Space);
+        SetPrivateField(entry, "primaryUnit", group);
+
+        var loadout = ScriptableObject.CreateInstance<SkillEntryLoadoutSO>();
+        var bindings = new SkillEntryLoadoutSO.EntryBinding[1];
+        SetPrivateField(ref bindings[0], "slot", SkillEntrySlot.Space);
+        SetPrivateField(ref bindings[0], "entry", entry);
+        SetPrivateField(loadout, "bindings", bindings);
+
+        var service = new SkillEntryService(owner: null);
+        service.Rebuild(loadout);
+
+        var runtimesField = typeof(SkillEntryService).GetField(
+            "_routeRuntimes",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.IsNotNull(runtimesField);
+
+        var runtimes = runtimesField.GetValue(service) as System.Collections.IDictionary;
+        Assert.IsNotNull(runtimes);
+        Assert.IsTrue(runtimes.Contains(motion));
+    }
+
+    [Test]
+    public void NeutralIntent_UseFallbackOnNeutral_PicksFallbackRoute()
+    {
+        var fwd = CreateNormalRoute("fwd");
+        var fallback = CreateNormalRoute("step-back");
+
+        var group = ScriptableObject.CreateInstance<SkillGroupDefinition>();
+        SetPrivateField(group, "forward", fwd);
+        SetPrivateField(group, "fallbackRoute", fallback);
+        SetPrivateField(group, "useFallbackOnNeutral", true);
+        SetPrivateField(group, "routes", new[] { fwd, fallback });
+
+        var entry = ScriptableObject.CreateInstance<SkillEntryDefinition>();
+        SetPrivateField(entry, "slot", SkillEntrySlot.Space);
+        SetPrivateField(entry, "primaryUnit", group);
+
+        var loadout = ScriptableObject.CreateInstance<SkillEntryLoadoutSO>();
+        var bindings = new SkillEntryLoadoutSO.EntryBinding[1];
+        SetPrivateField(ref bindings[0], "slot", SkillEntrySlot.Space);
+        SetPrivateField(ref bindings[0], "entry", entry);
+        SetPrivateField(loadout, "bindings", bindings);
+
+        var service = new SkillEntryService(owner: null);
+        service.Rebuild(loadout);
+
+        var intent = BuildDirectionalIntent(SkillEntrySlot.Space, Vector2.zero);
+        InputSnapshot snap = default;
+        snap.TriggerSlot = SkillEntrySlot.Space;
+        snap.MoveBuffered = Vector2.zero;
+        var rt = service.TryResolveForIntent(in intent, in snap, now: 1f);
+
+        Assert.IsNotNull(rt);
+        Assert.AreEqual(fallback, rt.Definition);
     }
 
     [Test]

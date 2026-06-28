@@ -36,6 +36,16 @@ public struct ActionWindow
     [Tooltip("该窗口是否允许同动作自打断（同动作重入）。")]
     public bool AllowSelfInterrupt;
 
+    [Header("Rotation Input (198.3)")]
+    [Tooltip("198.3 — 此窗口内是否允许玩家方向输入改变 LogicForward（逻辑转向）。\n" +
+             "默认 false → 动作期间玩家 WASD 不影响朝向。\n" +
+             "勾选后玩家在窗口时间段内按方向键可实时转向。")]
+    public bool AllowFacingInput;
+
+    [Tooltip("198.3 — 此窗口内是否允许玩家方向输入改变 PlanarVelocity（叠加移动）。\n" +
+             "仅在 MotionProfile V2.MoveInputWeight > 0 时与 Motion 位移叠加。")]
+    public bool AllowMoveInput;
+
     [SerializeField, HideInInspector]
     [Obsolete("137 终态：打断不看 AbilityMap；流转见 Loadout.AbilityMap + CombatFlow。")]
     public AbilitySemantic incomingAbilityGate;

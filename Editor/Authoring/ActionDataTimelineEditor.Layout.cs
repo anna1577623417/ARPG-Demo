@@ -36,6 +36,9 @@ public sealed partial class ActionDataTimelineEditor
                 }
 
                 DrawPreviewTimeRow();
+                DrawTimeAuthorityRow();
+                DrawStopInheritPhysicsDeductionSection();
+                DrawPreviewTimeMarkersSection();
 
                 var totalWidth = Mathf.Max(
                     position.width - edgePad * 2f - 4f,
@@ -100,7 +103,9 @@ public sealed partial class ActionDataTimelineEditor
             {
                 _so?.Update();
                 RefreshProperties();
+                ActionTimelineRootMotionSampler.InvalidateCache();
                 Repaint();
+                SceneView.RepaintAll();
             }
 
             if (GUILayout.Button(new GUIContent("预览", "Scene 预览与 Pose 采样"), EditorStyles.toolbarButton, GUILayout.Width(40f)))
@@ -108,6 +113,11 @@ public sealed partial class ActionDataTimelineEditor
                 SyncSceneBridge();
                 SceneView.RepaintAll();
                 Repaint();
+            }
+
+            if (GUILayout.Button(new GUIContent("SpaceInfo", "打开 SpaceInfo 子窗口"), EditorStyles.toolbarButton, GUILayout.Width(64f)))
+            {
+                ActionTimelineSpaceInfoWindow.OpenOrFocus();
             }
 
             GUILayout.FlexibleSpace();
@@ -124,44 +134,99 @@ public sealed partial class ActionDataTimelineEditor
 
     void DrawActionHeaderCompact()
     {
-        EditorGUILayout.PropertyField(_so.FindProperty(nameof(ActionDataSO.Category)));
-        EditorGUILayout.PropertyField(_so.FindProperty(nameof(ActionDataSO.MainClip)),
-            new GUIContent("Main Clip"));
-        using (new EditorGUILayout.HorizontalScope())
+        var cardWidth = Mathf.Max(position.width - ActionTimelineEditorUI.ColumnContentPadding * 2f, 320f);
+        var columns = ActionTimelineEditorUI.GetResponsiveColumnCount(cardWidth);
+
+        if (columns >= 2)
         {
-            EditorGUILayout.PropertyField(_so.FindProperty(nameof(ActionDataSO.Duration)),
-                new GUIContent("时长"));
-            EditorGUILayout.PropertyField(_so.FindProperty(nameof(ActionDataSO.InterruptPriority)),
-                new GUIContent("优先级"));
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                using (new EditorGUILayout.VerticalScope())
+                {
+                    EditorGUILayout.PropertyField(_so.FindProperty(nameof(ActionDataSO.Category)));
+                }
+
+                using (new EditorGUILayout.VerticalScope())
+                {
+                    EditorGUILayout.PropertyField(
+                        _so.FindProperty(nameof(ActionDataSO.MainClip)),
+                        new GUIContent("Main Clip"));
+                }
+            }
+        }
+        else
+        {
+            EditorGUILayout.PropertyField(_so.FindProperty(nameof(ActionDataSO.Category)));
+            EditorGUILayout.PropertyField(
+                _so.FindProperty(nameof(ActionDataSO.MainClip)),
+                new GUIContent("Main Clip"));
         }
 
-        using (new EditorGUILayout.HorizontalScope())
+        ActionTimelineEditorUI.CompactRowFloat(
+            new[]
+            {
+                _so.FindProperty(nameof(ActionDataSO.InterruptPriority)),
+                _so.FindProperty(nameof(ActionDataSO.InterruptStability)),
+                _so.FindProperty(nameof(ActionDataSO.AllowSelfInterrupt)),
+            },
+            new[]
+            {
+                new GUIContent("优先级"),
+                new GUIContent("强韧"),
+                new GUIContent("自打断"),
+            },
+            columns);
+    }
+
+    void DrawTimeAuthorityRow()
+    {
+        if (_action == null || _so == null)
         {
-            EditorGUILayout.PropertyField(_so.FindProperty(nameof(ActionDataSO.InterruptStability)),
-                new GUIContent("强韧"));
-            EditorGUILayout.PropertyField(_so.FindProperty(nameof(ActionDataSO.AllowSelfInterrupt)),
-                new GUIContent("自打断"));
+            return;
         }
+
+        if (_timeBinding == null)
+        {
+            _timeBinding = ActionTimeAuthorityBinding.Create(_so);
+        }
+
+        var width = position.width - ActionTimelineEditorUI.ColumnContentPadding * 2f - 4f;
+        _timeBinding?.DrawTimelineCompactRow(width);
     }
 
     void DrawPreviewTimeRow()
     {
+        ActionTimelineEditorUI.LightSectionSeparator("预览");
+        DrawPreviewPlaybackControls();
+
         using (new EditorGUILayout.HorizontalScope())
         {
-            _previewTime = EditorGUILayout.Slider(
-                new GUIContent("预览", "时间轴黄线；Scene 同步 Pose 与 Handles"),
-                _previewTime,
-                0f,
-                1f);
-
             _enablePosePreview = EditorGUILayout.ToggleLeft(
-                new GUIContent("Pose", "AnimationMode 采样 MainClip"),
+                new GUIContent("Pose", "AnimationMode 采样 MainClip Segment"),
                 _enablePosePreview,
                 GUILayout.Width(52f));
             _enableSceneOverlay = EditorGUILayout.ToggleLeft(
-                new GUIContent("Scene", "Handles 绘制 Hitbox/标记等"),
+                new GUIContent("Scene", "Handles 绘制 Hitbox/标记/Motion 轨迹等"),
                 _enableSceneOverlay,
                 GUILayout.Width(58f));
+        }
+
+        if (!_enablePosePreview)
+        {
+            _previewVisibilityMask &= ~PreviewVisibilityMask.Pose;
+        }
+        else
+        {
+            _previewVisibilityMask |= PreviewVisibilityMask.Pose;
+        }
+
+        DrawPreviewAnchorField();
+
+        if (_action != null && _action.MotionProfile == null && _motionPreviewMode == MotionPreviewMode.MotionDriven)
+        {
+            EditorGUILayout.HelpBox(
+                "未绑定 MotionProfile：Motion Driven 预览回退 Anchor 原点。请绑定 Profile 或使用 Overlay / Clip Root Motion。",
+                MessageType.Info);
         }
     }
 
@@ -191,6 +256,22 @@ public sealed partial class ActionDataTimelineEditor
             }
 
             GUILayout.Space(pad);
+        }
+    }
+
+    void DrawPreviewAnchorField()
+    {
+        EditorGUI.BeginChangeCheck();
+        _gizmoAnchorOverride = (Transform)EditorGUILayout.ObjectField(
+            new GUIContent("预览对象", "Scene Gizmo 锚点；为空时使用 Hierarchy 选中 Transform"),
+            _gizmoAnchorOverride,
+            typeof(Transform),
+            true);
+        if (EditorGUI.EndChangeCheck())
+        {
+            PersistGizmoAnchorReference();
+            SyncSceneBridge();
+            SceneView.RepaintAll();
         }
     }
 
@@ -335,6 +416,13 @@ public sealed partial class ActionDataTimelineEditor
         DrawSegment($"Action: {_action.name}", 120f);
         DrawSegment($"Clip: {clipLen:0.00}s", 72f);
         DrawSegment($"t={_previewTime:0.00}", 52f);
+        DrawSegment($"Motion: {_motionPreviewMode}", 88f);
+        DrawSegment($"×{_playbackSpeed:0.##}", 40f);
+        if (_action.MotionProfile != null)
+        {
+            var animSpeed = _action.MotionProfile.SampleAnimSpeed(_action, _previewTime);
+            DrawSegment($"Anim×{animSpeed:F2}", 56f);
+        }
         DrawSegment($"Track: {GetTrackLabel(_lastClickedTrack)}", 100f);
 
         if (_selectedWindow >= 0)
@@ -349,13 +437,6 @@ public sealed partial class ActionDataTimelineEditor
         {
             DrawSegment($"TP #{_selectedTeleport}", 56f);
         }
-
-        var anchorRect = new Rect(barRect.xMax - 168f - pad, barRect.y + 1f, 160f, barRect.height - 2f);
-        _gizmoAnchorOverride = (Transform)EditorGUI.ObjectField(
-            anchorRect,
-            _gizmoAnchorOverride,
-            typeof(Transform),
-            true);
     }
 
     void LoadEditorLayoutPrefs()
@@ -364,6 +445,11 @@ public sealed partial class ActionDataTimelineEditor
         _zoom = ActionTimelineEditorUI.LoadZoom(1f);
         _timelineScroll = ActionTimelineEditorUI.LoadTimelineScroll();
         _propertiesScroll = new Vector2(0f, ActionTimelineEditorUI.LoadPropertiesScrollY(0f));
+        _playbackSpeedPresetIndex = Mathf.Clamp(_playbackSpeedPresetIndex, 0, PlaybackSpeedPresets.Length - 1);
+        _playbackSpeed = PlaybackSpeedPresets[_playbackSpeedPresetIndex];
+        _previewTrackVisibility = ActionTimelineEditorUI.LoadTrackVisibility();
+        _previewVisibilityMask = ActionTimelineEditorUI.LoadPreviewVisibilityMask();
+        _enablePosePreview = ActionTimelinePreviewVisibility.Has(_previewVisibilityMask, PreviewVisibilityMask.Pose);
     }
 
     void SaveEditorLayoutPrefs()
@@ -372,6 +458,8 @@ public sealed partial class ActionDataTimelineEditor
         ActionTimelineEditorUI.SaveZoom(_zoom);
         ActionTimelineEditorUI.SaveTimelineScroll(_timelineScroll);
         ActionTimelineEditorUI.SavePropertiesScrollY(_propertiesScroll.y);
+        ActionTimelineEditorUI.SaveTrackVisibility(_previewTrackVisibility);
+        ActionTimelineEditorUI.SavePreviewVisibilityMask(_previewVisibilityMask);
     }
 }
 #endif

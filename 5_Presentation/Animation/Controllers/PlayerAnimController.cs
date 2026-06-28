@@ -62,6 +62,53 @@ public class PlayerAnimController : EntityAnimController
     private Entity _entity;
     private Player _player;
 
+    /// <summary>184.1 W5 — Turn 表现 CrossFade 打断时长（178.1 协作）。</summary>
+    public const float TurnInterruptCrossfadeSec = 0.08f;
+
+    /// <summary>184.1 — Turn 表现播放中（VisualFacingDriver 暂停缓追）。</summary>
+    public bool IsPlayingTurnPresentation =>
+        _inLocomotion
+        && _player != null
+        && _player.CurrentTurnInfo.IsTurning
+        && IsTurnSub(_locoSub);
+
+    /// <summary>184.1 W5 — 任何主动 Intent 打断 Turn 切片（短 CrossFade）。</summary>
+    public void InterruptTurnIfAny(string reason = null)
+    {
+        var wasTurnVisual = IsTurnSub(_locoSub);
+        var wasTurnInfo = _player != null && _player.CurrentTurnInfo.IsTurning;
+        if (!wasTurnVisual && !wasTurnInfo)
+        {
+            return;
+        }
+
+        TurnProbe.LogInterrupt(_player, reason);
+        var fromSub = _locoSub;
+        if (IsTurnSub(fromSub) && _player != null)
+        {
+            TurnProbe.LogSubExitAnim(
+                _player,
+                TurnDirectionFromSub(fromSub),
+                fromSub.ToString(),
+                "Interrupt",
+                TurnInterruptCrossfadeSec,
+                reason ?? "interrupt");
+        }
+
+        _lastActiveTurnType = TurnType.None;
+
+        if (!_inLocomotion || _player == null)
+        {
+            _locoSub = LocomotionSub.None;
+            return;
+        }
+
+        _locoSub = LocomotionSub.None;
+        var target = ResolveLocomotionSub();
+        _locoSub = target;
+        PlayLocomotionClipForSub(target, TurnInterruptCrossfadeSec, fromSub);
+    }
+
     // ─── Locomotion 混合追踪 ───
     private bool _inLocomotion;
     private LocomotionSub _locoSub = LocomotionSub.None;
@@ -167,6 +214,16 @@ public class PlayerAnimController : EntityAnimController
                 var transitionOverride = (wasTurn || nowTurn)
                     ? ResolveTurnTransitionDuration(wasTurn, nowTurn, fromSub, target)
                     : -1f;
+                if (wasTurn && !nowTurn && _player != null)
+                {
+                    TurnProbe.LogSubExitAnim(
+                        _player,
+                        TurnDirectionFromSub(fromSub),
+                        fromSub.ToString(),
+                        target.ToString(),
+                        transitionOverride >= 0f ? transitionOverride : 0.08f);
+                }
+
                 PlayLocomotionClipForSub(target, transitionOverride, fromSub);
             }
 
@@ -190,6 +247,7 @@ public class PlayerAnimController : EntityAnimController
         // Action 支柱由 PlayerActionPresentationRequestEvent 驱动
         if (evt.StateName == nameof(PlayerActionState))
         {
+            InterruptTurnIfAny("ActionStateEnter");
             _inLocomotion = false;
             return;
         }
@@ -198,6 +256,7 @@ public class PlayerAnimController : EntityAnimController
         if (evt.StateName == nameof(PlayerLocomotionState))
         {
             _inLocomotion = true;
+
             if (!_landingHold)
             {
                 _locoSub = LocomotionSub.None;
@@ -293,6 +352,7 @@ public class PlayerAnimController : EntityAnimController
             var speed = bindingSpeed > 0.001f ? bindingSpeed : 1f;
             _currentLocoEntry = null;
             Play(clip, transition, speed, clip.isLooping);
+            LogTurnSubPlayIfNeeded(target, turnBinding.TurnDirection, clip.name, "Profile", transition, clip.length, speed);
             LogTurnPresentationEdge(fromSub, target, $"Profile:TurnInPlaceDirected:{turnBinding.TurnDirection}", clip, transition);
             MaybeLogTurnPresentationRepeat(target, turnBinding.TurnDirection.ToString(), clip, transition);
             return;
@@ -342,6 +402,7 @@ public class PlayerAnimController : EntityAnimController
             var transition = transitionOverride >= 0f ? transitionOverride : _currentLocoEntry.TransitionDuration;
             Play(_currentLocoEntry.Clip, transition, _currentLocoEntry.Speed,
                 _currentLocoEntry.IsLooping);
+            LogTurnSubPlayIfNeeded(target, TurnDirectionFromSub(target), _currentLocoEntry.Clip.name, "AnimLibrary", transition, _currentLocoEntry.Clip.length, _currentLocoEntry.Speed);
             LogTurnPresentationEdge(fromSub, target, key, _currentLocoEntry.Clip, transition);
             MaybeLogTurnPresentationRepeat(target, key, _currentLocoEntry.Clip, transition);
         }
@@ -357,6 +418,23 @@ public class PlayerAnimController : EntityAnimController
     private bool ShouldLogTurnPresentation =>
         debugTurnPresentation
         || (_player != null && _player.States != null && _player.States.LocomotionTurnSettings.EnableTriggerDebugger);
+
+    private void LogTurnSubPlayIfNeeded(
+        LocomotionSub sub,
+        TurnDirection4 dir4,
+        string clipName,
+        string source,
+        float crossfade,
+        float clipLength,
+        float speed)
+    {
+        if (!IsTurnSub(sub) || _player == null || dir4 == TurnDirection4.None)
+        {
+            return;
+        }
+
+        TurnProbe.LogSubPlay(_player, dir4, clipName, source, crossfade, clipLength, speed);
+    }
 
     private void LogTurnPresentationEdge(LocomotionSub from, LocomotionSub to, string libraryKey, AnimationClip clip,
         float crossfade)
@@ -626,11 +704,16 @@ public class PlayerAnimController : EntityAnimController
             var clip = evt.PresentationClip != null ? evt.PresentationClip : evt.Action.MainClip;
             if (clip != null)
             {
+                var clipStartNorm = evt.Action.MapActionTimeToClipNormalized(evt.NormalizedStart);
+                var animSpeed = evt.PlaybackAnimSpeedOverride >= 0f
+                    ? evt.PlaybackAnimSpeedOverride
+                    : evt.Action.ResolveEffectiveAnimSpeed();
                 Play(
                     clip,
                     evt.Action.CrossfadeTime,
-                    evt.Action.ResolveEffectiveAnimSpeed(),
-                    clip.isLooping);
+                    animSpeed,
+                    clip.isLooping,
+                    clipStartNorm);
                 return;
             }
         }

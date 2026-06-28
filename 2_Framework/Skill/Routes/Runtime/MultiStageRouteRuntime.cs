@@ -7,7 +7,6 @@ public sealed class MultiStageRouteRuntime : SkillRouteRuntime
 {
     int _pendingEntryStageIndex = -1;
     float _pendingEntryExpireTime;
-    bool _waitingAnchorBeforeArm;
     bool _naturalCompletionHandled;
 
     public override RouteKind Kind => RouteKind.MultiStage;
@@ -75,7 +74,6 @@ public sealed class MultiStageRouteRuntime : SkillRouteRuntime
     {
         _pendingEntryStageIndex = -1;
         _pendingEntryExpireTime = 0f;
-        _waitingAnchorBeforeArm = false;
     }
 
     /// <summary>锚点落地（拉克丝 E，armNextStageTrigger = OnSkillAnchorReady 时）。</summary>
@@ -94,13 +92,11 @@ public sealed class MultiStageRouteRuntime : SkillRouteRuntime
         }
 
         ArmPendingStage(1, ctx.Now, def.StageChainArmSeconds);
-        _waitingAnchorBeforeArm = false;
     }
 
     /// <summary>首段播完、等待锚点（仅 PressToAdvance + OnSkillAnchorReady）。</summary>
     public void MarkWaitingForAnchor()
     {
-        _waitingAnchorBeforeArm = true;
     }
 
     public override bool CanCast(in SkillRouteContext ctx)
@@ -137,7 +133,6 @@ public sealed class MultiStageRouteRuntime : SkillRouteRuntime
     public override void OnEnter(in SkillRouteContext ctx)
     {
         _naturalCompletionHandled = false;
-        _waitingAnchorBeforeArm = false;
         IsActive = true;
 
         var def = Definition;
@@ -341,17 +336,6 @@ public sealed class MultiStageRouteRuntime : SkillRouteRuntime
         var win = windowSeconds > 0f ? windowSeconds : 5f;
         _pendingEntryStageIndex = stageIndex;
         _pendingEntryExpireTime = now + win;
-        _waitingAnchorBeforeArm = false;
-    }
-
-    void TryApplyCooldownPolicy(in SkillRouteContext ctx, RouteCooldownPolicy policy)
-    {
-        if (SuppressNextCooldown || Definition == null || Definition.CooldownPolicy != policy)
-        {
-            return;
-        }
-
-        StartCooldown(in ctx);
     }
 
     static void ClearAnchorMechanicTag(in SkillRouteContext ctx)

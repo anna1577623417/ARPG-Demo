@@ -53,6 +53,20 @@ public sealed class CombatFlowData
 
         return -1;
     }
+
+    /// <summary>186.1 — 查询节点是否被标记为终结节点（TerminalOnComplete=true）。</summary>
+    public bool TryGetTerminalPolicy(string nodeId, out CombatFlowTerminalPolicy policy)
+    {
+        policy = CombatFlowTerminalPolicy.FallbackToEntry;
+        var idx = FindNodeIndex(nodeId);
+        if (idx < 0 || !Nodes[idx].TerminalOnComplete)
+        {
+            return false;
+        }
+
+        policy = Nodes[idx].TerminalPolicy;
+        return true;
+    }
 }
 
 [Serializable]
@@ -62,6 +76,12 @@ public struct CombatFlowCompiledNode
     public CombatFlowNodeKind Kind;
     public ActionDataSO Action;
     public SkillRouteDefinition Route;
+
+    /// <summary>186.1 — 段结束后视为图终结（短路 OnSegmentComplete 出边匹配）。</summary>
+    public bool TerminalOnComplete;
+
+    /// <summary>186.1 — 终结归位策略；仅 TerminalOnComplete=true 时生效。</summary>
+    public CombatFlowTerminalPolicy TerminalPolicy;
 }
 
 [Serializable]
@@ -74,7 +94,9 @@ public struct CombatFlowCompiledEdge
     public string Label;
     public SkillEntrySlot InputSlot;
     public InputSemanticType InputSemantic;
+    public CombatFlowInputModifier InputModifier;
     public SkillTransitionCondition[] Conditions;
+    public EdgeConditionSO[] EdgeConditions;
     public int Priority;
     public SkillRouteDefinition TargetRoute;
     public float LateWindowSeconds;

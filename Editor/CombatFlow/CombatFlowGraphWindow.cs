@@ -207,8 +207,9 @@ public sealed class CombatFlowGraphWindow : BaseGraphWindow
         _inspectorPanel = new IMGUIContainer(DrawInspectorPanel)
         {
             name = "InspectorPanel",
-            focusable = false,
+            focusable = true,
         };
+        RegisterInspectorDragPassthrough(_inspectorPanel);
         ApplyInspectorLayout();
 
         rootView.Add(_toolbar);
@@ -434,6 +435,25 @@ public sealed class CombatFlowGraphWindow : BaseGraphWindow
         }
 
         return false;
+    }
+
+    void RegisterInspectorDragPassthrough(IMGUIContainer panel)
+    {
+        if (panel == null)
+        {
+            return;
+        }
+
+        panel.RegisterCallback<DragEnterEvent>(_ => { }, TrickleDown.TrickleDown);
+        panel.RegisterCallback<DragUpdatedEvent>(evt =>
+        {
+            if (DragAndDrop.objectReferences is { Length: > 0 })
+            {
+                DragAndDrop.visualMode = DragAndDropVisualMode.Link;
+                evt.StopPropagation();
+            }
+        }, TrickleDown.TrickleDown);
+        panel.RegisterCallback<DragPerformEvent>(evt => evt.StopPropagation(), TrickleDown.TrickleDown);
     }
 
     /// <summary>GraphView 后加入会盖住 Toolbar/Splitter；压到最底并抬升 Chrome。</summary>

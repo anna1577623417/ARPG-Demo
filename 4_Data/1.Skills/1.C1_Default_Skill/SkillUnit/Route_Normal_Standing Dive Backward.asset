@@ -44,3 +44,4 @@ MonoBehaviour:
   overrideIcon: 0
   overrideCost: 0
   abilityGateRules: []
+  singleAction: 1

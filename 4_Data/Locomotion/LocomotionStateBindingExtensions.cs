@@ -49,7 +49,7 @@ public static class LocomotionStateBindingExtensions
             clip = action.MainClip;
             transitionDuration = action.CrossfadeTime;
             clipSpeed = action.AnimSpeed > 0.001f ? action.AnimSpeed : 1f;
-            referenceLocomotionSpeed = binding.ReferenceLocomotionSpeed;
+            referenceLocomotionSpeed = 0f;
             return true;
         }
 

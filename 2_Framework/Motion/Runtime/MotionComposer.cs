@@ -43,7 +43,8 @@ public static class MotionComposer
             _ => 0f,
         };
 
-        var finalY = ComposeVertical(motionY, in gravity, config);
+        // 174.2 — GravityWeight：Curve 模式下加权 gravity.Vy；V1 默认 1f 不改行为。
+        var finalY = ComposeVertical(motionY, in gravity, config, motion.ResolvedGravityWeight);
 
         var final = new Vector3(motionWorldVelocity.x, finalY, motionWorldVelocity.z);
         if (log)
@@ -56,7 +57,11 @@ public static class MotionComposer
         return final;
     }
 
-    static float ComposeVertical(float motionY, in GravityContribution gravity, in MotionYAxisConfig config)
+    static float ComposeVertical(
+        float motionY,
+        in GravityContribution gravity,
+        in MotionYAxisConfig config,
+        float gravityWeight = 1f)
     {
         switch (config.Gravity)
         {
@@ -69,7 +74,7 @@ public static class MotionComposer
                     return motionY;
                 }
 
-                return motionY + gravity.Vy;
+                return motionY + gravity.Vy * gravityWeight;
 
             case GravityMode.UseGravity:
             default:
@@ -80,10 +85,10 @@ public static class MotionComposer
 
                 if (config.YMotion == YMotionMode.None)
                 {
-                    return gravity.Vy;
+                    return gravity.Vy * gravityWeight;
                 }
 
-                return motionY + gravity.Vy;
+                return motionY + gravity.Vy * gravityWeight;
         }
     }
 

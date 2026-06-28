@@ -24,6 +24,8 @@ public sealed class SkillEntryService
         = new Dictionary<SkillEntrySlot, ComboRouteRuntime>(8);
 
     readonly List<IRouteRuntimeHandle> _hudHandles = new List<IRouteRuntimeHandle>(16);
+    readonly HashSet<(SkillGroupDefinition group, SkillEntrySlot slot)> _hudGroupKeys
+        = new HashSet<(SkillGroupDefinition, SkillEntrySlot)>();
 
     SkillEntryLoadoutSO _loadout;
     SkillRouteRuntime _activeRouteRuntime;
@@ -89,6 +91,7 @@ public sealed class SkillEntryService
         _routeRuntimes.Clear();
         _comboBySlot.Clear();
         _hudHandles.Clear();
+        _hudGroupKeys.Clear();
         _activeRouteRuntime = null;
 
         if (loadout?.Bindings == null)
@@ -106,6 +109,8 @@ public sealed class SkillEntryService
             RegisterEntry(entry, b.Slot, b.HudKeyLabel);
             SyncComboSemanticConfig(b.Slot);
         }
+
+        RegisterLoadoutContextGroups();
 
         AttachFromLoadout(loadout);
 
@@ -200,11 +205,91 @@ public sealed class SkillEntryService
         TryAddRoute(group.Backward, slot, keyLabel);
         TryAddRoute(group.Left, slot, keyLabel);
         TryAddRoute(group.Right, slot, keyLabel);
+        TryAddRoute(group.MotionForwardRoute, slot, keyLabel);
         TryAddRoute(group.FallbackRoute, slot, keyLabel);
+        TryAddGroupHudHandle(group, slot, keyLabel);
         SkillRouteDebug.Log(
             _owner,
             SkillRouteDebug.CatUnit,
-            $"Register Group={group.name} routes={(routes?.Count ?? 0)} slot={slot}");
+            $"Register Group={group.name} routes={(routes?.Count ?? 0)} slot={slot} hud={group.ShowOnHud}");
+    }
+
+    void RegisterLoadoutContextGroups()
+    {
+        var ctxGroups = _loadout?.ContextGroups;
+        if (ctxGroups == null || ctxGroups.Length == 0)
+        {
+            return;
+        }
+
+        for (var i = 0; i < ctxGroups.Length; i++)
+        {
+            var def = ctxGroups[i];
+            var group = def?.TargetGroup;
+            if (group == null)
+            {
+                continue;
+            }
+
+            if (def.RequiredSlot == SkillEntrySlot.Any)
+            {
+                var bindings = _loadout.Bindings;
+                if (bindings == null)
+                {
+                    continue;
+                }
+
+                for (var b = 0; b < bindings.Length; b++)
+                {
+                    RegisterGroupRoutes(group, bindings[b].Slot, bindings[b].HudKeyLabel);
+                }
+            }
+            else
+            {
+                RegisterGroupRoutes(group, def.RequiredSlot, ResolveKeyLabelForSlot(def.RequiredSlot));
+            }
+        }
+    }
+
+    string ResolveKeyLabelForSlot(SkillEntrySlot slot)
+    {
+        var bindings = _loadout?.Bindings;
+        if (bindings == null)
+        {
+            return string.Empty;
+        }
+
+        slot = CanonicalEntry(slot);
+        for (var i = 0; i < bindings.Length; i++)
+        {
+            if (CanonicalEntry(bindings[i].Slot) == slot)
+            {
+                return bindings[i].HudKeyLabel ?? string.Empty;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    void TryAddGroupHudHandle(SkillGroupDefinition group, SkillEntrySlot slot, string keyLabel)
+    {
+        if (group == null || !group.ShowOnHud)
+        {
+            return;
+        }
+
+        slot = CanonicalEntry(slot);
+        var key = (group, slot);
+        if (!_hudGroupKeys.Add(key))
+        {
+            return;
+        }
+
+        _hudHandles.Add(new GroupRuntimeHandle(_owner, group, slot, keyLabel, this));
+        SkillRouteDebug.Log(
+            _owner,
+            SkillRouteDebug.CatRebuild,
+            $"Hud + Group={group.name} slot={slot} key={keyLabel}");
     }
 
     void RegisterComboContainer(
@@ -238,7 +323,7 @@ public sealed class SkillEntryService
         var rt = SkillRouteRuntimeFactory.Create(def);
         if (rt == null) return;
         _routeRuntimes[def] = rt;
-        if (def.ShowOnHud)
+        if (ShouldRegisterRouteHudHandle(def))
         {
             _hudHandles.Add(new RouteRuntimeHandle(_owner, def, rt, slot, keyLabel, this));
             SkillRouteDebug.Log(
@@ -251,8 +336,25 @@ public sealed class SkillEntryService
             SkillRouteDebug.Log(
                 _owner,
                 SkillRouteDebug.CatRebuild,
-                $"Hud 跳过 ShowOnHud=false | {def.name} slot={slot}");
+                $"Hud 跳过 | {def.name} slot={slot} " +
+                $"{(def.OwnerGroup != null ? $"group={def.OwnerGroup.name} hud={def.OwnerGroup.ShowOnHud}" : "ShowOnHud=false")}");
         }
+    }
+
+    static bool ShouldRegisterRouteHudHandle(SkillRouteDefinition def)
+    {
+        if (def == null)
+        {
+            return false;
+        }
+
+        // 组内 Route 的 HUD 由 SkillGroupDefinition.ShowOnHud 统一控制。
+        if (def.OwnerGroup != null)
+        {
+            return false;
+        }
+
+        return def.ShowOnHud;
     }
 
     // ─── 仲裁入口（Ver4.3.7+ 单轨语义） ───
@@ -396,10 +498,23 @@ public sealed class SkillEntryService
             return null;
         }
 
-        // ═══ 3) Tap / Combo / None — 连招优先于 Entry.NormalRoute ═══
+        // ═══ 3) Tap / Combo / Chord / None — 连招优先于 Entry.NormalRoute ═══
         var isComboFamilySemantic = semantic == InputSemanticType.Tap
             || semantic == InputSemanticType.Combo
             || semantic == InputSemanticType.None;
+        if (semantic == InputSemanticType.Chord)
+        {
+            SkillRouteDebug.Log(_owner, SkillRouteDebug.CatResolve,
+                $"Chord graph-miss slot={slot} modifier={intent.ModifierSlot} — 不走 Combo 链");
+            if (TryPickRouteDefinition(entry.NormalRoute, in ctx, out var chordRt, logResolveSkip: true))
+            {
+                return chordRt;
+            }
+
+            discardIntent = true;
+            return null;
+        }
+
         var activeComboDef = PickComboContainerForResolve(entry, slot, comboIdx, in ctx, out var comboPickReason);
         var hasComboRoute = activeComboDef != null;
         if (hasComboRoute && isComboFamilySemantic)
@@ -1818,6 +1933,23 @@ public sealed class SkillEntryService
         }
     }
 
+    public bool TryGetGroupCooldownState(
+        SkillGroupDefinition group,
+        out float remainingSeconds,
+        out float totalSeconds)
+    {
+        if (group != null && _groupCooldowns.TryGetValue(group, out var state))
+        {
+            remainingSeconds = state.RemainingSeconds;
+            totalSeconds = state.TotalSeconds;
+            return true;
+        }
+
+        remainingSeconds = 0f;
+        totalSeconds = 0f;
+        return false;
+    }
+
     public bool IsRouteBlockedByGroupCooldown(SkillRouteDefinition route)
     {
         if (route == null || route.OwnerGroup == null || route.OverrideGroupCooldown)
@@ -1956,6 +2088,9 @@ public sealed class SkillEntryService
             group = ctxGroup;
             SkillRouteDebug.LogDirectional4(_owner, group, "Resolve",
                 $"ContextGroup={ctxGroupDef.name} -> Group={group.name}");
+            SkillRouteDebug.LogDodge8(_owner, group, "Context",
+                $"HIT ctxGroup={ctxGroupDef.name} slot={slot} semantic={semantic} " +
+                $"moveDir={ctx.CombatCtx.MoveDirection} airborne={ctx.CombatCtx.IsAirborne} pri={ctxGroupDef.Priority}");
         }
         else if (HasContextGroupCandidatesFor(slot, semantic))
         {
@@ -1963,11 +2098,22 @@ public sealed class SkillEntryService
                 $"ContextGroup DENY no match slot={slot} semantic={semantic}");
             SkillRouteDebug.LogRoll4(_owner, "Resolve",
                 $"ContextGroup DENY no match slot={slot} semantic={semantic}");
+            SkillRouteDebug.LogDodge8(_owner, null, "Context",
+                $"DENY slot={slot} semantic={semantic} moveDir={ctx.CombatCtx.MoveDirection} " +
+                $"airborne={ctx.CombatCtx.IsAirborne} axis={intent.DirectionAxis} buffer={inputSnapshot.MoveBuffered}");
             return false;
         }
 
         if (group == null)
         {
+            return false;
+        }
+
+        // 173.6 三段 Gate 中段：选路前 Group 级准入校验
+        if (!group.PassAbilityGate(in ctx.CombatCtx))
+        {
+            SkillRouteDebug.LogDirectional4(_owner, group, "Resolve",
+                $"Group DENY by AbilityGate group={group.name}");
             return false;
         }
 
@@ -2005,7 +2151,7 @@ public sealed class SkillEntryService
                 continue;
             }
 
-            if (def.RequireDirectional
+            if (def.RequiredSemantic == InputSemanticType.Directional
                 && semantic != InputSemanticType.Directional
                 && semantic != InputSemanticType.Tap
                 && semantic != InputSemanticType.None)
@@ -2079,18 +2225,82 @@ public sealed class SkillEntryService
             || semantic == InputSemanticType.Tap
             || semantic == InputSemanticType.None;
 
+        SkillRouteDebug.LogDodge8(_owner, group, "PickBegin",
+            $"semantic={semantic} axis={intent.DirectionAxis} buffer={inputSnapshot.MoveBuffered} " +
+            $"neutralFallback={group.UseFallbackOnNeutral}");
+
         if (useDirectional)
         {
-            var axis = intent.DirectionAxis.sqrMagnitude > 0.0001f
+            const float dirDeadzoneSq = 0.0001f;
+            var axis = intent.DirectionAxis.sqrMagnitude > dirDeadzoneSq
                 ? intent.DirectionAxis
                 : inputSnapshot.MoveBuffered;
-            resolvedDir = InputChordResolver.Resolve(axis);
-            hadDirectionalPick = true;
-            picked = group.SelectByDirection(resolvedDir);
-            if (picked == null && group.DefaultToForwardWhenNeutral)
+            var hasDirection = axis.sqrMagnitude > dirDeadzoneSq;
+
+            if (hasDirection)
             {
-                picked = group.SelectByDirection(DirectionalRouteType.Forward);
+                var isMotionMode = false;
+                resolvedDir = _owner != null
+                    ? _owner.ResolveDirectionalChord(axis, out isMotionMode)
+                    : InputChordResolver.Resolve(axis);
+                hadDirectionalPick = true;
+
+                if (isMotionMode && group.MotionForwardRoute != null)
+                {
+                    picked = group.MotionForwardRoute;
+                    SkillRouteDebug.LogDodge8(_owner, group, "Pick",
+                        $"motion→MotionForwardRoute route={picked.name}");
+                    DodgeChord8Probe.LogPick("Motion", resolvedDir, picked.name);
+                }
+                else
+                {
+                    picked = group.SelectByDirection(resolvedDir);
+                    if (picked == null)
+                    {
+                        picked = group.FallbackRoute;
+                        SkillRouteDebug.LogDodge8(
+                            _owner, group, "Pick",
+                            $"missing slot→fallback chord={resolvedDir}");
+                        DodgeChord8Probe.LogPick(
+                            isMotionMode ? "Motion" : "Chord",
+                            resolvedDir,
+                            picked != null ? picked.name + "(fallback)" : "(null)");
+                    }
+                    else
+                    {
+                        SkillRouteDebug.LogDodge8(
+                            _owner, group, "Pick",
+                            $"{(isMotionMode ? "motion" : "chord")}={resolvedDir} route={picked.name}");
+                        DodgeChord8Probe.LogPick(
+                            isMotionMode ? "Motion" : "Chord",
+                            resolvedDir,
+                            picked.name);
+                    }
+                }
+            }
+            else if (group.UseFallbackOnNeutral)
+            {
+                picked = group.FallbackRoute;
+                var liveMove = _owner?.InputReader != null ? _owner.InputReader.MoveInput : Vector2.zero;
+                var holdDur = _owner != null
+                    ? _owner.InputContext.MoveHoldDurationSec(Time.time)
+                    : -1f;
+                DodgeChord8Probe.LogNeutralFallback(
+                    semantic,
+                    intent.DirectionAxis,
+                    inputSnapshot.MoveBuffered,
+                    liveMove,
+                    _owner != null && _owner.InputContext.MoveActive,
+                    holdDur,
+                    picked != null ? picked.name : null);
+                SkillRouteDebug.LogDodge8(_owner, group, "Pick", "neutral→fallback");
+            }
+            else
+            {
                 resolvedDir = DirectionalRouteType.Forward;
+                hadDirectionalPick = true;
+                picked = group.SelectByDirection(DirectionalRouteType.Forward);
+                SkillRouteDebug.LogDodge8(_owner, group, "Pick", "neutral→forward");
             }
         }
 
@@ -2105,12 +2315,16 @@ public sealed class SkillEntryService
             SkillRouteDebug.LogDirectional4(
                 _owner, group, "Unit",
                 $"PICK Group={group.name} child={picked.name} semantic={semantic}{dirNote}");
+            SkillRouteDebug.LogDodge8(_owner, group, "Resolved",
+                $"route={picked.name}{dirNote} semantic={semantic}");
             return true;
         }
 
         SkillRouteDebug.LogDirectional4(
             _owner, group, "Unit",
             $"SKIP Group={group.name} picked={picked?.name ?? "null"} gate/CanCast");
+        SkillRouteDebug.LogDodge8(_owner, group, "Skip",
+            $"picked={picked?.name ?? "null"} chord={resolvedDir} gate/CanCast failed");
         return false;
     }
 

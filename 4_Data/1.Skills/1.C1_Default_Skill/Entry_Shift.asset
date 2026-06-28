@@ -12,8 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 68aa9736e2d13184ba7ad069dc7e0d8d, type: 3}
   m_Name: Entry_Shift
   m_EditorClassIdentifier: 
-  slot: 6
-  displayName: 
+  slot: 8
+  displayName: Key 1
   fallbackIcon: {fileID: 0}
   chargeRoute: {fileID: 0}
   comboRoute: {fileID: 0}

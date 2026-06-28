@@ -11,6 +11,7 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
     enum TrackId
     {
         Interrupt,
+        RotationInput,    // 198.3 — 玩家输入触发的转向/移动窗口
         PhaseStartup,
         PhaseActive,
         PhaseRecovery,
@@ -40,6 +41,7 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
     static readonly TrackId[] ActiveTracks =
     {
         TrackId.Interrupt,
+        TrackId.RotationInput,
         TrackId.PhaseStartup,
         TrackId.PhaseActive,
         TrackId.PhaseRecovery,
@@ -91,9 +93,39 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
     [SerializeField] Transform _gizmoAnchorOverride;
     [SerializeField] bool _enablePosePreview = true;
     [SerializeField] bool _enableSceneOverlay = true;
+    [SerializeField] ActionTimelinePreviewTrackVisibility _previewTrackVisibility = ActionTimelinePreviewTrackVisibility.DefaultAllOn;
+    [SerializeField] PreviewVisibilityMask _previewVisibilityMask = PreviewVisibilityMask.All;
 
     static ActionDataTimelineEditor s_activeEditor;
     ActionTimelinePreviewController _previewController = new();
+    ActionTimeAuthorityBinding _timeBinding;
+
+    internal static ActionDataTimelineEditor ActiveInstance => s_activeEditor;
+    internal bool HasBoundAction => _action != null && _so != null;
+
+    internal ActionTimelinePreviewContext BuildCurrentPreviewContext()
+    {
+        _motionPreviewMode = MotionPreviewModeUtility.Normalize(_motionPreviewMode);
+        var hasCap = _previewController != null && _previewController.HasDrivenAnchor;
+        return ActionTimelinePreviewContext.Evaluate(
+            _action,
+            _previewTime,
+            _gizmoAnchorOverride,
+            _motionPreviewMode,
+            hasCap ? _previewController.DrivenAnchorOriginPos : default,
+            hasCap ? _previewController.DrivenAnchorOriginRot : Quaternion.identity,
+            hasCap);
+    }
+
+    void RestoreGizmoAnchorReference()
+    {
+        _gizmoAnchorOverride = ActionTimelineEditorUI.LoadGizmoAnchor(_gizmoAnchorOverride);
+    }
+
+    void PersistGizmoAnchorReference()
+    {
+        ActionTimelineEditorUI.SaveGizmoAnchor(_gizmoAnchorOverride);
+    }
 
     [MenuItem("Tools/GameMain/Action Timeline Editor")]
     static void OpenFromMenu()
@@ -120,13 +152,17 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
     {
         s_activeEditor = this;
         LoadEditorLayoutPrefs();
+        RestoreGizmoAnchorReference();
+        SyncPreviewControllerSettings();
         SceneView.duringSceneGui += OnSceneGUI;
     }
 
     void OnDisable()
     {
+        PersistGizmoAnchorReference();
         SaveEditorLayoutPrefs();
         SceneView.duringSceneGui -= OnSceneGUI;
+        TeardownPlayback();
         _previewController?.Stop();
         ActionDataTimelineSceneBridge.Clear();
         if (s_activeEditor == this)
@@ -139,11 +175,17 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
     {
         _action = action;
         _so = action != null ? new SerializedObject(action) : null;
+        if (action != null && action.PreviewTimeMarkers == null)
+        {
+            action.PreviewTimeMarkers = new System.Collections.Generic.List<float> { 0.25f, 0.5f, 0.75f };
+            EditorUtility.SetDirty(action);
+        }
         RefreshProperties();
         _selectedWindow = -1;
         _selectedTeleport = -1;
         _selectedMarker = -1;
         _dragMode = DragMode.None;
+        ActionTimelineRootMotionSampler.InvalidateCache();
         SyncSceneBridge();
     }
 
@@ -152,6 +194,9 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
         ActionDataTimelineSceneBridge.Action = _action;
         ActionDataTimelineSceneBridge.PreviewTime = _previewTime;
         ActionDataTimelineSceneBridge.Anchor = _gizmoAnchorOverride;
+        ActionDataTimelineSceneBridge.MotionMode = _motionPreviewMode;
+        ActionDataTimelineSceneBridge.TrackVisibility = _previewTrackVisibility;
+        ActionDataTimelineSceneBridge.PreviewMask = _previewVisibilityMask;
     }
 
     void OnSelectionChange()
@@ -198,20 +243,36 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
             return;
         }
 
-        var ctx = ActionTimelinePreviewContext.Build(_action, _previewTime, _gizmoAnchorOverride);
-        if (_enablePosePreview)
+        // 171.5 W0：MotionDriven 模式下传入 CaptureOrigin，Gizmo / Scene Label 锚定它（不漂移）
+        var ctxBefore = BuildCurrentPreviewContext();
+
+        var poseState = default(ActionTimelinePreviewProbe.PoseSampleState);
+        if (ActionTimelinePreviewVisibility.Has(_previewVisibilityMask, PreviewVisibilityMask.Pose))
         {
             _previewController.Enabled = true;
-            _previewController.SamplePose(in ctx);
+            // 198.x：用户选了 Motion 驱动模式（MotionProfile / MotionDriven）即同步 Pose 位移，
+            //         不再要求额外勾上 PreviewVisibilityMask.MotionDriven 这个"隐藏门槛"。
+            //         SamplePose 内部 motionDriven 判断决定是否真正写 anchor.position。
+            _previewController.SamplePose(in ctxBefore, applyMotionDisplacement: true);
+            poseState = new ActionTimelinePreviewProbe.PoseSampleState(true, true);
         }
         else
         {
             _previewController.Stop();
         }
 
+        // 203.2：SamplePose 之后重建 ctx（CaptureOrigin / trajWorld 与 Probe 对账同一帧状态）
+        var ctx = BuildCurrentPreviewContext();
+
+        // 198.x 诊断 log — 须在 SamplePose 之后，才能对账 modelWorld vs trajWorld
+        ActionTimelinePreviewProbe.Tick(in ctx, in poseState);
+
         if (_enableSceneOverlay)
         {
-            ActionDataTimelineSceneBridge.DrawSceneGUI(in ctx);
+            ActionTimelinePreviewFramework.DrawScene(
+                in ctx,
+                _previewTrackVisibility,
+                _previewVisibilityMask);
         }
     }
 
@@ -220,6 +281,8 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
         _windows = _so?.FindProperty(nameof(ActionDataSO.Windows));
         _teleports = _so?.FindProperty(nameof(ActionDataSO.TeleportTriggers));
         _markers = _so?.FindProperty(nameof(ActionDataSO.TimelineMarkers));
+        _previewTimeMarkers = _so?.FindProperty(nameof(ActionDataSO.PreviewTimeMarkers));
+        _timeBinding = ActionTimeAuthorityBinding.Create(_so);
     }
 
     void DrawSelectionInspector()
@@ -282,8 +345,11 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
 
     void HandleKeyboardShortcuts()
     {
+        HandlePlaybackKeyboardShortcuts();
+
         var e = Event.current;
         if (e.type != EventType.KeyDown
+            || EditorGUIUtility.editingTextField
             || (e.keyCode != KeyCode.Delete && e.keyCode != KeyCode.Backspace))
         {
             return;
@@ -399,8 +465,34 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
             y += RowHeight + 2f;
         }
 
+        DrawClipDoneMarker(_laneRect, _firstRowY, y - _firstRowY);
         DrawPlayhead(_laneRect, _firstRowY, y - _firstRowY);
         HandleTimelineInput();
+    }
+
+    void DrawClipDoneMarker(Rect lane, float top, float height)
+    {
+        if (_action == null)
+        {
+            return;
+        }
+
+        var doneT = ActionAnimSpeedAuthority.ResolveClipDoneNormalizedTime(_action);
+        if (doneT >= 0.999f)
+        {
+            return;
+        }
+
+        var x = TimeToX(lane, doneT);
+        var bottom = top + height;
+        Handles.color = new Color(0.75f, 0.75f, 0.75f, 0.35f);
+        Handles.DrawLine(new Vector3(x, lane.y), new Vector3(x, bottom));
+
+        var hover = new Rect(x - 4f, lane.y, 8f, bottom - lane.y);
+        if (hover.Contains(Event.current.mousePosition))
+        {
+            GUI.Label(hover, new GUIContent("", $"Clip 播完 t={doneT:F3}（此后为后摇 / 末帧定格）"));
+        }
     }
 
     void DrawRuler(Rect lane)
@@ -792,7 +884,7 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
             return true;
         }
 
-        if (track == TrackId.ComboInput || track == TrackId.RootMotion)
+        if (track == TrackId.ComboInput || track == TrackId.RootMotion || track == TrackId.RotationInput)
         {
             AddCombatClip(track, norm);
             return true;
@@ -860,6 +952,11 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
                 windowElem.FindPropertyRelative(nameof(ActionWindow.InterruptibleByCategories)).enumValueFlag =
                     (int)ActionCategory.Movement;
                 break;
+            case TrackId.RotationInput:
+                // 198.3 — 新建 Rotation Input 窗口默认允许逻辑转向；移动叠加策划按需勾选
+                windowElem.FindPropertyRelative(nameof(ActionWindow.AllowFacingInput)).boolValue = true;
+                windowElem.FindPropertyRelative(nameof(ActionWindow.AllowMoveInput)).boolValue = false;
+                break;
         }
     }
 
@@ -889,6 +986,9 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
         InterruptibleByCategories = (ActionCategory)elem
             .FindPropertyRelative(nameof(ActionWindow.InterruptibleByCategories))
             .enumValueFlag,
+        // 198.3 — 把 Rotation Input 字段也读出来，Track 过滤要用
+        AllowFacingInput = elem.FindPropertyRelative(nameof(ActionWindow.AllowFacingInput)).boolValue,
+        AllowMoveInput = elem.FindPropertyRelative(nameof(ActionWindow.AllowMoveInput)).boolValue,
     };
 
     static bool HasRuntimeEvents(SerializedProperty listProp) =>
@@ -901,6 +1001,8 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
         {
             case TrackId.Interrupt:
                 return w.InterruptibleByCategories != ActionCategory.None;
+            case TrackId.RotationInput:
+                return w.AllowFacingInput || w.AllowMoveInput;
             case TrackId.PhaseStartup:
                 return (mask & (ulong)StateTag.PhaseStartup) != 0;
             case TrackId.PhaseActive:
@@ -931,6 +1033,7 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
     static string GetTrackLabel(TrackId track) => track switch
     {
         TrackId.Interrupt => "Interrupt",
+        TrackId.RotationInput => "Rotation Input (198.3)",
         TrackId.PhaseStartup => "Phase · Startup",
         TrackId.PhaseActive => "Phase · Active",
         TrackId.PhaseRecovery => "Phase · Recovery",
@@ -951,6 +1054,7 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
     static Color GetTrackColor(TrackId track) => track switch
     {
         TrackId.Interrupt => new Color(0.95f, 0.45f, 0.2f, 0.88f),
+        TrackId.RotationInput => new Color(0.25f, 0.85f, 0.65f, 0.85f),  // 198.3 青绿色
         TrackId.PhaseStartup => new Color(0.35f, 0.55f, 0.95f, 0.78f),
         TrackId.PhaseActive => new Color(0.2f, 0.75f, 0.45f, 0.78f),
         TrackId.PhaseRecovery => new Color(0.55f, 0.4f, 0.9f, 0.78f),

@@ -23,7 +23,7 @@ internal sealed class ActionCategoryPropertyDrawer : PropertyDrawer
             var helpRect = new Rect(position.x, position.y + line + 2f, position.width, HelpH);
             EditorGUI.HelpBox(
                 helpRect,
-                "Movement=战斗位移；Locomotion=WASD/Jump；Offense=攻击；Defensive=防御；Utility=交互。",
+                "Movement=战斗位移；Locomotion=WASD/Jump；Offense=攻击；Defensive=防御；Utility=交互；IdleFallback=FSM 兜底 Idle。",
                 MessageType.None);
         }
     }

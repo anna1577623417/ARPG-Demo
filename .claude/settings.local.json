@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(pandoc \"C:\\\\Users\\\\15776\\\\Documents\\\\xwechat_files\\\\wxid_7cq03z2ee73v22_29c1\\\\msg\\\\file\\\\2026-04\\\\ARPG 动作系统重构：数据驱动.docx\" -o /tmp/action_design.md)"
+      "Bash(pandoc \"C:\\\\Users\\\\15776\\\\Documents\\\\xwechat_files\\\\wxid_7cq03z2ee73v22_29c1\\\\msg\\\\file\\\\2026-04\\\\ARPG 动作系统重构：数据驱动.docx\" -o /tmp/action_design.md)",
+      "Bash(xargs grep -l \"EdgeCombatContext\\\\|MoveDirection\")",
+      "Bash(ls \"F:/Code/Note/3.Core-Drive_Action/3D ARPG/2.项目开发日志/171-180/\" 2>/dev/null | grep -i \"174\\\\|motion\" | head -10)",
+      "Bash(ls \"F:/Code/Note/3.Core-Drive_Action/3D ARPG/2.项目开发日志/181-190/\" | grep 187)",
+      "Bash(cd \"F:/Code/UnityProject/Core-Drive Action\" && ls Logs/ 2>/dev/null && tail -50 Logs/Editor.log 2>/dev/null | grep -i \"error\\\\|CS[0-9]\" | tail -20)"
     ]
   }
 }

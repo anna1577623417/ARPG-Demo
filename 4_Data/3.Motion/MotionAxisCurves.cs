@@ -45,6 +45,34 @@ public struct MotionAxisCurves
         return b - a;
     }
 
+    /// <summary>167.1：归一化区间 [startT,endT] 内主轴位移斜率（m/s）。</summary>
+    public float SampleTailSlope(
+        float startT,
+        float endT,
+        MotionPrincipalAxis axis,
+        float durationSeconds,
+        float motionScale = 1f)
+    {
+        if (durationSeconds <= 0.0001f || endT <= startT)
+        {
+            return 0f;
+        }
+
+        var posA = SampleLocalPosition(startT, motionScale);
+        var posB = SampleLocalPosition(endT, motionScale);
+        var delta = posB - posA;
+        var axisDelta = axis switch
+        {
+            MotionPrincipalAxis.X => delta.x,
+            MotionPrincipalAxis.Y => delta.y,
+            MotionPrincipalAxis.Z => delta.z,
+            MotionPrincipalAxis.PlanarXZ => new Vector2(delta.x, delta.z).magnitude,
+            _ => delta.z,
+        };
+        var dtSec = (endT - startT) * durationSeconds;
+        return axisDelta / dtSec;
+    }
+
     static bool HasCurve(AnimationCurve curve) => curve != null && curve.length > 0;
 
     static float SampleAxis(AnimationCurve curve, float axisScale, float t)

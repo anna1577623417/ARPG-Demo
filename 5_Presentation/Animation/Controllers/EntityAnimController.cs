@@ -100,7 +100,7 @@ public abstract class EntityAnimController : MonoBehaviour {
     /// 播放一个 AnimationClip，带 crossfade 过渡。
     /// </summary>
     public void Play(AnimationClip clip, float transitionDuration = 0.2f,
-                     float speed = 1f, bool isLooping = true) {
+                     float speed = 1f, bool isLooping = true, float normalizedStart = 0f) {
         if (clip == null || !_graph.IsValid()) return;
 
         _previousPort = _currentPort;
@@ -117,6 +117,12 @@ public abstract class EntityAnimController : MonoBehaviour {
         // 【Bug 修复点】：Playable 的 Duration 计算的是 Local Time，已经受到 Speed 缩放的影响。
         // 所以这里绝对不能再除以 Speed，否则会导致单次播放被提前截断！
         clipPlayable.SetDuration(isLooping ? double.MaxValue : clip.length);
+
+        var startT = Mathf.Clamp01(normalizedStart);
+        if (startT > 0.0001f)
+        {
+            clipPlayable.SetTime(startT * clip.length);
+        }
 
         _clips[_currentPort] = clipPlayable;
         _mixer.ConnectInput(_currentPort, clipPlayable, 0);
@@ -139,6 +145,31 @@ public abstract class EntityAnimController : MonoBehaviour {
         }
 
         CurrentClipName = clip.name;
+    }
+
+    /// <summary>182.6 — Playable 主 Clip 进度 → Action 归一化时间（与 MapActionTimeToClipNormalized 互逆）。</summary>
+    public bool TryGetPrimaryClipActionNormalizedTime(ActionDataSO action, out float actionNormalizedTime)
+    {
+        actionNormalizedTime = -1f;
+        if (action?.MainClip == null || !_graph.IsValid() || !_clips[_currentPort].IsValid())
+        {
+            return false;
+        }
+
+        var clip = action.MainClip;
+        var clipNorm = clip.length > 0.0001f
+            ? Mathf.Clamp01((float)(_clips[_currentPort].GetTime() / clip.length))
+            : 0f;
+        var segStart = ActionTimeAuthority.ResolveSegmentStart(action);
+        var segEnd = ActionTimeAuthority.ResolveSegmentEnd(action);
+        var segLen = segEnd - segStart;
+        if (segLen < 0.001f)
+        {
+            return false;
+        }
+
+        actionNormalizedTime = Mathf.Clamp01((clipNorm - segStart) / segLen);
+        return true;
     }
 
     /// <summary>调整当前主输出 Clip 的播放倍率（步幅匹配等）。</summary>

@@ -309,13 +309,14 @@ MonoBehaviour:
       m_PostInfinity: 2
       m_RotationOrder: 4
     XScale: 0
-    YScale: 0.27207536
+    YScale: 0.2
     ZScale: 1.6
-  YMotion: 1
+  EnableStopAuthoring: 0
+  YMotion: 0
   Gravity: 0
   GroundConstraint: 1
   yAxisV2Configured: 0
-  legacyYPolicy: 0
+  legacyYPolicyRaw: 0
   LandingOffset: 0
   LandingCurve:
     serializedVersion: 2

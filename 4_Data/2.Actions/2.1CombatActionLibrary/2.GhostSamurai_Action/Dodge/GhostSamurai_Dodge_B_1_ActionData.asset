@@ -1,0 +1,106 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dc44221e6d158b148ad988016a948ef4, type: 3}
+  m_Name: GhostSamurai_Dodge_B_1_ActionData
+  m_EditorClassIdentifier: 
+  MoveAuthority: 2
+  RotateAuthority: 2
+  LockMoveDuringPlay: 1
+  LockRotateDuringPlay: 1
+  AuthorityPriorityOverride: -1
+  CombatTrack: []
+  MainClip: {fileID: 7400000, guid: 0939c4b8e42985f44bafe20939155930, type: 3}
+  CrossfadeTime: 0.08
+  AnimSpeed: 1
+  ClipAnimSpeedMode: 1
+  Duration: 1.2666668
+  SegmentStart: 0
+  SegmentEnd: 1
+  DurationStatScaling: 0
+  PrincipalAxis: 2
+  ReferenceMotionSpeed: 5
+  BakeMinAnimSpeed: 0.85
+  BakeMaxAnimSpeed: 1.15
+  IntentCategory: 1
+  GraphParticipation: -1
+  Category: 2
+  InterruptPriority: 10
+  InterruptStability: 10
+  AllowSelfInterrupt: 0
+  IsContinuousLocomotion: 0
+  IsLocomotionRecovery: 0
+  RecoveryMoveLockSeconds: -1
+  RecoveryJumpLockSeconds: -1
+  EnableRotationInput: 0
+  TransitionType: 0
+  OverrideGrammar: 0
+  GrammarOverride:
+    OwnsPresentation: 0
+    ConsumesDirectionChange: 0
+    ConsumesMomentumChange: 0
+    BlocksOtherTransitions: 0
+  UseClipRootMotion: 0
+  CanRotateDuringLocomotion: 1
+  CanMoveDuringLocomotion: 1
+  LeftFootSupportClip: {fileID: 0}
+  RightFootSupportClip: {fileID: 0}
+  EnableStopFeature: 0
+  StopStrategy: 1
+  InheritPhysics:
+    MinSpeed: 1
+    MaxSpeed: 8
+    MinDistance: 0.2
+    MaxDistance: 2.5
+    MinDuration: 0.1
+    MaxDuration: 0.45
+    AffectX: 0
+    AffectY: 0
+    AffectZ: 1
+  ReferenceDuration: 0.25
+  LinearDecayDuration: 0.15
+  ExpDecayHalfLife: 0.25
+  FixedDecelDuration: 0.3
+  FixedDecelDistance: 0.6
+  DurationPerUnitSpeed: 0.05
+  StepValues:
+  - 1
+  - 0.6
+  - 0.3
+  - 0
+  StepIntervalSec: 0.08
+  SlideMaxResidualSpeed: 0
+  MotionProfile: {fileID: 11400000, guid: 0f1b9d5dfceb38b45a57a8b9a433bfff, type: 2}
+  Windows: []
+  TeleportTriggers: []
+  TimelineMarkers: []
+  PreviewTimeMarkers:
+  - 0.25
+  - 0.5
+  - 0.75
+  MovementMode: 0
+  EnableStrideMatching: 1
+  ReferenceDistance: 0
+  MinPlaybackSpeed: 0.6
+  MaxPlaybackSpeed: 1.4
+  AutoTierSwitch: 1
+  DesignedSpeed: 0
+  TransitionTag: 1
+  OverrideIncomingTransition: 0
+  OverrideBlendDuration: 0.1
+  OverrideTransitionMode: 0
+  OverrideEaseCurve:
+    serializedVersion: 2
+    m_Curve: []
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  OverrideDesignerNote: 

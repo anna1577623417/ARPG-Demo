@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 /// <summary>
 /// 动作抽象语义类别（用于打断判定）。
@@ -17,6 +18,8 @@ public enum ActionCategory : ushort
     Utility = 1 << 3,
     /// <summary>基础 Locomotion（WASD 走/跑、Jump 等全局移动能力）。157.2 B 轴。</summary>
     Locomotion = 1 << 4,
+    /// <summary>171.7：Idle 兜底 — FSM 无输入时自动接管，不计入 ActionWindow 打断。</summary>
+    IdleFallback = 1 << 5,
 }
 
 /// <summary>A 轴：仲裁车道 — 决定走 Combat Graph 路由还是全局 Action 仲裁。</summary>
@@ -57,7 +60,7 @@ public struct TeleportTrigger
 /// <para><see cref="MotionProfile"/> 非空则由 MotionExecutor 施加程序化位移；为空则<strong>只做表现播放</strong>（无脚本层位移语义）。</para>
 /// </summary>
 [CreateAssetMenu(fileName = "NewAction", menuName = "GameMain/Action/Action Data")]
-public class ActionDataSO : ScriptableObject
+public partial class ActionDataSO : ScriptableObject
 {
     [Tooltip("主表现用片段；复杂动作可后续扩展多轨道。")]
     public AnimationClip MainClip;
@@ -66,25 +69,46 @@ public class ActionDataSO : ScriptableObject
     [Range(0f, 0.5f)]
     public float CrossfadeTime = 0.08f;
 
-    [Tooltip("Clip 播放倍率。(Clip×Ratio)÷Duration；AutoSync 开启时由 MainClip.length÷Duration 自动写入。")]
+    [Tooltip("Clip 播放倍率；仅 ClipAnimSpeedMode=Free 时运行时生效。")]
     [Range(0.1f, 20f)]
     public float AnimSpeed = 1f;
 
-    [Tooltip("勾选 = 自动算 AnimSpeed 让 MainClip 在 Duration 内播完（AnimSpeed = Clip.length ÷ Duration）。")]
-    public bool AutoSyncAnimSpeedToDuration = true;
+    [Header("Anim Speed (171.7)")]
+    [Tooltip("Free = SO 手填 AnimSpeed + MotionProfile SpeedOverTime 可选；AutoFitDuration = Clip×Segment÷Duration，忽略 Profile 曲线。")]
+    [FormerlySerializedAs("AutoSyncAnimSpeedToDuration")]
+    public ActionAnimSpeedMode ClipAnimSpeedMode = ActionAnimSpeedMode.AutoFitDuration;
 
     [Tooltip("逻辑时长（秒）。与动画长度可不同，用于先行手感调参。")]
     public float Duration = 0.4f;
 
-    [Tooltip("Clip 完成比例（仅动画）：Action 结束时 Clip 进度 = nt×Ratio。不裁 Motion 位移。")]
-    [Range(0.05f, 2f)]
-    public float AnimationEndRatio = 1f;
+    [Header("Clip Segment (172.1)")]
+    [Tooltip("片段起点（MainClip 归一化 0~1）。")]
+    [Range(0f, 1f)]
+    public float SegmentStart;
+
+    [Tooltip("片段终点（MainClip 归一化 0~1）。旧 AnimationEndRatio 在 SegmentStart=0 时等价于此字段。")]
+    [Range(0f, 1f)]
+    [FormerlySerializedAs("AnimationEndRatio")]
+    public float SegmentEnd = 1f;
 
     [Tooltip("属性缩放逻辑时长：FinalDuration = Duration ÷ GetDurationScale。None = 不缩放。")]
     public MotionScaleType DurationStatScaling = MotionScaleType.None;
 
     [Tooltip("编舞/速率计算用的主轴位移（米），取自 MotionProfile.AxisCurves t=0→1。")]
     public MotionPrincipalAxis PrincipalAxis = MotionPrincipalAxis.Z;
+
+    [Header("Motion Retiming (Authoring · Offline)")]
+    [Tooltip("参考 Motion 推进速度（m/s）；编辑期 Duration = 主轴位移 ÷ 本值。")]
+    [Min(0.01f)]
+    public float ReferenceMotionSpeed = 5f;
+
+    [Tooltip("离线反算 AnimSpeed 下限；Clamp 后重算 Duration 保证 Segment 与 Motion 同步结束。")]
+    [Range(0.1f, 3f)]
+    public float BakeMinAnimSpeed = 0.85f;
+
+    [Tooltip("离线反算 AnimSpeed 上限。")]
+    [Range(0.1f, 3f)]
+    public float BakeMaxAnimSpeed = 1.15f;
 
     [Header("Intent Lane (157.2 A-axis)")]
     [Tooltip("仲裁车道：Combat 走 SkillEntry→Graph；Locomotion/Reaction/Interaction 走全局仲裁。")]
@@ -111,6 +135,38 @@ public class ActionDataSO : ScriptableObject
     [Tooltip("勾选 = Locomotion State 内循环播放（不切 ActionState）；隐藏离散时长/窗口字段。")]
     public bool IsContinuousLocomotion;
 
+    [Header("Locomotion Recovery (184.3)")]
+    [Tooltip("标记此 Action 为 Locomotion 表现性 Recovery（WalkEnd / RunEnd / WalkStart / RunStart）。\n" +
+             "标记后：任何主动 Intent（Movement / Defensive / Offense / Skill）均可立刻打断本 Action。\n" +
+             "战斗 Action（Attack / Dodge / Skill 本体）严禁勾选。")]
+    public bool IsLocomotionRecovery;
+
+    [Tooltip("196.x — Recovery 期间 Move Intent 锁定秒数（仅 IsLocomotionRecovery=true 生效）。\n" +
+             "  <0 = 永不放行（沿用 184.3 完全屏蔽；OnExit 一次性应用 PendingFacing）\n" +
+             "   0 = 立刻可中断（Walk_End / Run_End 推荐，立即响应 WASD 反向）\n" +
+             "  >0 = 前 N 秒锁定保护动画过渡（推荐 0.05~0.20）")]
+    public float RecoveryMoveLockSeconds = -1f;
+
+    [Tooltip("196.x — Recovery 期间 Jump Intent 锁定秒数。语义同上；推荐 0（立即可跳）。")]
+    public float RecoveryJumpLockSeconds = -1f;
+
+    [Header("Rotation Input (198.3) — 默认禁用")]
+    [Tooltip("198.3 — 动作期间玩家方向输入触发转向/移动的总开关。\n" +
+             "  ✗（默认）→ 即使 Window 配了 AllowFacing/AllowMove，玩家输入仍完全屏蔽（修复 198.2 转向 bug）\n" +
+             "  ✓        → 玩家输入在 Window 时间切片内 + 对应维度允许时生效\n" +
+             "窗口编辑入口：Action Timeline 子编辑器的 \"Rotation Input\" 虚拟轨道。\n" +
+             "数据存储在 ActionWindow.AllowFacingInput / AllowMoveInput。")]
+    public bool EnableRotationInput = false;
+
+    [Header("Motion Grammar (184.4)")]
+    [Tooltip("此 Action 的 Transition 角色；非 Transition Action 选 None。")]
+    public TransitionType TransitionType = TransitionType.None;
+
+    [Tooltip("少数特殊角色可覆写 Grammar 原型；默认走 TransitionType 继承。")]
+    public bool OverrideGrammar;
+
+    public MotionGrammarRule GrammarOverride;
+
     [Tooltip("L6：本 Action 使用 Clip RootMotion 驱动 transform（与 MotionProfile 曲线二选一，默认关）。")]
     public bool UseClipRootMotion;
 
@@ -127,7 +183,53 @@ public class ActionDataSO : ScriptableObject
     [Tooltip("右脚支撑相位急停变体；空 = MainClip。")]
     public AnimationClip RightFootSupportClip;
 
-    [Header("Motion")]
+    [Header("Stop Authoring Framework (182.1)")]
+    [Tooltip("启用 = 本 Action 参与 Stop 系统；关闭 = 完全旁路，保持旧行为。")]
+    public bool EnableStopFeature;
+
+    [Tooltip("仅 EnableStopFeature=true 且 MotionProfile.EnableStopAuthoring=true 时生效（Snap 除外）。")]
+    public StopStrategy StopStrategy = StopStrategy.InheritPhysics;
+
+    [Tooltip("InheritPhysics：速度→Distance/Duration 映射。")]
+    public InheritPhysicsSettings InheritPhysics = InheritPhysicsSettings.Default;
+
+    [Tooltip("InheritPhysics：baseAnimSpeed = ReferenceDuration / runtimeDuration。")]
+    [Range(0.05f, 2f)]
+    public float ReferenceDuration = 0.25f;
+
+    // 198.x — Tail Segment / TapWindowSec 子特性已删除。
+    // 原设计：玩家短按方向键松手 → WalkEnd 从 TailSegmentStart 跳进只播末段。
+    // 优化后：Walk_End 通过 RecoveryMoveLockSeconds=0 立即可被 Move 打断 → 短按手感由 Recovery 软屏蔽提供，无需跳段。
+    // 198.x — 167.1 ExitVelocityPolicy + VelocityDecayState 整套已彻底清理。
+    // 旧 .asset 序列化字段 Unity 自动忽略（运行时本就不读）。
+    // 下面 8 个衰减参数字段（LinearDecayDuration / ExpDecayHalfLife / Step*** 等）也是死字段，
+    // 已无任何代码读取；保留仅为不破坏旧 .asset yaml 反序列化警告。下一轮可删。
+
+    [Tooltip("LinearDecay 时长（秒）。")]
+    [Min(0.01f)] public float LinearDecayDuration = 0.15f;
+
+    [Tooltip("ExpDecay 半衰期（秒）。")]
+    [Min(0.01f)] public float ExpDecayHalfLife = 0.25f;
+
+    [Tooltip("FixedDuration：不论初速，在该时长内归零（秒）。")]
+    [Min(0.01f)] public float FixedDecelDuration = 0.30f;
+
+    [Tooltip("FixedDistance：不论初速，总滑行距离（米）。")]
+    [Min(0.01f)] public float FixedDecelDistance = 0.6f;
+
+    [Tooltip("SpeedProportional：每 m/s 初速对应的减速时长（秒）。")]
+    [Min(0f)] public float DurationPerUnitSpeed = 0.05f;
+
+    [Tooltip("StepDecay：速度倍率台阶（100%→60%→0% 等）。")]
+    public float[] StepValues = { 1f, 0.6f, 0.3f, 0f };
+
+    [Tooltip("StepDecay：每档持续时长（秒）。")]
+    [Min(0.01f)] public float StepIntervalSec = 0.08f;
+
+    [Tooltip("PreservedSlide：残余速度上限（m/s）；0 = 不限。")]
+    [Min(0f)] public float SlideMaxResidualSpeed;
+
+    [Header("Motion Profile (位移驱动)")]
     [Tooltip(
         "非空：由 MotionExecutor 施加程序化位移（连续曲线等）。为空：不写 Transform，仅凭 MainClip/Duration 由表现层驱动动画（Gameplay 仍可跑标签与时间轴）。Dodge/SwordDash 同上。")]
     public MotionProfileSO MotionProfile;
@@ -143,16 +245,21 @@ public class ActionDataSO : ScriptableObject
     [Tooltip("FX / Audio / Camera / TimeScale 标记；在时间轴编辑器中配置。")]
     public List<ActionTimelineMarker> TimelineMarkers = new List<ActionTimelineMarker>();
 
-    /// <summary>运行时 AnimSpeed：AutoSync 时让 Clip 墙钟对齐 <see cref="Duration"/>。</summary>
-    public float ResolveEffectiveAnimSpeed()
-    {
-        if (AutoSyncAnimSpeedToDuration && MainClip != null && Duration > 0.001f)
-        {
-            return Mathf.Max(0.01f, MainClip.length / Duration);
-        }
+    [Header("Preview Time Markers (171.5)")]
+    [Tooltip("Scene 预览时在这些归一化时间点绘制 Future Position 圈圈；0~1 之间。")]
+    public List<float> PreviewTimeMarkers = new List<float> { 0.25f, 0.5f, 0.75f };
 
-        return Mathf.Max(0.01f, AnimSpeed);
-    }
+    /// <summary>运行时 Action 层 Clip 倍率（不含 MotionProfile 局部节奏）。</summary>
+    public float ResolveEffectiveAnimSpeed() =>
+        ActionAnimSpeedAuthority.ResolveClipAnimSpeed(this);
+
+    /// <summary>Action nt → MainClip 归一化进度。</summary>
+    public float MapActionTimeToClipNormalized(float actionNormalizedTime) =>
+        ActionTimeAuthority.MapActionTimeToClipNormalized(actionNormalizedTime, this);
+
+    /// <summary>Action nt → MainClip 墙钟秒。</summary>
+    public float MapActionTimeToClipSeconds(float actionNormalizedTime) =>
+        ActionTimeAuthority.MapActionTimeToClipSeconds(actionNormalizedTime, this);
 
     /// <summary>
     /// Dodge/SwordDash 等「无 MotionProfile」时：AutoSync 下墙钟 = Duration；否则 Clip÷AnimSpeed。
@@ -161,12 +268,12 @@ public class ActionDataSO : ScriptableObject
     {
         if (MainClip != null)
         {
-            if (AutoSyncAnimSpeedToDuration && Duration > 0.001f)
+            if (ClipAnimSpeedMode == ActionAnimSpeedMode.AutoFitDuration && Duration > 0.001f)
             {
                 return Duration;
             }
 
-            return MainClip.length / Mathf.Max(0.01f, AnimSpeed);
+            return MainClip.length / ActionAnimSpeedAuthority.ResolveClipAnimSpeed(this);
         }
 
         return ActionTimeAuthority.ResolveAuthoredLogicDurationSeconds(this);
@@ -181,6 +288,23 @@ public class ActionDataSO : ScriptableObject
     {
         return ResolveLogicalDurationSeconds();
     }
+
+    /// <summary>167.1 遗留：MotionProfile 末段斜率；182.1 Stop 未启用时仍可用于诊断。</summary>
+    public float SampleMotionTailSlope(float startT = 0.95f, float endT = 1f)
+    {
+        if (MotionProfile == null || !MotionProfile.UsesAxisCurves)
+        {
+            return 0f;
+        }
+
+        return MotionProfile.AxisCurves.SampleTailSlope(
+            startT,
+            endT,
+            PrincipalAxis,
+            ResolveMotionDurationSeconds());
+    }
+
+    // 198.x — Tail Segment 相关 5 个 helper 方法已删除（特性退役）。
 
     /// <summary>按归一化进度更新 Phase 位并叠加各 <see cref="ActionWindow"/>；窗口侧贡献 <see cref="ActionWindowTimelineMask"/>（打断 + invulnerable / combo_input_Window）。</summary>
     public void EvaluatePhaseTags(float normalizedTime, ref GameplayTagMask mask)
@@ -214,23 +338,53 @@ public class ActionDataSO : ScriptableObject
         {
             IntentCategory = ActionIntentCategory.Locomotion;
             GraphParticipation = GraphParticipation.SourceOnly;
-            Category = ActionCategory.Locomotion;
+            if (Category != ActionCategory.IdleFallback)
+            {
+                Category = ActionCategory.Locomotion;
+            }
             Duration = 0f;
             UseClipRootMotion = false;
-            AutoSyncAnimSpeedToDuration = false;
+            ClipAnimSpeedMode = ActionAnimSpeedMode.Free;
         }
-        else if (!AutoSyncAnimSpeedToDuration
+        else if (ClipAnimSpeedMode == ActionAnimSpeedMode.Free
                  && MainClip != null
                  && Duration > 0.001f)
         {
-            var expectedWall = MainClip.length / Mathf.Max(0.01f, AnimSpeed);
+            var segmentLen = ActionTimeAuthority.ResolveSegmentLength(this);
+            var expectedWall = MainClip.length * segmentLen / Mathf.Max(0.01f, AnimSpeed);
             if (Mathf.Abs(expectedWall - Duration) > 0.05f)
             {
                 Debug.LogWarning(
-                    $"[ActionData] Duration({Duration:F3}s) 与 Clip÷AnimSpeed({expectedWall:F3}s) 偏差 >0.05s；" +
-                    $"建议勾选 AutoSyncAnimSpeedToDuration 或手调 AnimSpeed。 asset={name}",
+                    $"[ActionData] Duration({Duration:F3}s) 与 Clip×Segment÷AnimSpeed({expectedWall:F3}s) 偏差 >0.05s；" +
+                    $"建议切 AutoFitDuration 或手调 AnimSpeed。 asset={name}",
                     this);
             }
+        }
+
+        ActionTimeAuthority.NormalizeSegmentRange(this);
+
+        if (TransitionType == TransitionType.Start || TransitionType == TransitionType.End)
+        {
+            if (!IsLocomotionRecovery)
+            {
+                IsLocomotionRecovery = true;
+            }
+        }
+        else if (TransitionType == TransitionType.Turn || TransitionType == TransitionType.Pivot)
+        {
+            if (IsLocomotionRecovery)
+            {
+                Debug.LogWarning(
+                    $"[ActionData] {name}: Turn/Pivot 不应勾选 IsLocomotionRecovery，已自动清除。",
+                    this);
+                IsLocomotionRecovery = false;
+            }
+        }
+        else if (IsLocomotionRecovery)
+        {
+            Debug.LogWarning(
+                $"[ActionData] {name}: IsLocomotionRecovery 已勾选但 TransitionType=None，请设为 Start/End。",
+                this);
         }
 
         if (Windows == null)

@@ -21,4 +21,15 @@ public class BoxShapeSO : HitShapeSO
         var center = origin + rotation * offset;
         return Physics.OverlapBoxNonAlloc(center, halfExtents, results, rotation, layerMask, queryTriggers);
     }
+
+    public override void DrawGizmo(Vector3 origin, Quaternion rotation, Color color)
+    {
+        if (halfExtents.x <= 0f && halfExtents.y <= 0f && halfExtents.z <= 0f) return;
+        var center = origin + rotation * offset;
+        var prevMatrix = Gizmos.matrix;
+        Gizmos.matrix = Matrix4x4.TRS(center, rotation, Vector3.one);
+        Gizmos.color = color;
+        Gizmos.DrawWireCube(Vector3.zero, halfExtents * 2f);
+        Gizmos.matrix = prevMatrix;
+    }
 }

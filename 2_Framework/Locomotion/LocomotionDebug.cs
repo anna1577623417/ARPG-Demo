@@ -12,6 +12,7 @@ public static class LocomotionDebug
     public const string CatInput = "Input";
     public const string CatMove = "Move";
     public const string CatTurn = "Turn";
+    public const string CatRotation = "Rot";
     public const string CatResolve = "Resolve";
 
     const float DefaultTraceInterval = 0.12f;

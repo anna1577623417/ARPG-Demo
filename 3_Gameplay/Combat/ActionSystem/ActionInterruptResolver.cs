@@ -34,6 +34,12 @@ public static class ActionInterruptResolver
         }
 
         var incomingCategory = ResolveIncomingCategory(in incomingIntent, incomingAction);
+        if (incomingCategory == ActionCategory.IdleFallback)
+        {
+            LogInterruptDeny(player, action, normalizedTime, in incomingIntent, incomingAction, "idle-fallback");
+            return false;
+        }
+
         var incomingPriority = ResolveIncomingPriority(in incomingIntent, incomingAction);
         var isSelf = incomingAction != null && ReferenceEquals(incomingAction, action);
 
@@ -163,7 +169,8 @@ public static class ActionInterruptResolver
         ActionDataSO currentAction,
         in ActionWindow window)
     {
-        if (incomingCategory == ActionCategory.None)
+        if (incomingCategory == ActionCategory.None
+            || incomingCategory == ActionCategory.IdleFallback)
         {
             return false;
         }

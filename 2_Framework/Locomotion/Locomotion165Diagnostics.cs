@@ -31,7 +31,7 @@ public static class Locomotion165Diagnostics
         var clipLen = action.MainClip != null ? action.MainClip.length : 0f;
         Debug.Log(
             $"{PrefixAction}[AnimSync] action={action.name} dur={action.Duration:F3} clip={clipLen:F3} " +
-            $"animSpd={action.ResolveEffectiveAnimSpeed():F3} autoSync={action.AutoSyncAnimSpeedToDuration}",
+            $"animSpd={action.ResolveEffectiveAnimSpeed():F3} mode={action.ClipAnimSpeedMode}",
             player);
     }
 
@@ -140,21 +140,45 @@ public static class Locomotion165Diagnostics
         Debug.Log($"{PrefixLoco}[EndHint] set={hint} frame={Time.frameCount}", player);
     }
 
-    /// <summary>Bug #8：Walk/Run End 退出时残余平面速度（166.3 急停滑移）。</summary>
-    public static void LogActionExitVelocity(
+    /// <summary>Bug #8：Walk/Run End 退出时残余平面速度（182.1 Stop Authoring）。</summary>
+    public static void LogActionExitStop(
         Player player,
         LocomotionStateId endHint,
         Vector3 residualPlanar,
-        bool cleared)
+        bool cleared,
+        bool stopFeatureEnabled,
+        StopStrategy? stopStrategy)
     {
-        if (!IsActionTimingEnabled(player))
+        if (player == null)
+        {
+            return;
+        }
+
+        if (!player.DebugLocomotion && !player.DebugStop && endHint == LocomotionStateId.None)
+        {
+            return;
+        }
+
+        var strategyLabel = stopFeatureEnabled && stopStrategy.HasValue
+            ? stopStrategy.Value.ToString()
+            : "<no-stop-feature>";
+        Debug.Log(
+            $"{PrefixAction}[Exit] endHint={endHint} stop={stopFeatureEnabled} strategy={strategyLabel} " +
+            $"residualVel=({residualPlanar.x:F2},{residualPlanar.z:F2}) " +
+            $"mag={new Vector3(residualPlanar.x, 0f, residualPlanar.z).magnitude:F2} cleared={cleared} " +
+            $"frame={Time.frameCount}",
+            player);
+    }
+
+    public static void LogStopOpen(Player player, ActionDataSO action, string reason)
+    {
+        if (player == null || (!player.DebugLocomotion && !player.DebugStop))
         {
             return;
         }
 
         Debug.Log(
-            $"{PrefixAction}[Exit] endHint={endHint} residualVel=({residualPlanar.x:F2},{residualPlanar.z:F2}) " +
-            $"mag={new Vector3(residualPlanar.x, 0f, residualPlanar.z).magnitude:F2} cleared={cleared} " +
+            $"{PrefixAction}[Exit] OPEN handshake Stop: {reason} action={(action != null ? action.name : "NULL")} " +
             $"frame={Time.frameCount}",
             player);
     }

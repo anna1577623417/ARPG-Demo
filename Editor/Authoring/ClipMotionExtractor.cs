@@ -40,6 +40,10 @@ public static class ClipMotionExtractor
         public AnimationClip ClipX;
         public AnimationClip ClipY;
         public AnimationClip ClipZ;
+        /// <summary>172.1 — MainClip 归一化片段起点；采样与曲线生成仅覆盖此区间并归零。</summary>
+        public float ClipSegmentStart;
+        /// <summary>172.1 — MainClip 归一化片段终点。</summary>
+        public float ClipSegmentEnd;
 
         public static Options Default => new Options
         {
@@ -56,6 +60,8 @@ public static class ClipMotionExtractor
             XSource = MotionAxisExtractSource.Auto,
             YSource = MotionAxisExtractSource.Auto,
             ZSource = MotionAxisExtractSource.Auto,
+            ClipSegmentStart = 0f,
+            ClipSegmentEnd = 1f,
         };
     }
 
@@ -76,6 +82,70 @@ public static class ClipMotionExtractor
     }
 
     public static ExtractReport LastReport { get; private set; }
+
+    /// <summary>
+    /// Clip → Action + Motion 批处理：自动采样 XYZ 写入 AxisCurves（优先 RootT，否则 Rig 采 Hips）。
+    /// Rig 顺序：Hierarchy 选中 → Clip 所在 FBX 临时实例。
+    /// </summary>
+    public static bool ExtractIntoForBatch(AnimationClip clip, MotionProfileSO target, Options opt = default)
+    {
+        if (clip == null || target == null)
+        {
+            LogFail(clip, target, "clip 或 target 为空");
+            return false;
+        }
+
+        if (opt.SamplingFps <= 0)
+        {
+            opt = Options.Default;
+        }
+
+        target.SourceClip = clip;
+        opt.ClipPrimary = clip;
+        opt.ClipSegmentStart = 0f;
+        opt.ClipSegmentEnd = 1f;
+
+        var rig = Selection.activeGameObject;
+        if (ExtractInto(clip, rig, target, opt))
+        {
+            return true;
+        }
+
+        if (TryExtractWithClipSourceModel(clip, target, opt))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    public static bool ExtractIntoForAction(
+        ActionDataSO action,
+        GameObject previewRig,
+        MotionProfileSO target,
+        Options opt)
+    {
+        if (action?.MainClip == null)
+        {
+            LogFail(null, target, "Action.MainClip 为空");
+            return false;
+        }
+
+        opt = ApplyActionSegment(action, opt);
+        opt.ClipPrimary = action.MainClip;
+        return ExtractInto(action.MainClip, previewRig, target, opt);
+    }
+
+    public static Options ApplyActionSegment(ActionDataSO action, Options opt)
+    {
+        if (action != null)
+        {
+            opt.ClipSegmentStart = ActionTimeAuthority.ResolveSegmentStart(action);
+            opt.ClipSegmentEnd = ActionTimeAuthority.ResolveSegmentEnd(action);
+        }
+
+        return opt;
+    }
 
     public static bool ExtractInto(
         AnimationClip clip,
@@ -284,11 +354,11 @@ public static class ClipMotionExtractor
             return false;
         }
 
-        var frameCount = BuildFrameCount(clip, opt.SamplingFps);
+        var frameCount = BuildFrameCount(clip, opt.SamplingFps, opt.ClipSegmentStart, opt.ClipSegmentEnd);
         var rootSamples = new Vector3[frameCount];
         for (var i = 0; i < frameCount; i++)
         {
-            var tSec = NormalizedToSeconds(i, frameCount, clip.length);
+            var tSec = SegmentSampleSeconds(i, frameCount, clip, opt);
             rootSamples[i] = ClipMotionRootTSampling.Evaluate(in curves, tSec);
         }
 
@@ -306,7 +376,7 @@ public static class ClipMotionExtractor
             return false;
         }
 
-        var frameCount = BuildFrameCount(clip, opt.SamplingFps);
+        var frameCount = BuildFrameCount(clip, opt.SamplingFps, opt.ClipSegmentStart, opt.ClipSegmentEnd);
         var worldDeltas = new Vector3[frameCount];
         var wasActive = rigRoot.activeSelf;
         if (!wasActive)
@@ -318,7 +388,7 @@ public static class ClipMotionExtractor
         {
             for (var i = 0; i < frameCount; i++)
             {
-                var tSec = NormalizedToSeconds(i, frameCount, clip.length);
+                var tSec = SegmentSampleSeconds(i, frameCount, clip, opt);
                 clip.SampleAnimation(rigRoot, tSec);
                 worldDeltas[i] = rigT.InverseTransformVector(bone.position - rigT.position);
             }
@@ -351,7 +421,7 @@ public static class ClipMotionExtractor
             rigRoot.SetActive(true);
         }
 
-        var frameCount = BuildFrameCount(clip, opt.SamplingFps);
+        var frameCount = BuildFrameCount(clip, opt.SamplingFps, opt.ClipSegmentStart, opt.ClipSegmentEnd);
         var worldDeltas = new Vector3[frameCount];
         var enteredAnimMode = false;
 
@@ -367,7 +437,7 @@ public static class ClipMotionExtractor
             AnimationMode.BeginSampling();
             for (var i = 0; i < frameCount; i++)
             {
-                var tSec = NormalizedToSeconds(i, frameCount, clip.length);
+                var tSec = SegmentSampleSeconds(i, frameCount, clip, opt);
                 AnimationMode.SampleAnimationClip(animator.gameObject, clip, tSec);
                 worldDeltas[i] = animator.rootPosition;
             }
@@ -400,7 +470,7 @@ public static class ClipMotionExtractor
             return false;
         }
 
-        var frameCount = BuildFrameCount(clip, opt.SamplingFps);
+        var frameCount = BuildFrameCount(clip, opt.SamplingFps, opt.ClipSegmentStart, opt.ClipSegmentEnd);
         var local = new Vector3[frameCount];
         var wasActive = sampleRoot.gameObject.activeSelf;
         if (!wasActive)
@@ -412,7 +482,7 @@ public static class ClipMotionExtractor
         {
             for (var i = 0; i < frameCount; i++)
             {
-                var tSec = NormalizedToSeconds(i, frameCount, clip.length);
+                var tSec = SegmentSampleSeconds(i, frameCount, clip, opt);
                 clip.SampleAnimation(sampleRoot.gameObject, tSec);
                 local[i] = sampleRoot.localPosition;
             }
@@ -849,12 +919,23 @@ public static class ClipMotionExtractor
         return true;
     }
 
-    static int BuildFrameCount(AnimationClip clip, int samplingFps)
+    static int BuildFrameCount(AnimationClip clip, int samplingFps, float segmentStart = 0f, float segmentEnd = 1f)
     {
-        var duration = Mathf.Max(clip.length, 1f / samplingFps);
+        var start = Mathf.Clamp01(segmentStart);
+        var end = Mathf.Clamp(segmentEnd, start + 0.001f, 1f);
+        var duration = Mathf.Max(clip.length * (end - start), 1f / samplingFps);
         return Mathf.Max(2, Mathf.RoundToInt(duration * samplingFps));
     }
 
+    static float SegmentSampleSeconds(int index, int frameCount, AnimationClip clip, in Options opt)
+    {
+        var start = Mathf.Clamp01(opt.ClipSegmentStart);
+        var end = Mathf.Clamp(opt.ClipSegmentEnd, start + 0.001f, 1f);
+        var clipNorm = frameCount <= 1 ? start : Mathf.Lerp(start, end, (float)index / (frameCount - 1));
+        return clipNorm * clip.length;
+    }
+
+    [System.Obsolete("Use SegmentSampleSeconds.")]
     static float NormalizedToSeconds(int index, int frameCount, float clipLength)
     {
         var tNorm = frameCount <= 1 ? 0f : (float)index / (frameCount - 1);
@@ -941,6 +1022,32 @@ public static class ClipMotionExtractor
         var name = target != null ? target.name : "?";
         var clipName = clip != null ? clip.name : "?";
         Debug.LogWarning($"[MotionXYZ][Extract] FAIL {clipName} → {name} {reason}");
+    }
+
+    static bool TryExtractWithClipSourceModel(AnimationClip clip, MotionProfileSO target, Options opt)
+    {
+        var path = AssetDatabase.GetAssetPath(clip);
+        if (string.IsNullOrEmpty(path))
+        {
+            return false;
+        }
+
+        var model = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+        if (model == null)
+        {
+            return false;
+        }
+
+        var instance = UnityEngine.Object.Instantiate(model);
+        instance.hideFlags = HideFlags.HideAndDontSave;
+        try
+        {
+            return ExtractInto(clip, instance, target, opt);
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(instance);
+        }
     }
 }
 #endif

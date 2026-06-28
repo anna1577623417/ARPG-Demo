@@ -79,4 +79,28 @@ public class ConeShapeSO : HitShapeSO
 
         return write;
     }
+
+    public override void DrawGizmo(Vector3 origin, Quaternion rotation, Color color)
+    {
+        if (length <= 0f || angleDegrees <= 0f) return;
+        var basePos = origin + rotation * offset;
+        var forward = rotation * Vector3.forward;
+        Gizmos.color = color;
+        // 扇形左右两条边
+        var leftRot = Quaternion.AngleAxis(-angleDegrees, Vector3.up) * forward;
+        var rightRot = Quaternion.AngleAxis(angleDegrees, Vector3.up) * forward;
+        Gizmos.DrawLine(basePos, basePos + leftRot * length);
+        Gizmos.DrawLine(basePos, basePos + rightRot * length);
+        // 圆弧近似：分 12 段
+        const int seg = 12;
+        var prev = leftRot;
+        var step = (angleDegrees * 2f) / seg;
+        for (var i = 1; i <= seg; i++)
+        {
+            var ang = -angleDegrees + step * i;
+            var dir = Quaternion.AngleAxis(ang, Vector3.up) * forward;
+            Gizmos.DrawLine(basePos + prev * length, basePos + dir * length);
+            prev = dir;
+        }
+    }
 }

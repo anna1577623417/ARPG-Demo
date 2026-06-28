@@ -14,8 +14,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   targetGroup: {fileID: 11400000, guid: fc7f0c06ccd644549aa8add6cdb1625d, type: 2}
   requiredSlot: 7
-  requireDirectional: 0
-  requireGrounded: 1
-  requireAirborne: 0
+  requiredSemantic: 0
   requiredMoveDirection: 0
+  abilityGateRules: []
   priority: 0
+  _legacyRequireDirectional: 0
+  _legacyRequireGrounded: 0
+  _legacyRequireAirborne: 0
+  _1736GateMigrated: 1

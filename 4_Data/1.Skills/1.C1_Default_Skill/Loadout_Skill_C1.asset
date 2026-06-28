@@ -25,16 +25,19 @@ MonoBehaviour:
   - slot: 4
     entry: {fileID: 11400000, guid: 8079201aedb7079409fbf0f1a7cc3458, type: 2}
     hudKeyLabel: R
-  - slot: 6
+  - slot: 8
     entry: {fileID: 11400000, guid: 3c96d4742a31b634684424f5614638fd, type: 2}
-    hudKeyLabel: Shift
-  - slot: 7
+    hudKeyLabel: Key 1
+  - slot: 9
     entry: {fileID: 11400000, guid: b6c58b50e7a4b2a4ebdcaa243d00e936, type: 2}
+    hudKeyLabel: Key 2
+  - slot: 7
+    entry: {fileID: 11400000, guid: 96229d4c4051d954caa5979b04042076, type: 2}
     hudKeyLabel: Space
   combatFlowEnabled: 1
   combatFlow: {fileID: 11400000, guid: 25708567479bfd74da47966592ad45b3, type: 2}
   contextGroups:
-  - {fileID: 11400000, guid: 6b31ae08d3a3e2c41878dd6104eb0cbe, type: 2}
+  - {fileID: 11400000, guid: fd0a3264f599331479de69f28c575635, type: 2}
   locomotionGraphContext:
     JumpStart: {fileID: 11400000, guid: 05d0c0b53bf8cfc41a6317827d08769a, type: 2}
     JumpLoop: {fileID: 11400000, guid: 507d62e5e65437444b0c8530c1c957f7, type: 2}
@@ -43,3 +46,9 @@ MonoBehaviour:
     JumpLandHeavy: {fileID: 0}
     JumpLandRoll: {fileID: 0}
   abilityMap: {fileID: 11400000, guid: a2b3c4d5e6f7890123456789abcdef02, type: 2}
+  airInterruptPolicy:
+    AscendingAllowed: 3
+    ApexAllowed: 3
+    DescendingAllowed: 3
+    ApexVyThreshold: 1.5
+    GroundCoyoteSeconds: 0.08

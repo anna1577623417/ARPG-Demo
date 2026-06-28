@@ -153,17 +153,25 @@ public readonly struct PlayerActionPresentationRequestEvent : IGameEvent
     public readonly ActionDataSO Action;
     /// <summary>非空时覆盖 Action.MainClip（164.1 L10 相位急停变体等）。</summary>
     public readonly AnimationClip PresentationClip;
+    /// <summary>167.1 Segment 预留：Clip 归一化起播点。</summary>
+    public readonly float NormalizedStart;
+    /// <summary>≥0 时覆盖 Action.ResolveEffectiveAnimSpeed（InheritPhysics 动态倍率等）。</summary>
+    public readonly float PlaybackAnimSpeedOverride;
 
     public PlayerActionPresentationRequestEvent(
         int playerInstanceId,
         GameplayIntentKind kind,
         ActionDataSO action,
-        AnimationClip presentationClip = null)
+        AnimationClip presentationClip = null,
+        float normalizedStart = 0f,
+        float playbackAnimSpeedOverride = -1f)
     {
         PlayerInstanceId = playerInstanceId;
         Kind = kind;
         Action = action;
         PresentationClip = presentationClip;
+        NormalizedStart = normalizedStart;
+        PlaybackAnimSpeedOverride = playbackAnimSpeedOverride;
     }
 }
 

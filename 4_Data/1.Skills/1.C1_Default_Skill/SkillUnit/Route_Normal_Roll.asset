@@ -39,9 +39,10 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 83f8cc9046897f84e902da4c736344f7, type: 2}
   grantedStateTags: 0
   grantedAbilityTags: 0
-  ownerGroup: {fileID: 0}
+  ownerGroup: {fileID: 11400000, guid: 2535ec7a6cbfc244c8d8c171bb8e1940, type: 2}
   overrideCooldown: 0
   overrideIcon: 0
   overrideCost: 0
   abilityGateRules:
   - {fileID: 11400000, guid: f1a2b3c4d5e6789012345678abcdef01, type: 2}
+  singleAction: 1

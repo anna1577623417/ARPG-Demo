@@ -56,12 +56,14 @@ public static class SkillEntryIntentFactory
         int comboIndex = 0,
         Vector2 directionAxis = default,
         Vector2 moveBuffered = default,
-        bool moveBufferValid = false)
+        bool moveBufferValid = false,
+        SkillEntrySlot modifierSlot = SkillEntrySlot.Any)
     {
         var intent = ForEntry(slot, time, holdSeconds, moveBuffered, moveBufferValid);
         intent.Semantic = semantic;
         intent.DirectionAxis = directionAxis;
         intent.ComboIndex = comboIndex;
+        intent.ModifierSlot = modifierSlot;
         return intent;
     }
 

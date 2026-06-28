@@ -39,7 +39,8 @@ public sealed class RouteRuntimeHandle : IRouteRuntimeHandle
     }
     public string DisplayName => _def != null ? _def.DisplayName : string.Empty;
     public string KeyLabel => _keyLabel;
-    public bool ShowOnHud => _def != null && _def.ShowOnHud;
+    public bool ShowOnHud =>
+        _def != null && (_def.OwnerGroup == null ? _def.ShowOnHud : _def.OwnerGroup.ShowOnHud);
 
     public float CdProgress01
     {

@@ -6,9 +6,7 @@ public sealed class MotionYAxisV2Tests
     [Test]
     public void Legacy_UseGravity_MapsToCurveUseGravityClamp()
     {
-#pragma warning disable 0618
-        var config = MotionYAxisLegacyMapping.FromLegacy(YAxisPolicy.UseGravity);
-#pragma warning restore 0618
+        var config = MotionYAxisLegacyMapping.FromLegacy(MotionYAxisLegacyMapping.UseGravity);
         Assert.AreEqual(YMotionMode.Curve, config.YMotion);
         Assert.AreEqual(GravityMode.UseGravity, config.Gravity);
         Assert.AreEqual(GroundConstraintMode.ClampToGround, config.GroundConstraint);

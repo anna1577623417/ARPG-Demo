@@ -19,6 +19,9 @@ public sealed class CombatGraphAsset : ScriptableObject
     [SerializeField, Tooltip("Condition 资产池；flowEdges.ConditionRefs 须引用此列表内资产。")]
     CombatFlowConditionDefinition[] conditionPool;
 
+    [SerializeField, Tooltip("185.2 EdgeCondition 资产池；flowEdges.EdgeConditions 须引用此列表内资产。")]
+    EdgeConditionSO[] edgeConditionPool;
+
     [Header("Flow Graph (Authoring)")]
     [SerializeField] CombatFlowNodeAuthoring[] nodes;
     [SerializeField] CombatFlowEdgeAuthoring[] flowEdges;
@@ -41,6 +44,7 @@ public sealed class CombatGraphAsset : ScriptableObject
     public ActionDataSO[] ActionPool => actionPool;
     public SkillRouteDefinition[] RoutePool => routePool;
     public CombatFlowConditionDefinition[] ConditionPool => conditionPool;
+    public EdgeConditionSO[] EdgeConditionPool => edgeConditionPool;
     public SkillRouteDefinition[] RegisteredRoutes => routePool;
     public CombatFlowNodeAuthoring[] Nodes => nodes;
     public CombatFlowEdgeAuthoring[] FlowEdges => flowEdges;

@@ -14,12 +14,16 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   MainClip: {fileID: 7400000, guid: f4006c1251a532b48baf9a74e6595a52, type: 2}
   CrossfadeTime: 0.08
-  AnimSpeed: 1.5
-  AutoSyncAnimSpeedToDuration: 1
-  Duration: 0.5
-  AnimationEndRatio: 1
+  AnimSpeed: 1
+  ClipAnimSpeedMode: 0
+  Duration: 0.9
+  SegmentStart: 0
+  SegmentEnd: 0.9
   DurationStatScaling: 0
   PrincipalAxis: 2
+  ReferenceMotionSpeed: 5
+  BakeMinAnimSpeed: 0.85
+  BakeMaxAnimSpeed: 1.15
   IntentCategory: 1
   GraphParticipation: -1
   Category: 2
@@ -32,9 +36,25 @@ MonoBehaviour:
   CanMoveDuringLocomotion: 1
   LeftFootSupportClip: {fileID: 0}
   RightFootSupportClip: {fileID: 0}
+  ExitVelocityPolicy: 0
+  LinearDecayDuration: 0.15
+  ExpDecayHalfLife: 0.25
+  FixedDecelDuration: 0.3
+  FixedDecelDistance: 0.6
+  DurationPerUnitSpeed: 0.05
+  StepValues:
+  - 1
+  - 0.6
+  - 0.3
+  - 0
+  StepIntervalSec: 0.08
+  SlideMaxResidualSpeed: 0
+  TapWindowSec: 0
+  EndTailNormalizedStart: 0
+  TapPairedEndAction: {fileID: 0}
   MotionProfile: {fileID: 11400000, guid: 964df2533025420468472c4c7c33fef5, type: 2}
   Windows:
-  - NormalizedStart: 0.7
+  - NormalizedStart: 0.65
     NormalizedEnd: 1
     WindowSlotMask: 0
     RuntimeEvents: []
@@ -45,3 +65,7 @@ MonoBehaviour:
     _legacyDirectStateTagMask: 0
   TeleportTriggers: []
   TimelineMarkers: []
+  PreviewTimeMarkers:
+  - 0.25
+  - 0.5
+  - 0.75

@@ -46,9 +46,14 @@ public class PlayerController : EntityController
     private float _nextLocoInputTraceTime;
     private float _nextLocoAnomalyLogTime;
 
+    private readonly InputTenseResolver _wasdTense = new InputTenseResolver();
+
     private Vector2 _prevMoveInput;
     private bool _runToggled;
     private bool _prevWantsRun;
+    private Vector3 _pressStartLogicForward = Vector3.forward;
+    private Vector3 _lastNonZeroWorldDir;
+    private InputTense _prevInputTense = InputTense.Idle;
 
     ActionDataSO _moveInterruptWindowAction;
     bool _moveInterruptQueuedForWindow;
@@ -117,18 +122,31 @@ public class PlayerController : EntityController
             return;
         }
 
+        var rawInput = inputReader.MoveInput;
+        var releaseSq = moveReleaseThreshold * moveReleaseThreshold;
+        var hasMoveInput = rawInput.sqrMagnitude >= releaseSq;
+
+        TickAbilityInputContext(rawInput);
         ConsumeDiscreteIntents();
         _primaryAttackPress.Tick(Time.time, inputReader.IsAttackHeld, player);
         _secondaryInteractPress.Tick(Time.time, inputReader.IsInteractHeld, player);
 
-        var rawInput = inputReader.MoveInput;
-        var releaseSq = moveReleaseThreshold * moveReleaseThreshold;
-
         TryEnqueueMoveInterruptIntent(rawInput, releaseSq);
 
+        var tuning = player.LocomotionProfile != null ? player.LocomotionProfile.Tuning : null;
+        _wasdTense.ApplyTuning(tuning);
+
         var worldDirection = ResolveWorldDirection(rawInput, out var moveCtxSource, out var cameraRelative);
+        if (worldDirection.sqrMagnitude > 0.0001f)
+        {
+            _lastNonZeroWorldDir = worldDirection;
+        }
+
+        var tense = _wasdTense.Tick(hasMoveInput, Time.time);
+        player.SetCurrentInputTense(tense);
         var wantsRun = ResolveRunIntent(rawInput, releaseSq);
-        player.SetMovementIntent(worldDirection, wantsRun);
+        ApplyInputTenseFacing1841(tense, hasMoveInput, worldDirection, rawInput, releaseSq, wantsRun);
+        _prevInputTense = tense;
         LogLocomotionInputTrace(player, rawInput, worldDirection, moveCtxSource, cameraRelative);
 
         //if (debugRunLogs && wantsRun != _prevWantsRun)
@@ -142,6 +160,36 @@ public class PlayerController : EntityController
 
         _prevWantsRun = wantsRun;
         _prevMoveInput = rawInput;
+    }
+
+    void TickAbilityInputContext(Vector2 rawInput)
+    {
+        if (player == null)
+        {
+            return;
+        }
+
+        var tuning = player.LocomotionProfile != null ? player.LocomotionProfile.Tuning : null;
+        var window = tuning != null ? tuning.AbilityContextWindowSec : 0.1f;
+        var grace = tuning != null ? tuning.DirectionGraceSec : 0.12f;
+        var fwd = player.LogicForward;
+        fwd.y = 0f;
+        if (fwd.sqrMagnitude > 0.0001f)
+        {
+            fwd.Normalize();
+        }
+        else
+        {
+            fwd = Vector3.forward;
+        }
+
+        player.InputContext.TickMoveContext(
+            rawInput,
+            moveReleaseThreshold,
+            Time.time,
+            fwd,
+            window,
+            grace);
     }
 
     /// <summary>
@@ -204,6 +252,27 @@ public class PlayerController : EntityController
         Vector2 moveBuf = default;
         var moveBufValid = inputReader.MoveModifierBuffer != null
             && (moveBuf = inputReader.MoveModifierBuffer.GetBufferedMove(Time.time)).sqrMagnitude > 0.0001f;
+
+        var branchNote = string.Empty;
+        // 206.2 — 持续按住 WASD 跑步时 buffer 可能已过期；仍用当前 MoveInput 作方向 modifier。
+        if (!moveBufValid && inputReader.MoveInput.sqrMagnitude > moveReleaseThreshold * moveReleaseThreshold)
+        {
+            moveBuf = inputReader.MoveInput;
+            moveBufValid = true;
+            branchNote = "branch=liveMoveInput_fallback";
+        }
+
+        var ctx = player.InputContext;
+        DodgeChord8Probe.LogDispatchPulse(
+            slot,
+            moveBuf,
+            moveBufValid,
+            inputReader.MoveInput,
+            ctx != null && ctx.MoveActive,
+            ctx != null ? ctx.MoveActiveSince : -1f,
+            ctx != null && ctx.DirectionalCommitted,
+            ctx != null && ctx.LoadoutHasDirectionalModifier,
+            branchNote);
 
         var resolver = player.InputSemantic;
         if (resolver != null)
@@ -348,6 +417,114 @@ public class PlayerController : EntityController
         return holdRun;
     }
 
+    /// <summary>184.1 — Combo 已由 InputContext/Skill 抢占；Hold→Locomotion；Tap→Turn-only。</summary>
+    void ApplyInputTenseFacing1841(
+        InputTense tense,
+        bool hasMoveInput,
+        Vector3 worldDirection,
+        Vector2 rawInput,
+        float releaseSq,
+        bool wantsRun)
+    {
+        var pressEdge = DetectMovePressEdge(rawInput, releaseSq);
+        if (pressEdge)
+        {
+            _pressStartLogicForward = player.LogicForward;
+        }
+
+        if (tense == InputTense.Tap)
+        {
+            var dir = _lastNonZeroWorldDir;
+            if (dir.sqrMagnitude < 0.0001f)
+            {
+                player.ClearMovementIntent();
+                return;
+            }
+
+            HandleTapFacing(player, dir);
+            return;
+        }
+
+        if (!hasMoveInput)
+        {
+            player.ClearMovementIntent();
+            return;
+        }
+
+        var suppressRotation = player.ShouldSuppressLocomotionRotation();
+
+        switch (tense)
+        {
+            case InputTense.Hold:
+            case InputTense.ShortHold:
+                if (!suppressRotation
+                    && ActionRotationGate.IsAllowed(player, ActionRotationGate.Kind.Facing))
+                {
+                    ActionTurnProbe.Log(player, player.LogicForward, worldDirection, "PlayerController.Hold");
+                    player.SetLogicForward(worldDirection);
+                }
+
+                player.SetMovementIntent(worldDirection, wantsRun);
+                break;
+
+            case InputTense.Pending:
+                if (!suppressRotation
+                    && ActionRotationGate.IsAllowed(player, ActionRotationGate.Kind.Facing))
+                {
+                    ActionTurnProbe.Log(player, player.LogicForward, worldDirection, "PlayerController.Pending");
+                    player.SetLogicForward(worldDirection);
+                }
+
+                player.SetFacingIntentOnly(worldDirection);
+                break;
+
+            default:
+                player.ClearMovementIntent();
+                break;
+        }
+    }
+
+    /// <summary>184.4 — Tap Facing 走 Motion Grammar 三分支；非 Intent，不叠加 Transition。</summary>
+    void HandleTapFacing(Player player, Vector3 worldDir)
+    {
+        if (worldDir.sqrMagnitude < 0.04f)
+        {
+            return;
+        }
+
+        var currentTransition = player.States?.Current is PlayerActionState actionState
+            ? actionState.CurrentAction
+            : null;
+        var decision = MotionGrammar.DecideTapFacing(currentTransition);
+        var reason = currentTransition != null
+            ? $"{currentTransition.TransitionType}"
+            : "Locomotion";
+        MotionGrammarProbe.LogTapFacingDecision(player, currentTransition, decision, reason);
+
+        switch (decision)
+        {
+            case TapFacingDecision.CachePendingFacing:
+                player.RequestPendingFacing(worldDir);
+                player.SetFacingIntentOnly(worldDir);
+                return;
+
+            case TapFacingDecision.Ignore:
+                MotionGrammarProbe.LogFacingIgnored(player, currentTransition, "Start.NoDirOverride");
+                player.SetFacingIntentOnly(worldDir);
+                return;
+        }
+
+        if (!player.ShouldSuppressLocomotionRotation()
+            && ActionRotationGate.IsAllowed(player, ActionRotationGate.Kind.Facing))
+        {
+            ActionTurnProbe.Log(player, player.LogicForward, worldDir, "PlayerController.TapFacing");
+            player.SetLogicForward(worldDir);
+        }
+
+        player.SetFacingIntentOnly(worldDir);
+        player.ArmTapTurnPresentation(_pressStartLogicForward);
+    }
+
     private Vector3 ResolveWorldDirection(Vector2 rawInput, out string ctxSource, out bool cameraRelative)
     {
         ctxSource = "none";
@@ -438,7 +615,7 @@ public class PlayerController : EntityController
             camFwd = ctx.GetMovementReferenceRotation() * Vector3.forward;
         }
 
-        var charFwd = p.transform.forward;
+        var charFwd = p.LogicForward;
         LocomotionDebug.TryLogCameraRelativeAnomaly(
             p, rawInput, worldDir, camFwd, charFwd, cameraRelative, ctxSource, ref _nextLocoAnomalyLogTime);
 

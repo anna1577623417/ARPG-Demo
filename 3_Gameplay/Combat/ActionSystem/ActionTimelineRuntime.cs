@@ -25,8 +25,33 @@ public static class ActionTimelineRuntime
 
         FireCrossingMarkers(player, action, prevNormalized, nextNormalized, state);
         FireCrossingWindowEvents(player, action, prevNormalized, nextNormalized, state);
+        FireCrossingCombatEvents(player, action, prevNormalized, nextNormalized, state); // 188.3 W9
         FireCrossingTeleports(player, action, prevNormalized, nextNormalized, planarForward, state);
         UpdateZones(action, nextNormalized, state);
+    }
+
+    /// <summary>188.3 W9 — Combat Track 时间轴穿越触发 CombatObjectSpawner.Spawn。</summary>
+    static void FireCrossingCombatEvents(
+        Player player,
+        ActionDataSO action,
+        float prevNt,
+        float nextNt,
+        ActionTimelinePlaybackState state)
+    {
+        if (action.CombatTrack == null || action.CombatTrack.Length == 0) return;
+        var spawner = player != null ? player.CombatObjectSpawner : null;
+        if (spawner == null) return; // Player 还未注入 Spawner（W9 接入前）
+
+        for (var i = 0; i < action.CombatTrack.Length; i++)
+        {
+            ref var ev = ref action.CombatTrack[i];
+            if (ev.Definition == null) continue;
+            if (!ActionTimelineSampler.Crossed(prevNt, nextNt, ev.NormalizedTime)) continue;
+            if (!state.TryFireCombatEventOnce(i)) continue;
+
+            CombatSpawnResolver.Resolve(player, ev.Definition, in ev, out var pos, out var rot);
+            spawner.Spawn(ev.Definition, player, pos, rot);
+        }
     }
 
     static void FireCrossingMarkers(

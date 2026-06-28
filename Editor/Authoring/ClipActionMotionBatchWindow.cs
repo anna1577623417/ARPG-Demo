@@ -152,6 +152,7 @@ public sealed class ClipActionMotionBatchWindow : EditorWindow
         EditorGUILayout.LabelField("Clip → Motion → Action", EditorStyles.boldLabel);
         EditorGUILayout.HelpBox(
             "仅生成动作层资产（含位移模具）。\n" +
+            "MotionProfile 将自动从 Clip 提取 XYZ 曲线（RootT 或 Hips 采样）；失败时归零而非默认 Z=4。\n" +
             "技能 Stage + Route 请使用 Tools → Skill → Action → Stage → Route Batch（或分步 SkillStage / NormalRoute Batch）。",
             MessageType.Info);
 
@@ -411,6 +412,8 @@ public sealed class ClipActionMotionBatchWindow : EditorWindow
             return false;
         }
 
+        BindClipToMotionProfile(clip, motion ?? action.MotionProfile);
+
         createdOrUpdated = true;
         log.AppendLine($"  ✓ {clip.name} → {core}{m_actionSuffix}");
         return true;
@@ -421,14 +424,21 @@ public sealed class ClipActionMotionBatchWindow : EditorWindow
         var existing = AssetDatabase.LoadAssetAtPath<MotionProfileSO>(path);
         if (existing != null && !m_overwriteExisting)
         {
+            BindClipToMotionProfile(clip, existing);
             return existing;
         }
 
         var profile = existing != null ? existing : ScriptableObject.CreateInstance<MotionProfileSO>();
-        profile.ApplyDefaultZeroAxisDisplacement();
         profile.AnimSpeedMode = AnimSpeedMode.Constant;
         profile.SpeedOverTime = AnimationCurve.Constant(0f, 1f, 1f);
-        ApplyMotionBaselineFromClip(clip, profile);
+        BindClipToMotionProfile(clip, profile);
+
+        if (!ClipMotionExtractor.ExtractIntoForBatch(clip, profile))
+        {
+            profile.ApplyDefaultZeroAxisDisplacement();
+            Debug.LogWarning(
+                $"[ClipActionMotion] 位移提取失败，AxisCurves 已归零: {clip.name} — {ClipMotionExtractor.LastReport.Message}");
+        }
 
         if (existing == null)
         {
@@ -447,6 +457,7 @@ public sealed class ClipActionMotionBatchWindow : EditorWindow
         var existing = AssetDatabase.LoadAssetAtPath<ActionDataSO>(path);
         if (existing != null && !m_overwriteExisting)
         {
+            BindClipToMotionProfile(clip, motion ?? existing.MotionProfile);
             return existing;
         }
 
@@ -470,12 +481,23 @@ public sealed class ClipActionMotionBatchWindow : EditorWindow
         return action;
     }
 
-    static void ApplyMotionBaselineFromClip(AnimationClip clip, MotionProfileSO profile)
+    /// <summary>与 Action Inspector「传递 MainClip → MotionProfile」同口径。</summary>
+    static void BindClipToMotionProfile(AnimationClip clip, MotionProfileSO profile)
     {
-        if (!profile.UsesAxisCurves)
+        if (clip == null || profile == null)
         {
-            profile.ApplyDefaultZeroAxisDisplacement();
+            return;
         }
+
+        if (profile.SourceClip == clip)
+        {
+            return;
+        }
+
+        profile.SourceClip = clip;
+        EditorUtility.SetDirty(profile);
+        Debug.Log(
+            $"[ClipActionMotion] MotionProfile '{profile.name}'.SourceClip = '{clip.name}'");
     }
 
     string BuildCoreName(string clipFileName)

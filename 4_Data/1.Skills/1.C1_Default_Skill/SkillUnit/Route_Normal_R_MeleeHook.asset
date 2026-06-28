@@ -37,7 +37,6 @@ MonoBehaviour:
     critMultiplierOverride: 1
   stages:
   - {fileID: 11400000, guid: 85cf7613bc76ca547b38670769ae4d1c, type: 2}
-  - {fileID: 11400000, guid: 0ad9c24d9ba1ffb4c9543eb211decc20, type: 2}
   grantedStateTags: 0
   grantedAbilityTags: 0
   ownerGroup: {fileID: 0}
@@ -46,3 +45,4 @@ MonoBehaviour:
   overrideCost: 0
   abilityGateRules:
   - {fileID: 11400000, guid: f1a2b3c4d5e6789012345678abcdef01, type: 2}
+  singleAction: 1

@@ -47,4 +47,29 @@ public static class InputChordResolver
 
         return defaultDir;
     }
+
+    /// <summary>
+    /// 184.1 W7 — 以 <paramref name="logicForward"/> 为 +Z，将世界输入方向映射为 8 向 Route。
+    /// </summary>
+    public static DirectionalRouteType ResolveRelativeToLogicForward(
+        Vector3 worldInputDir,
+        Vector3 logicForward,
+        DirectionalRouteType defaultDir = DirectionalRouteType.Forward)
+    {
+        worldInputDir.y = 0f;
+        logicForward.y = 0f;
+        if (worldInputDir.sqrMagnitude < 0.0001f)
+        {
+            return defaultDir;
+        }
+
+        if (logicForward.sqrMagnitude < 0.0001f)
+        {
+            logicForward = Vector3.forward;
+        }
+
+        var basis = Quaternion.LookRotation(logicForward.normalized, Vector3.up);
+        var local = Quaternion.Inverse(basis) * worldInputDir.normalized;
+        return Resolve(new Vector2(local.x, local.z), defaultDir);
+    }
 }

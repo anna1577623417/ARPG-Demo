@@ -4,10 +4,7 @@ using UnityEngine;
 
 public sealed partial class ActionDataTimelineEditor
 {
-    bool _foldWinTiming = true;
-    bool _foldWinInterrupt = true;
-    bool _foldWinCombat = true;
-    bool _foldWinEvents;
+    // 172.2 W0/W1：右属性面板改为垂直 SectionSeparator + VerticalField；旧 Foldout 折叠状态字段不再需要。
 
     void DrawWindowClipProperties(SerializedProperty elem, int index)
     {
@@ -18,63 +15,43 @@ public sealed partial class ActionDataTimelineEditor
         DrawCombatTagToggles(elem);
         EditorGUILayout.Space(4f);
 
-        _foldWinTiming = ActionTimelineEditorUI.Foldout(_foldWinTiming, "时间 / Phase");
-        if (_foldWinTiming)
-        {
-            using (new EditorGUI.IndentLevelScope())
-            {
-                EditorGUILayout.PropertyField(
-                    elem.FindPropertyRelative(nameof(ActionWindow.NormalizedStart)),
-                    new GUIContent("起点"));
-                EditorGUILayout.PropertyField(
-                    elem.FindPropertyRelative(nameof(ActionWindow.NormalizedEnd)),
-                    new GUIContent("终点"));
-            }
-        }
+        // 172.2 W0/W1：右属性面板垂直化 —— label 顶置 / 控件全宽 / SectionSeparator 替代 Foldout
+        ActionTimelineEditorUI.SectionSeparator("时间 / Phase");
+        ActionTimelineEditorUI.VerticalField(
+            elem.FindPropertyRelative(nameof(ActionWindow.NormalizedStart)),
+            new GUIContent("起点 (Start)", "归一化时间 0~1"));
+        ActionTimelineEditorUI.VerticalField(
+            elem.FindPropertyRelative(nameof(ActionWindow.NormalizedEnd)),
+            new GUIContent("终点 (End)", "归一化时间 0~1"));
 
-        _foldWinInterrupt = ActionTimelineEditorUI.Foldout(_foldWinInterrupt, "打断");
-        if (_foldWinInterrupt)
-        {
-            using (new EditorGUI.IndentLevelScope())
-            {
-                EditorGUILayout.PropertyField(
-                    elem.FindPropertyRelative(nameof(ActionWindow.InterruptibleByCategories)),
-                    new GUIContent("允许类别", "Movement / Offense / Defensive / Utility"));
-                EditorGUILayout.PropertyField(
-                    elem.FindPropertyRelative(nameof(ActionWindow.MinIncomingPriority)),
-                    new GUIContent("最低优先级"));
-                EditorGUILayout.PropertyField(
-                    elem.FindPropertyRelative(nameof(ActionWindow.AllowSelfInterrupt)),
-                    new GUIContent("允许自打断"));
-            }
-        }
+        ActionTimelineEditorUI.SectionSeparator("打断 (Interrupt)");
+        ActionTimelineEditorUI.VerticalField(
+            elem.FindPropertyRelative(nameof(ActionWindow.InterruptibleByCategories)),
+            new GUIContent("允许类别", "Movement / Offense / Defensive / Utility"));
+        ActionTimelineEditorUI.VerticalField(
+            elem.FindPropertyRelative(nameof(ActionWindow.MinIncomingPriority)),
+            new GUIContent("最低优先级", "传入意图需 ≥ 此值才能打断"));
+        EditorGUILayout.PropertyField(
+            elem.FindPropertyRelative(nameof(ActionWindow.AllowSelfInterrupt)),
+            new GUIContent("允许自打断", "允许同一 Action 类自打断本窗"));
+        GUILayout.Space(ActionTimelineEditorUI.VerticalFieldSpacing);
 
-        _foldWinCombat = ActionTimelineEditorUI.Foldout(_foldWinCombat, "战斗状态（Hitbox / Hurtbox / …）");
-        if (_foldWinCombat)
+        ActionTimelineEditorUI.SectionSeparator("战斗状态（Hitbox / Hurtbox / …）");
+        var pSlots = elem.FindPropertyRelative(nameof(ActionWindow.WindowSlotMask));
+        EditorGUILayout.LabelField(new GUIContent("状态标签", "写入 GameplayTag 时间轨"), EditorStyles.miniLabel);
+        GUILayout.Space(ActionTimelineEditorUI.LabelToControlSpacing);
         {
-            using (new EditorGUI.IndentLevelScope())
-            {
-                var pSlots = elem.FindPropertyRelative(nameof(ActionWindow.WindowSlotMask));
-                var tagH = ActionWindowSlotMaskDrawerUtility.GetCompactMaskHeight(pSlots);
-                var rect = EditorGUILayout.GetControlRect(false, tagH);
-                ActionWindowSlotMaskDrawerUtility.DrawCompactSlotMaskField(
-                    rect,
-                    pSlots,
-                    new GUIContent("状态标签", "写入 GameplayTag 时间轨"));
-            }
+            var tagH = ActionWindowSlotMaskDrawerUtility.GetCompactMaskHeight(pSlots);
+            var rect = EditorGUILayout.GetControlRect(false, tagH);
+            ActionWindowSlotMaskDrawerUtility.DrawCompactSlotMaskField(rect, pSlots, GUIContent.none);
         }
+        GUILayout.Space(ActionTimelineEditorUI.VerticalFieldSpacing);
 
-        _foldWinEvents = ActionTimelineEditorUI.Foldout(_foldWinEvents, "Runtime Event（窗内事件）");
-        if (_foldWinEvents)
+        ActionTimelineEditorUI.SectionSeparator("Runtime Event（窗内事件）");
+        var pEvents = elem.FindPropertyRelative(nameof(ActionWindow.RuntimeEvents));
+        if (pEvents != null)
         {
-            using (new EditorGUI.IndentLevelScope())
-            {
-                var pEvents = elem.FindPropertyRelative(nameof(ActionWindow.RuntimeEvents));
-                if (pEvents != null)
-                {
-                    EditorGUILayout.PropertyField(pEvents, GUIContent.none, true);
-                }
-            }
+            EditorGUILayout.PropertyField(pEvents, GUIContent.none, true);
         }
     }
 

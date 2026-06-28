@@ -22,9 +22,7 @@ public sealed partial class MotionProfileEditor
             "直接编辑 AxisCurves；Scale 为米。提取时 Source=Manual 的轴不会被覆盖。",
             MessageType.None);
 
-        DrawAxisCurveRow("X（左右）", ref profile.AxisCurves.XCurve, ref profile.AxisCurves.XScale);
-        DrawAxisCurveRow("Y（上下）", ref profile.AxisCurves.YCurve, ref profile.AxisCurves.YScale);
-        DrawAxisCurveRow("Z（前后）", ref profile.AxisCurves.ZCurve, ref profile.AxisCurves.ZScale);
+        DrawAxisCurvesVertical(profile);
 
         EditorGUILayout.Space(4f);
         EditorGUILayout.LabelField("曲线预设", EditorStyles.miniBoldLabel);
@@ -54,14 +52,38 @@ public sealed partial class MotionProfileEditor
         EditorGUILayout.EndFoldoutHeaderGroup();
     }
 
-    static void DrawAxisCurveRow(string label, ref AnimationCurve curve, ref float scale)
+    static void DrawAxisCurvesVertical(MotionProfileSO profile)
+    {
+        DrawAxisRow(profile, "【X】Left ↔ Right",
+            ref profile.AxisCurves.XCurve, ref profile.AxisCurves.XScale);
+        EditorGUILayout.Space(2f);
+        DrawAxisRow(profile, "【Y】Down ↕ Up",
+            ref profile.AxisCurves.YCurve, ref profile.AxisCurves.YScale);
+        EditorGUILayout.Space(2f);
+        DrawAxisRow(profile, "【Z】Back ↔ Forward",
+            ref profile.AxisCurves.ZCurve, ref profile.AxisCurves.ZScale);
+    }
+
+    static void DrawAxisRow(
+        MotionProfileSO profile,
+        string axisLabel,
+        ref AnimationCurve curve,
+        ref float scale)
     {
         using (new EditorGUILayout.HorizontalScope())
         {
-            EditorGUILayout.PrefixLabel(label);
-            curve = EditorGUILayout.CurveField(GUIContent.none, curve, GUILayout.MinHeight(40f));
-            scale = EditorGUILayout.FloatField(scale, GUILayout.Width(52f));
+            EditorGUILayout.LabelField(axisLabel, EditorStyles.miniBoldLabel);
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button(new GUIContent("↕", "垂直镜像曲线"), GUILayout.Width(24f), GUILayout.Height(16f)))
+            {
+                Undo.RecordObject(profile, $"Flip {axisLabel}");
+                MotionAxisCurveFlipUtil.FlipCurve(ref curve);
+            }
         }
+
+        curve = EditorGUILayout.CurveField(GUIContent.none, curve, GUILayout.MinHeight(22f));
+        EditorGUILayout.LabelField("Scale (m)", EditorStyles.miniLabel);
+        scale = EditorGUILayout.FloatField(GUIContent.none, scale, GUILayout.Width(72f));
     }
 
     static void ApplyForwardZPreset(MotionProfileSO profile, float meters)

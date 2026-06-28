@@ -11,6 +11,14 @@ using UnityEngine;
 /// </summary>
 public sealed class PlayerActionState : PlayerState
 {
+    /// <summary>184.4 — Grammar / PendingFacing 查询当前 Transition Action。</summary>
+    public ActionDataSO CurrentAction => m_action;
+
+    /// <summary>198.3 — 当前 Action 的归一化时间（0~1），供 ActionRotationGate 等读取。</summary>
+    public float NormalizedTime => m_baseDuration > 0.0001f
+        ? Mathf.Clamp01(m_elapsed / m_baseDuration)
+        : 0f;
+
     GameplayIntentKind m_kind;
     ActionDataSO m_action;
     float m_baseDuration;
@@ -20,40 +28,67 @@ public sealed class PlayerActionState : PlayerState
     bool m_isLocomotionOnlyAction;
     bool m_startedWhileAirborne;
     bool m_exitDispatched;
+    float m_actionEnterElapsed;
 
     MotionExecutor m_motionExecutor;
     PlayerMotorAdapter m_motorAdapter;
     PlayerMotionStatsProvider m_statsProvider;
     bool m_useMotionProfile;
+    StopRuntimeContext m_stopCtx;
+    bool m_stopActive;
+    bool m_logicForwardLockedForStop;
+    Vector3 m_actionEnterPlanarPos;
     Vector3 m_burstFaceDir;
     readonly ActionTimelinePlaybackState m_timelineState = new ActionTimelinePlaybackState();
     float m_nextAirLocoMoveLogTime;
+
+    /// <summary>
+    /// 196.x Slide 闪现根治：本帧内是否发生过 SwapToStageAction（Stage 衔接）。
+    /// 若为 true，OnLogicUpdate 在 motionExecutor.Tick 之前直接跳过本帧 Tick——
+    /// 因为 Begin() 已经把 _elapsed 重置为 0，而本帧的 nt 局部变量仍是上一 Action 末段的值（≈1.0），
+    /// 不跳过会导致 Tick(prevNt=0, currNt=1.0) 输出整条曲线长度（5~6m 闪现）。
+    /// </summary>
+    bool m_actionSwappedThisFrame;
     protected override void OnEnter(Player player)
     {
         if (!player.TryTakePendingAction(out m_kind, out m_action) || m_action == null)
         {
             // 无 PendingAction：立即退回 Locomotion
+            InputActionProbe.LogIntentDropped(player, "(no-pending-action)", "PlayerActionState.OnEnter", "TryTakePendingAction failed → back to Loco");
             player.States.Change<PlayerLocomotionState>();
             return;
         }
+
+        InputActionProbe.LogActionEnter(player, m_action, "PlayerActionState.OnEnter");
 
         m_elapsed = 0f;
         m_prevNormalizedTime = 0f;
         m_lastHoldSeconds = 0f;
         m_startedWhileAirborne = player != null && !player.IsGrounded;
         m_exitDispatched = false;
+        m_actionEnterElapsed = 0f;
         m_isLocomotionOnlyAction = player.SkillEntries?.ActiveRoute == null
             && m_action.IntentCategory != ActionIntentCategory.Combat;
         m_timelineState.Reset();
+        m_stopCtx = default;
+        m_stopActive = false;
+        m_logicForwardLockedForStop = false;
         EnsureMotionPlumbing(player);
         m_baseDuration = ResolveActionDuration(player, m_action);
+
+        var normalizedStart = player.ConsumePendingActionNormalizedStart();
         ApplyMotionDriverPolicy(player, m_action);
+        ApplyStopAuthoring(player, m_action, ref normalizedStart);
+        m_baseDuration = ResolveDurationSeconds();
+        m_elapsed = m_baseDuration * normalizedStart;
+        m_prevNormalizedTime = normalizedStart;
+        m_actionEnterElapsed = m_elapsed;
+        m_actionEnterPlanarPos = player.transform.position;
+
         m_burstFaceDir = ResolveMotionFacingDirection(player, m_action.MotionProfile);
 
-        // 标签：进入 Action — 写 State 轨
         player.Tags.Add(TagCategory.State, (ulong)StateTag.PhaseStartup);
 
-        // MotionProfile 接管时进入"Action Motor Session"
         if (m_useMotionProfile)
         {
             player.BeginActionMotorSession();
@@ -62,26 +97,146 @@ public sealed class PlayerActionState : PlayerState
                 player.SuspendGravity();
             }
 
-            var motionDuration = MotionDurationResolver.Resolve(m_action, m_statsProvider);
-            var animSpeed = m_action.ResolveEffectiveAnimSpeed();
-            m_motionExecutor.Begin(
-                m_action.MotionProfile,
-                motionDuration,
-                m_burstFaceDir,
-                player.transform.position,
-                baseAnimSpeed: animSpeed);
+            BeginMotionExecutor(player, m_action, normalizedStart);
         }
 
         player.BeginAttackWithManualCompletion();
         var presentationClip = ResolvePresentationClip(player, m_action);
         Locomotion165Diagnostics.LogAnimSync(player, m_action);
-        player.RequestActionPresentation(m_kind, m_action, presentationClip);
+        var presentationSpeed = ResolveStopPresentationAnimSpeed(m_action, normalizedStart);
+        player.RequestActionPresentation(
+            m_kind,
+            m_action,
+            presentationClip,
+            normalizedStart,
+            presentationSpeed);
+
+        SyncInPlaceBonePresenter(player);
+
+        // 182.3 — Tick 探针重置 + 缓存当前 presentationSpeed（用于每帧重设 / 防漂移）
+        StopProbe.NotifyEnter(m_action);
+        m_lastPresentationSpeed = presentationSpeed;
+
+        if (m_action.TransitionType != TransitionType.None)
+        {
+            MotionGrammarProbe.LogTransitionEnter(player, m_action);
+        }
+    }
+
+    // 182.3 — 缓存最近一次写入 Animator 的 speed，仅在变化时下发，避免每帧事件刷屏
+    float m_lastPresentationSpeed = -1f;
+
+    void ApplyStopAuthoring(Player player, ActionDataSO action, ref float normalizedStart)
+    {
+        m_stopActive = false;
+        if (action == null || player == null)
+        {
+            m_stopCtx = default;
+            return;
+        }
+
+        var entrySpeed = new Vector3(player.PlanarVelocity.x, 0f, player.PlanarVelocity.z).magnitude;
+        m_stopCtx = StopMotionRuntime.Build(action, action.MotionProfile, entrySpeed);
+        m_stopActive = action.EnableStopFeature && m_stopCtx.IsActive;
+        // 184.3 W6 — Recovery 表现 Action 不锁 LogicForward；Stop 优先级高于 Recovery 标记
+        if (m_stopActive && !action.IsLocomotionRecovery)
+        {
+            player.PushLogicForwardLock();
+            m_logicForwardLockedForStop = true;
+        }
+
+        if (!m_stopCtx.IsActive)
+        {
+            if (action.EnableStopFeature)
+            {
+                var mfReady = action.MotionProfile != null && action.MotionProfile.EnableStopAuthoring;
+                Locomotion165Diagnostics.LogStopOpen(
+                    player,
+                    action,
+                    $"Build inactive strategy={action.StopStrategy} mfReady={mfReady}");
+            }
+
+            return;
+        }
+
+        StopProbe.LogBegin(player, in m_stopCtx, action);
+
+        switch (m_stopCtx.Strategy)
+        {
+            case StopStrategy.Snap:
+                m_useMotionProfile = false;
+                SetClipRootMotionForPlayer(player, false);
+                break;
+            case StopStrategy.InheritPhysics:
+                normalizedStart = Mathf.Clamp01(normalizedStart);
+                player.ClearPlanarVelocity();
+                if (action.MotionProfile == null || !action.MotionProfile.EnableStopAuthoring)
+                {
+                    m_useMotionProfile = false;
+                }
+
+                break;
+            case StopStrategy.MotionProfile:
+                break;
+        }
+    }
+
+    /// <summary>182.3 — Action 时长唯一口径；InheritPhysics 运行期只读 OnEnter 缓存的 RuntimeDuration。</summary>
+    float ResolveDurationSeconds()
+    {
+        if (m_action == null)
+        {
+            return 0.4f;
+        }
+
+        if (m_stopActive && m_stopCtx.UseRuntimeDuration)
+        {
+            return Mathf.Max(0.001f, m_stopCtx.RuntimeDuration);
+        }
+
+        return Mathf.Max(0.001f, m_baseDuration);
+    }
+
+    static float ResolvePlanarDistance(Vector3 from, Vector3 to)
+    {
+        var delta = to - from;
+        delta.y = 0f;
+        return delta.magnitude;
+    }
+
+    // 198.x — ApplyTailSegmentScope 已删除（Tail Segment 特性退役）
+
+    static float ResolvePlayableActionNt(Player player, ActionDataSO action)
+    {
+        if (player == null || action == null)
+        {
+            return -1f;
+        }
+
+        var animCtrl = player.GetComponent<EntityAnimController>();
+        return animCtrl != null
+            && animCtrl.TryGetPrimaryClipActionNormalizedTime(action, out var actionNt)
+            ? actionNt
+            : -1f;
+    }
+
+    void ResetActionMotionExitState()
+    {
+        m_stopCtx = default;
+        m_stopActive = false;
+        m_logicForwardLockedForStop = false;
+        m_actionEnterElapsed = 0f;
+        m_useMotionProfile = false;
     }
 
     /// <summary>MultiStage 同次内 Auto 衔接下一段（凯隐 Q 冲刺→旋转）。</summary>
     public void SwapToStageAction(Player player, ActionDataSO action)
     {
         if (action == null) return;
+
+        // 196.x：标记本帧已 swap，OnLogicUpdate 在 motionExecutor.Tick 之前会跳过本帧 Tick。
+        // 防止"上一 Action 末段 nt≈1.0 + 新 Action Begin 后 prevNt=0"组合导致的 5~6m 闪现帧。
+        m_actionSwappedThisFrame = true;
 
         m_action = action;
         m_elapsed = 0f;
@@ -90,6 +245,13 @@ public sealed class PlayerActionState : PlayerState
         EnsureMotionPlumbing(player);
         m_baseDuration = ResolveActionDuration(player, action);
         ApplyMotionDriverPolicy(player, action);
+        var normalizedStart = 0f;
+        ApplyStopAuthoring(player, action, ref normalizedStart);
+        m_baseDuration = ResolveDurationSeconds();
+        m_elapsed = m_baseDuration * normalizedStart;
+        m_prevNormalizedTime = normalizedStart;
+        m_actionEnterElapsed = m_elapsed;
+        m_actionEnterPlanarPos = player.transform.position;
         m_burstFaceDir = ResolveMotionFacingDirection(player, action.MotionProfile);
 
         if (m_useMotionProfile && m_motionExecutor != null)
@@ -100,17 +262,49 @@ public sealed class PlayerActionState : PlayerState
                 player.SuspendGravity();
             }
 
-            var motionDuration = MotionDurationResolver.Resolve(action, m_statsProvider);
-            var animSpeed = action.ResolveEffectiveAnimSpeed();
-            m_motionExecutor.Begin(
-                action.MotionProfile,
-                motionDuration,
-                m_burstFaceDir,
-                player.transform.position,
-                baseAnimSpeed: animSpeed);
+            BeginMotionExecutor(player, action, normalizedStart);
         }
 
-        player.RequestActionPresentation(m_kind, action, ResolvePresentationClip(player, action));
+        var normalizedStartForPresentation = 0f;
+        var presentationSpeed = ResolveStopPresentationAnimSpeed(action, normalizedStartForPresentation);
+        player.RequestActionPresentation(
+            m_kind,
+            action,
+            ResolvePresentationClip(player, action),
+            normalizedStartForPresentation,
+            presentationSpeed);
+
+        SyncInPlaceBonePresenter(player);
+    }
+
+    float ResolveStopPresentationAnimSpeed(ActionDataSO action, float motionNormalizedTime)
+    {
+        if (!m_stopCtx.IsActive)
+        {
+            return action != null ? action.ResolveEffectiveAnimSpeed() : 1f;
+        }
+
+        return StopMotionRuntime.ResolvePresentationAnimSpeed(action, in m_stopCtx, motionNormalizedTime);
+    }
+
+    void BeginMotionExecutor(Player player, ActionDataSO action, float normalizedStart)
+    {
+        if (!m_useMotionProfile || m_motionExecutor == null || action == null)
+        {
+            return;
+        }
+
+        var motionDuration = ResolveDurationSeconds();
+        var animSpeed = m_stopCtx.IsActive ? m_stopCtx.BaseAnimSpeed : action.ResolveEffectiveAnimSpeed();
+        m_motionExecutor.Begin(
+            action.MotionProfile,
+            motionDuration,
+            m_burstFaceDir,
+            player.transform.position,
+            baseAnimSpeed: animSpeed,
+            startNormalizedTime: normalizedStart,
+            action: action,
+            stopContext: in m_stopCtx);
     }
 
     protected override void OnLogicUpdate(Player player)
@@ -151,21 +345,54 @@ public sealed class PlayerActionState : PlayerState
             player.SkillEntries.TickActive(in input, dt);
         }
 
-        // MotionExecutor.Tick — 接 ChargeRouteRuntime.Playback
-        if (m_useMotionProfile && m_motionExecutor != null)
+        // MotionExecutor.Tick — nt 由 ActionState 单点推送（182.3）
+        // 196.x：若本帧发生 SwapToStageAction，跳过本帧 Tick（避免对冲帧闪现）；
+        //         m_actionSwappedThisFrame 在帧末清除，下一帧从 prevNt=0 正常开始。
+        if (m_useMotionProfile && m_motionExecutor != null && !m_actionSwappedThisFrame)
         {
             if (player.SkillEntries?.ActiveRoute is ChargeRouteRuntime charge)
             {
                 var pb = charge.Playback;
                 m_motionExecutor.SetPlaybackContext(in pb);
+                m_motionExecutor.SetStopContext(in m_stopCtx);
             }
 
-            m_motionExecutor.Tick(dt, 1f, player.transform.position);
+            m_motionExecutor.Tick(
+                dt,
+                1f,
+                player.transform.position,
+                m_prevNormalizedTime,
+                nt);
             m_motorAdapter.ApplyToPlayer();
             m_motionExecutor.SyncPostMotorPosition(player.transform.position);
         }
+        else if (m_actionSwappedThisFrame && m_useMotionProfile && m_motionExecutor != null)
+        {
+            // swap 帧：把 nt 强制压回 0，避免下一帧 prevNt 继承到 swap 前的 1.0
+            nt = 0f;
+        }
+
+        // 182.3 — 每帧重设 Animator.speed：让 AnimSpeedCurve（ProfileFactor(nt)）真正按 nt 生效
+        //   * 旧 BUG：presentationSpeed 仅 OnEnter 设一次，整个 Action 期间 Animator.speed 不更新
+        //   * 现状：每帧基于当前 nt 重算；仅在数值显著变化时下发事件，避免每帧刷屏
+        if (m_stopActive && m_action != null)
+        {
+            var live = ResolveStopPresentationAnimSpeed(m_action, nt);
+            if (m_lastPresentationSpeed < 0f
+                || Mathf.Abs(live - m_lastPresentationSpeed) > 0.005f)
+            {
+                player.RequestPlayablePlaybackSpeed(live);
+                m_lastPresentationSpeed = live;
+            }
+
+            var playableNt = ResolvePlayableActionNt(player, m_action);
+            StopProbe.LogTick(player, in m_stopCtx, m_action, nt, live, playableNt);
+        }
 
         m_prevNormalizedTime = nt;
+
+        // 196.x：帧末清除 swap 标志，下一帧从 prevNt=0 正常 Tick。
+        m_actionSwappedThisFrame = false;
 
         if (m_action != null
             && m_action.IntentCategory == ActionIntentCategory.Locomotion
@@ -179,6 +406,7 @@ public sealed class PlayerActionState : PlayerState
         // 若 Route 先退出，保持到当前 Action 播放完成，避免出现中途硬切状态。
         var route = player.SkillEntries?.ActiveRoute;
         var routeEnded = route == null || !route.IsActive;
+        // 198.x — Tail Segment 退役，直接用统一阈值
         var actionEnded = nt >= 0.9999f;
         var stageCompleted = route?.Stage?.Completed ?? false;
         var isLastStage = route != null && route.IsLastStage;
@@ -206,6 +434,28 @@ public sealed class PlayerActionState : PlayerState
         {
             m_exitDispatched = true;
             var exitReason = routeEnded ? "RouteEnded" : "LastStageComplete";
+            if (m_stopActive)
+            {
+                var planarTravel = ResolvePlanarDistance(m_actionEnterPlanarPos, player.transform.position);
+                var wallElapsed = m_elapsed - m_actionEnterElapsed;
+                StopMotionRuntime.ResolveExitExpectations(
+                    in m_stopCtx,
+                    m_action,
+                    out var expectedWallDuration,
+                    out var expectedDistance);
+                StopProbe.LogExit(
+                    player,
+                    m_action,
+                    in m_stopCtx,
+                    wallElapsed,
+                    planarTravel,
+                    expectedWallDuration,
+                    expectedDistance);
+
+                var playableNtAtExit = ResolvePlayableActionNt(player, m_action);
+                StopProbe.LogPresentationMismatch(player, m_action, nt, playableNtAtExit);
+            }
+
             CombatGraphFinisherDiagnostics.LogActionExitFired(player, m_action, exitReason);
             Locomotion165Diagnostics.LogActionExit(
                 player,
@@ -221,6 +471,7 @@ public sealed class PlayerActionState : PlayerState
 
     protected override void OnExit(Player player)
     {
+        StopInPlaceBonePresenter(player);
         SetClipRootMotionForPlayer(player, false);
 
         LocomotionStateId endHint = LocomotionStateId.None;
@@ -228,6 +479,8 @@ public sealed class PlayerActionState : PlayerState
         {
             endHint = ResolveLocomotionEndStateHint(player, m_action);
         }
+
+        var hadActionMotorSession = m_useMotionProfile && m_motionExecutor != null;
 
         if (m_useMotionProfile && m_motionExecutor != null)
         {
@@ -237,6 +490,10 @@ public sealed class PlayerActionState : PlayerState
             {
                 player.ReleaseGravity();
             }
+        }
+
+        if (hadActionMotorSession)
+        {
             player.EndActionMotorSession();
         }
 
@@ -247,12 +504,23 @@ public sealed class PlayerActionState : PlayerState
         }
         player.Tags.Remove(TagCategory.State, (ulong)StateTag.PhaseStartup);
         player.ForceEndAttackIfActive();
+        player.ClearDirectionalInputContext();
+
+        if (m_logicForwardLockedForStop)
+        {
+            player.PopLogicForwardLock();
+            m_logicForwardLockedForStop = false;
+        }
 
         if (endHint != LocomotionStateId.None)
         {
             player.SetLastActionEndStateHint(endHint);
             Locomotion165Diagnostics.LogEndHintSet(player, endHint);
-            ApplyLocomotionEndExitVelocityPolicy(player, endHint);
+        }
+
+        if (m_action != null)
+        {
+            ApplyExitStopPolicy(player, m_action, endHint);
         }
 
         m_timelineState.OnActionExit(
@@ -262,7 +530,7 @@ public sealed class PlayerActionState : PlayerState
             ActionTimeScaleDriver.Instance);
 
         m_action = null;
-        m_useMotionProfile = false;
+        ResetActionMotionExitState();
     }
 
     public override bool TryConsumeGameplayIntent(Player player, in FrameContext ctx, in GameplayIntent intent)
@@ -273,6 +541,58 @@ public sealed class PlayerActionState : PlayerState
         }
 
         var incomingAction = IntentRouter.PeekActionDataForRouting(player, in intent);
+
+        // 184.3 — Recovery 表现 Action：跳过 ActionWindow 闸门，主动战斗 Intent 直接打断
+        if (m_action != null && m_action.IsLocomotionRecovery)
+        {
+            var incomingCategory = ActionInterruptResolver.ResolveIncomingCategory(in intent, incomingAction);
+            if (incomingCategory == ActionCategory.IdleFallback)
+            {
+                return false;
+            }
+
+            // 184.3 §9.2 + 184.4：Move/Tap Facing 默认不走 Recovery 旁路，由 Grammar 缓存 PendingFacing
+            // 196.x：按 ActionData.RecoveryInterrupt 做"时序软屏蔽"——
+            //   · LockSec < 0          → 永不放行（沿用 184.3）
+            //   · elapsed < LockSec    → 保护动画过渡的锁定窗口
+            //   · elapsed ≥ LockSec    → 放行到 ActionInterruptResolver 正常仲裁
+            if (intent.Kind == GameplayIntentKind.Move
+                || intent.Kind == GameplayIntentKind.Jump
+                || incomingCategory == ActionCategory.Locomotion)
+            {
+                // 196.x：按 ActionData 两个 float 字段做时序软屏蔽
+                //   · LockSec < 0       → 永不放行（沿用 184.3）
+                //   · elapsed < LockSec → 锁定窗口
+                //   · elapsed ≥ LockSec → 放行到 ActionInterruptResolver 正常仲裁
+                var lockSec = intent.Kind == GameplayIntentKind.Jump
+                    ? m_action.RecoveryJumpLockSeconds
+                    : m_action.RecoveryMoveLockSeconds;
+
+                if (lockSec < 0f || m_elapsed < lockSec)
+                {
+                    InputActionProbe.LogIntentDropped(player, intent.Kind.ToString(), "PlayerActionState.Recovery-bypass",
+                        $"action={m_action.name} elapsed={m_elapsed:F3}s lock={lockSec:F3}s cat={incomingCategory} (still-in-lock)");
+                    return false;
+                }
+
+                // 超过锁定时间 → 接 ActionInterruptResolver 正常判定（与战斗 Intent 同路径）
+                if (!ActionInterruptResolver.CanInterrupt(m_action, m_prevNormalizedTime, in intent, incomingAction, player))
+                {
+                    InputActionProbe.LogIntentDropped(player, intent.Kind.ToString(), "ActionInterruptResolver",
+                        $"action={m_action.name} elapsed={m_elapsed:F3}s nt={m_prevNormalizedTime:F2} cat={incomingCategory} window-miss");
+                    return false;
+                }
+
+                player.ClearPendingFacing("recovery-time-window-pass");
+                TurnProbe.LogRecoveryInterrupt(player, m_action, intent.Kind, incomingCategory);
+                return IntentRouter.Route(player, in intent, forceActionReentry: false);
+            }
+
+            player.ClearPendingFacing("recovery-interrupt");
+            TurnProbe.LogRecoveryInterrupt(player, m_action, intent.Kind, incomingCategory);
+            return IntentRouter.Route(player, in intent, forceActionReentry: false);
+        }
+
         var entries = player.SkillEntries;
         if (!ActionInterruptResolver.CanInterrupt(m_action, m_prevNormalizedTime, in intent, incomingAction, player))
         {
@@ -417,6 +737,40 @@ public sealed class PlayerActionState : PlayerState
         anim?.SetClipRootMotionEnabled(enabled);
     }
 
+    /// <summary>197.3 — MotionProfile 动作期剥离 Clip Hips 平面位移，与 Timeline MotionDriven 预览同口径。</summary>
+    static void SyncInPlaceBonePresenter(Player player)
+    {
+        if (player == null)
+        {
+            return;
+        }
+
+        var state = player.States?.Current as PlayerActionState;
+        var shouldEnable = state != null
+                           && state.m_useMotionProfile
+                           && state.m_action != null
+                           && !state.m_action.UseClipRootMotion;
+
+        var presenter = player.GetComponent<MotionProfileInPlacePresenter>();
+        if (!shouldEnable)
+        {
+            presenter?.End();
+            return;
+        }
+
+        if (presenter == null)
+        {
+            presenter = player.gameObject.AddComponent<MotionProfileInPlacePresenter>();
+        }
+
+        presenter.Begin(player.transform);
+    }
+
+    static void StopInPlaceBonePresenter(Player player)
+    {
+        player?.GetComponent<MotionProfileInPlacePresenter>()?.End();
+    }
+
     /// <summary>164.1 L10：支撑脚相位急停变体（需 Tuning.EnableFootPhasedStopVariants）。</summary>
     static AnimationClip ResolvePresentationClip(Player player, ActionDataSO action)
     {
@@ -517,6 +871,21 @@ public sealed class PlayerActionState : PlayerState
         }
 
         CombatGraphFinisherDiagnostics.LogActionBaselineExit(player, m_action, jumpLandBranch: false, forceReenter: false);
+
+        // 184.4 — End/Pivot 结束时应用缓存的 Tap Facing（不插 Turn 动画）
+        if (m_action != null
+            && (m_action.TransitionType == TransitionType.End
+                || m_action.TransitionType == TransitionType.Pivot)
+            && player.TryConsumePendingFacing(out var pendingForward))
+        {
+            var fromForward = player.LogicForward;
+            ActionTurnProbe.Log(player, fromForward, pendingForward, "PlayerActionState.OnExit.PendingFacing");
+            player.SetLogicForward(pendingForward);
+            InputActionProbe.LogFacingApplied(player, m_action, fromForward, pendingForward, "End/Pivot.PendingFacing");
+            MotionGrammarProbe.LogFacingApplied(player, m_action, pendingForward);
+        }
+
+        InputActionProbe.LogActionExit(player, m_action, "natural-exit", m_elapsed, m_baseDuration);
         player.States.Change<PlayerLocomotionState>();
     }
 
@@ -543,20 +912,82 @@ public sealed class PlayerActionState : PlayerState
         return LocomotionStateId.None;
     }
 
-    /// <summary>
-    /// 166.3 Bug #8：Walk/Run End 的 MotionProfile ZScale=0，Action 期间不制动；
-    /// 退出时须清零 Motor 平面速度，避免 Locomotion 接管后惯性滑移。
-    /// </summary>
-    static void ApplyLocomotionEndExitVelocityPolicy(Player player, LocomotionStateId endHint)
+    /// <summary>182.1：Action 退出时按 StopStrategy 处置平面速度。</summary>
+    static void ApplyExitStopPolicy(Player player, ActionDataSO action, LocomotionStateId endHint)
     {
-        if (endHint != LocomotionStateId.WalkEnd && endHint != LocomotionStateId.RunEnd)
+        if (player == null || action == null)
         {
             return;
         }
 
+        var tuning = player.LocomotionProfile != null ? player.LocomotionProfile.Tuning : null;
         var residual = player.PlanarVelocity;
-        player.ClearPlanarVelocity();
-        Locomotion165Diagnostics.LogActionExitVelocity(player, endHint, residual, cleared: true);
+        var cleared = false;
+
+        if (action.EnableStopFeature)
+        {
+            switch (action.StopStrategy)
+            {
+                case StopStrategy.Snap:
+                    player.ClearPlanarVelocity();
+                    cleared = true;
+                    break;
+                case StopStrategy.InheritPhysics:
+                    player.ClearPlanarVelocity();
+                    cleared = true;
+                    break;
+                case StopStrategy.MotionProfile:
+                {
+                    var threshold = tuning != null ? tuning.MotionCurveTailSlopeThreshold : 0.5f;
+                    var slope = action.SampleMotionTailSlope();
+                    if (Mathf.Abs(slope) < threshold)
+                    {
+                        player.ClearPlanarVelocity();
+                        cleared = true;
+                    }
+
+                    break;
+                }
+            }
+        }
+        // 182.1 后 Stop 功能由 EnableStopFeature + StopStrategy 唯一权威。
+
+        if (endHint != LocomotionStateId.None || player.DebugLocomotion || player.DebugStop)
+        {
+            Locomotion165Diagnostics.LogActionExitStop(
+                player,
+                endHint,
+                residual,
+                cleared,
+                action.EnableStopFeature,
+                action.EnableStopFeature ? action.StopStrategy : (StopStrategy?)null);
+        }
+    }
+
+    static bool TryResolveLocomotionStartStateHint(Player player, ActionDataSO action, out LocomotionStateId startHint)
+    {
+        startHint = LocomotionStateId.None;
+        var profile = player.LocomotionProfile;
+        if (profile == null || action == null)
+        {
+            return false;
+        }
+
+        if (profile.HasState(LocomotionStateId.WalkStart)
+            && profile.GetBinding(LocomotionStateId.WalkStart).ResolveLocomotionAction() == action)
+        {
+            startHint = LocomotionStateId.WalkStart;
+            return true;
+        }
+
+        if (profile.HasState(LocomotionStateId.RunStart)
+            && profile.GetBinding(LocomotionStateId.RunStart).ResolveLocomotionAction() == action)
+        {
+            startHint = LocomotionStateId.RunStart;
+            return true;
+        }
+
+        return false;
     }
 
     /// <summary>157.2 — Move 入队时读取当前 Action 打断窗口。</summary>

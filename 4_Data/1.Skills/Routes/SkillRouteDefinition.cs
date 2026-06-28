@@ -21,7 +21,7 @@ public abstract class SkillRouteDefinition : ScriptableObject, ISkillUnit
     [SerializeField, Tooltip("HUD 显示名（本地化前的原文）。")]
     private string displayName;
 
-    [SerializeField, Tooltip("是否在 HUD 显示该 Route。默认 true；Derivative 派生招若默认隐藏可置 false。")]
+    [SerializeField, Tooltip("是否在 HUD 显示该 Route。属于 SkillGroup 时由组的 Show On Hud 统一控制，本项无效。")]
     private bool showOnHud = true;
 
     [Header("Routing")]

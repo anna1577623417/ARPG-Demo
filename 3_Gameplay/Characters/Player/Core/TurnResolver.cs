@@ -10,8 +10,8 @@ using UnityEngine;
 /// · 不属于 Action（不参与意图仲裁）
 /// · 仅是 Locomotion 状态下的"表现观察者"——把"逻辑被强制旋转"翻译成"动画层应播什么"
 ///
-/// 核心信条："代码负责转，动画负责骗"。
-/// KCC 仍由 Player.LookAtDirection 驱动 RotateTowards；本解析器只输出 TurnInfo
+/// 核心信条：「代码负责转，动画负责骗」（184.1：LogicForward 即时；TurnResolver 只输出表现 TurnInfo）。
+/// KCC / Gameplay 读 <see cref="Player.LogicForward"/>；本解析器读 VisualForward↔Intent 夹角。
 /// 供 PlayerAnimController 决定是否切到 Turn 动画切片。
 ///
 /// ═══ 算法骨架 ═══
@@ -123,6 +123,9 @@ public sealed class TurnResolver
 
     private float m_nextDebuggerLogTime;
 
+    Player m_tracePlayer;
+    float m_lastExitAbsAngle;
+
     public TurnResolver(in TurnSettings settings)
     {
         m_settings = settings;
@@ -137,22 +140,56 @@ public sealed class TurnResolver
     public TurnInfo Tick(Player player, float deltaTime, in TurnSettings settings, LocomotionTuningSO tuning)
     {
         m_settings = settings;
+        m_tracePlayer = player;
         var triggerThreshold = tuning != null ? tuning.Turn90ThresholdDeg : 70f;
         var type180Threshold = tuning != null ? tuning.Turn180ThresholdDeg : 135f;
 
         if (player == null)
         {
-            ClearLock();
+            ClearLock("no_player");
             return default;
         }
 
         if (!m_settings.EnableTurnInPlacePresentation)
         {
-            ClearLock();
+            ClearLock("feature_off");
             return BuildNonTurningAngleSnapshot(player);
         }
 
-        var forward = player.transform.forward;
+        // 183.1 §0.4：Run 意图略过 Turn 表现（A+跑不播 pivot）
+        if (ShouldSkipTurnPresentationForRun(player, tuning))
+        {
+            if (LocomotionDebug.IsEnabled(player))
+            {
+                LocomotionDebug.LogTurnPhase(
+                    player,
+                    "SKIP",
+                    $"reason=wantsRun wantsRun={player.WantsRun} spd={player.PlanarVelocity.magnitude:F3}");
+            }
+
+            if (m_locked && (m_settings.EnableTriggerDebugger || LocomotionDebug.IsTraceEnabled(player)))
+            {
+                LocomotionDebug.Log(
+                    player,
+                    LocomotionDebug.CatTurn,
+                    $"UNLOCK wants_run skipTurnPresentation wantsRun={player.WantsRun} " +
+                    $"had type={m_lockedType} dir={(m_lockedDirection < 0 ? "L" : "R")}");
+            }
+
+            ClearLock("wants_run");
+            return BuildNonTurningAngleSnapshot(player);
+        }
+        if (player.TryConsumeTapTurnArm(out var tapFromLogic))
+        {
+            if (player.HasPendingFacing)
+            {
+                return BuildNonTurningAngleSnapshot(player);
+            }
+
+            return TryEnterTurnFromTap(player, tapFromLogic, triggerThreshold, type180Threshold);
+        }
+
+        var forward = ResolvePresentationForward(player);
         forward.y = 0f;
         var intent = player.MovementIntent;
         intent.y = 0f;
@@ -167,12 +204,13 @@ public sealed class TurnResolver
                     player);
             }
 
-            ClearLock();
+            ClearLock("input_release");
             return default;
         }
 
         var signedAngle = Vector3.SignedAngle(forward, intent, Vector3.up);
         var absAngle = Mathf.Abs(signedAngle);
+        m_lastExitAbsAngle = absAngle;
         var currentSpeed = player.PlanarVelocity.magnitude;
 
         // 162.1：移动中强制退出原地转身锁定 — Turn-In-Place 仅用于站立起步，避免锁死相机相对移动。
@@ -187,7 +225,7 @@ public sealed class TurnResolver
                     $"had type={m_lockedType} dir={(m_lockedDirection < 0 ? "L" : "R")}");
             }
 
-            ClearLock();
+            ClearLock("speed_gate", absAngle);
         }
 
         // === 已锁定：用解锁阈值判定收敛 ===
@@ -205,7 +243,7 @@ public sealed class TurnResolver
                         player);
                 }
 
-                ClearLock();
+                ClearLock("angle_converged", absAngle);
                 return new TurnInfo
                 {
                     IsTurning = false,
@@ -234,21 +272,23 @@ public sealed class TurnResolver
         if (!shouldTurn)
         {
             MaybeLogTurnSkipped(player, currentSpeed, absAngle, signedAngle, speedOk, angleOk, triggerThreshold, type180Threshold);
+            return TurnIntentBuilder.CreateNonTurning(absAngle, signedAngle);
+        }
 
-            return new TurnInfo
-            {
-                IsTurning = false,
-                Angle = absAngle,
-                SignedAngle = signedAngle,
-            };
+        if (!TurnIntentBuilder.TryClassify(signedAngle, triggerThreshold, type180Threshold, out m_lockedType, out m_lockedDirection))
+        {
+            return TurnIntentBuilder.CreateNonTurning(absAngle, signedAngle);
         }
 
         m_locked = true;
         m_lockTimer = 0f;
-        m_lockedDirection = (sbyte)(signedAngle > 0f ? 1 : -1);
-        m_lockedType = absAngle >= type180Threshold
-            ? TurnType.Turn180
-            : TurnType.Turn90;
+        TurnProbe.LogSubEnter(
+            player,
+            m_lockedType,
+            m_lockedDirection,
+            absAngle,
+            signedAngle,
+            ResolveEnterReason(player));
 
         if (m_settings.EnableTriggerDebugger || LocomotionDebug.IsTraceEnabled(player))
         {
@@ -293,18 +333,110 @@ public sealed class TurnResolver
     }
 
     /// <summary>状态切换离开 Locomotion 时务必调用，避免下次回到 Locomotion 时残留锁定态。</summary>
-    public void ClearLock()
+    public void ClearLock(string reason = "cleared", float absAngleAtExit = -1f)
     {
+        if (m_locked && m_tracePlayer != null)
+        {
+            var abs = absAngleAtExit >= 0f ? absAngleAtExit : m_lastExitAbsAngle;
+            TurnProbe.LogSubExitLogic(
+                m_tracePlayer,
+                m_lockedType,
+                m_lockedDirection,
+                reason,
+                m_lockTimer,
+                abs);
+        }
+
         m_locked = false;
         m_lockTimer = 0f;
         m_lockedType = TurnType.None;
         m_lockedDirection = 0;
     }
 
+    static string ResolveEnterReason(Player player)
+    {
+        if (player == null)
+        {
+            return "angle_gate";
+        }
+
+        return player.CurrentInputTense == InputTense.Tap ? "tap" : "angle_gate";
+    }
+
+    /// <summary>184.1 — 表现层 forward（VisualRoot）；无拆分时回落 LogicForward。</summary>
+    private static Vector3 ResolvePresentationForward(Player player)
+    {
+        if (player != null
+            && player.VisualRoot != null
+            && player.VisualRoot != player.transform)
+        {
+            var visualFwd = player.VisualRotation * Vector3.forward;
+            visualFwd.y = 0f;
+            if (visualFwd.sqrMagnitude > 0.0001f)
+            {
+                return visualFwd.normalized;
+            }
+        }
+
+        var logic = player != null ? player.LogicForward : Vector3.forward;
+        logic.y = 0f;
+        return logic.sqrMagnitude > 0.0001f ? logic.normalized : Vector3.forward;
+    }
+
+    TurnInfo TryEnterTurnFromTap(
+        Player player,
+        Vector3 fromLogicForward,
+        float triggerThreshold,
+        float type180Threshold)
+    {
+        fromLogicForward.y = 0f;
+        var toForward = player.LogicForward;
+        toForward.y = 0f;
+        if (fromLogicForward.sqrMagnitude < 0.0001f || toForward.sqrMagnitude < 0.0001f)
+        {
+            return BuildNonTurningAngleSnapshot(player);
+        }
+
+        fromLogicForward.Normalize();
+        toForward.Normalize();
+        var signedAngle = Vector3.SignedAngle(fromLogicForward, toForward, Vector3.up);
+        var absAngle = Mathf.Abs(signedAngle);
+        if (!TurnIntentBuilder.TryClassify(signedAngle, triggerThreshold, type180Threshold, out m_lockedType, out m_lockedDirection))
+        {
+            return TurnIntentBuilder.CreateNonTurning(absAngle, signedAngle);
+        }
+
+        m_locked = true;
+        m_lockTimer = 0f;
+        TurnProbe.LogTapTurn(player, m_lockedType, m_lockedDirection, absAngle);
+        TurnProbe.LogSubEnter(player, m_lockedType, m_lockedDirection, absAngle, signedAngle, "tap");
+
+        if (m_settings.EnableTriggerDebugger || LocomotionDebug.IsTraceEnabled(player))
+        {
+            LocomotionDebug.Log(
+                player,
+                LocomotionDebug.CatTurn,
+                $"LOCK tap type={m_lockedType} dir={(m_lockedDirection < 0 ? "L" : "R")} abs={absAngle:F1}°");
+        }
+
+        return TurnIntentBuilder.Create(true, m_lockedType, m_lockedDirection, absAngle, signedAngle);
+    }
+
+    /// <summary>183.1 §0.4：WantsRun 时略过 Turn-In-Place 表现（与 speed 门槛 OR）。</summary>
+    private static bool ShouldSkipTurnPresentationForRun(Player player, LocomotionTuningSO tuning)
+    {
+        if (player == null || !player.WantsRun)
+        {
+            return false;
+        }
+
+        return tuning == null || tuning.SkipTurnPresentationWhenWantsRun;
+    }
+
     /// <summary>功能关闭时仍返回 forward↔intent 夹角，供潜在 UI/诊断；<see cref="TurnInfo.IsTurning"/> 恒为 false。</summary>
     private static TurnInfo BuildNonTurningAngleSnapshot(Player player)
     {
-        var forward = player.transform.forward;
+        var forward = ResolvePresentationForward(player);
         forward.y = 0f;
         var intent = player.MovementIntent;
         intent.y = 0f;

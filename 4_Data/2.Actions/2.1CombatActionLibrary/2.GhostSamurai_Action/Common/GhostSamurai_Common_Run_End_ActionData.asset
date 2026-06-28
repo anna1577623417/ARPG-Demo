@@ -12,14 +12,24 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: dc44221e6d158b148ad988016a948ef4, type: 3}
   m_Name: GhostSamurai_Common_Run_End_ActionData
   m_EditorClassIdentifier: 
+  MoveAuthority: 1
+  RotateAuthority: 1
+  LockMoveDuringPlay: 1
+  LockRotateDuringPlay: 1
+  AuthorityPriorityOverride: -1
+  CombatTrack: []
   MainClip: {fileID: 7400002, guid: 7962f8eb3c4cee042b2d666e80bce418, type: 3}
   CrossfadeTime: 0.08
   AnimSpeed: 1.366667
-  AutoSyncAnimSpeedToDuration: 1
+  ClipAnimSpeedMode: 1
   Duration: 1
-  AnimationEndRatio: 1
+  SegmentStart: 0
+  SegmentEnd: 1
   DurationStatScaling: 0
   PrincipalAxis: 2
+  ReferenceMotionSpeed: 5
+  BakeMinAnimSpeed: 0.85
+  BakeMaxAnimSpeed: 1.15
   IntentCategory: 0
   GraphParticipation: 1
   Category: 16
@@ -27,11 +37,47 @@ MonoBehaviour:
   InterruptStability: 5
   AllowSelfInterrupt: 0
   IsContinuousLocomotion: 0
+  IsLocomotionRecovery: 1
+  RecoveryMoveLockSeconds: 0
+  RecoveryJumpLockSeconds: 0
+  EnableRotationInput: 0
+  TransitionType: 2
+  OverrideGrammar: 0
+  GrammarOverride:
+    OwnsPresentation: 0
+    ConsumesDirectionChange: 0
+    ConsumesMomentumChange: 0
+    BlocksOtherTransitions: 0
   UseClipRootMotion: 0
   CanRotateDuringLocomotion: 1
   CanMoveDuringLocomotion: 1
   LeftFootSupportClip: {fileID: 0}
   RightFootSupportClip: {fileID: 0}
+  EnableStopFeature: 1
+  StopStrategy: 1
+  InheritPhysics:
+    MinSpeed: 2
+    MaxSpeed: 4
+    MinDistance: 0.1
+    MaxDistance: 2
+    MinDuration: 0.4
+    MaxDuration: 0.8
+    AffectX: 0
+    AffectY: 0
+    AffectZ: 1
+  ReferenceDuration: 0.8
+  LinearDecayDuration: 0.15
+  ExpDecayHalfLife: 0.25
+  FixedDecelDuration: 0.3
+  FixedDecelDistance: 0.2
+  DurationPerUnitSpeed: 0.05
+  StepValues:
+  - 1
+  - 0.6
+  - 0.3
+  - 0
+  StepIntervalSec: 0.08
+  SlideMaxResidualSpeed: 0
   MotionProfile: {fileID: 11400000, guid: c05bb46169542ee489b3c836103a955f, type: 2}
   Windows:
   - NormalizedStart: 0.25
@@ -41,7 +87,31 @@ MonoBehaviour:
     InterruptibleByCategories: 16
     MinIncomingPriority: 0
     AllowSelfInterrupt: 0
+    AllowFacingInput: 0
+    AllowMoveInput: 0
     incomingAbilityGate: 0
     _legacyDirectStateTagMask: 0
   TeleportTriggers: []
   TimelineMarkers: []
+  PreviewTimeMarkers:
+  - 0.25
+  - 0.5
+  - 0.75
+  MovementMode: 0
+  EnableStrideMatching: 0
+  ReferenceDistance: 0
+  MinPlaybackSpeed: 0.6
+  MaxPlaybackSpeed: 1.4
+  AutoTierSwitch: 1
+  DesignedSpeed: 0
+  TransitionTag: 3
+  OverrideIncomingTransition: 0
+  OverrideBlendDuration: 0.1
+  OverrideTransitionMode: 0
+  OverrideEaseCurve:
+    serializedVersion: 2
+    m_Curve: []
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  OverrideDesignerNote: 

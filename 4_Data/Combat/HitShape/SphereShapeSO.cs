@@ -19,4 +19,11 @@ public class SphereShapeSO : HitShapeSO
 
         return Physics.OverlapSphereNonAlloc(origin, radius, results, layerMask, queryTriggers);
     }
+
+    public override void DrawGizmo(Vector3 origin, Quaternion rotation, Color color)
+    {
+        if (radius <= 0f) return;
+        Gizmos.color = color;
+        Gizmos.DrawWireSphere(origin, radius);
+    }
 }

@@ -5,37 +5,87 @@ using UnityEngine;
 [CustomPropertyDrawer(typeof(MotionAxisCurves))]
 public sealed class MotionAxisCurvesDrawer : PropertyDrawer
 {
-    const int FieldCount = 6;
-    const float Line = 18f;
+    const float FoldoutLine = 18f;
+    const float LabelLine = 16f;
+    const float CurveHeight = 22f;
+    const float ScaleLabelLine = 14f;
+    const float ScaleFieldLine = 18f;
+    const float ScaleFieldWidth = 72f;
+    const float AxisGap = 4f;
+    const float FlipWidth = 24f;
+    const float BlockPadding = 2f;
 
-    public override float GetPropertyHeight(SerializedProperty property, GUIContent label) =>
-        property.isExpanded ? Line * (FieldCount + 1) : Line;
+    static float AxisBlockHeight =>
+        LabelLine + CurveHeight + ScaleLabelLine + ScaleFieldLine + AxisGap;
+
+    public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
+    {
+        if (!property.isExpanded)
+        {
+            return FoldoutLine;
+        }
+
+        return FoldoutLine + AxisBlockHeight * 3f + BlockPadding;
+    }
 
     public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
     {
-        var foldoutRect = new Rect(position.x, position.y, position.width, Line);
+        var foldoutRect = new Rect(position.x, position.y, position.width, FoldoutLine);
         property.isExpanded = EditorGUI.Foldout(foldoutRect, property.isExpanded, label, true);
         if (!property.isExpanded)
         {
             return;
         }
 
-        EditorGUI.indentLevel++;
-        var y = position.y + Line;
-        DrawField(ref y, position, property.FindPropertyRelative(nameof(MotionAxisCurves.XCurve)), "【X】Left ↔ Right");
-        DrawField(ref y, position, property.FindPropertyRelative(nameof(MotionAxisCurves.XScale)), "X Scale (m)");
-        DrawField(ref y, position, property.FindPropertyRelative(nameof(MotionAxisCurves.YCurve)), "【Y】Down ↕ Up");
-        DrawField(ref y, position, property.FindPropertyRelative(nameof(MotionAxisCurves.YScale)), "Y Scale (m)");
-        DrawField(ref y, position, property.FindPropertyRelative(nameof(MotionAxisCurves.ZCurve)), "【Z】Back ↔ Forward");
-        DrawField(ref y, position, property.FindPropertyRelative(nameof(MotionAxisCurves.ZScale)), "Z Scale (m)");
-        EditorGUI.indentLevel--;
+        var y = position.y + FoldoutLine + BlockPadding;
+        DrawAxisRow(position.x, ref y, position.width, property,
+            nameof(MotionAxisCurves.XCurve), nameof(MotionAxisCurves.XScale),
+            "【X】Left ↔ Right");
+        DrawAxisRow(position.x, ref y, position.width, property,
+            nameof(MotionAxisCurves.YCurve), nameof(MotionAxisCurves.YScale),
+            "【Y】Down ↕ Up");
+        DrawAxisRow(position.x, ref y, position.width, property,
+            nameof(MotionAxisCurves.ZCurve), nameof(MotionAxisCurves.ZScale),
+            "【Z】Back ↔ Forward");
     }
 
-    static void DrawField(ref float y, Rect position, SerializedProperty prop, string text)
+    static void DrawAxisRow(
+        float x,
+        ref float y,
+        float width,
+        SerializedProperty curvesProperty,
+        string curveName,
+        string scaleName,
+        string axisLabel)
     {
-        var rect = new Rect(position.x, y, position.width, Line);
-        EditorGUI.PropertyField(rect, prop, new GUIContent(text));
-        y += Line;
+        var curveProp = curvesProperty.FindPropertyRelative(curveName);
+        var scaleProp = curvesProperty.FindPropertyRelative(scaleName);
+
+        var labelRect = new Rect(x, y, width - FlipWidth - 2f, LabelLine);
+        var flipRect = new Rect(x + width - FlipWidth, y, FlipWidth, LabelLine);
+        EditorGUI.LabelField(labelRect, axisLabel, EditorStyles.miniBoldLabel);
+        if (GUI.Button(flipRect, new GUIContent("↕", "垂直镜像曲线（Value 取反）")))
+        {
+            Undo.RecordObject(curvesProperty.serializedObject.targetObject, $"Flip {axisLabel}");
+            var curve = curveProp.animationCurveValue;
+            MotionAxisCurveFlipUtil.FlipCurve(ref curve);
+            curveProp.animationCurveValue = curve;
+            curvesProperty.serializedObject.ApplyModifiedProperties();
+        }
+
+        y += LabelLine;
+
+        var curveRect = new Rect(x, y, width, CurveHeight);
+        EditorGUI.PropertyField(curveRect, curveProp, GUIContent.none);
+        y += CurveHeight;
+
+        var scaleLabelRect = new Rect(x, y, width, ScaleLabelLine);
+        EditorGUI.LabelField(scaleLabelRect, "Scale (m)", EditorStyles.miniLabel);
+        y += ScaleLabelLine;
+
+        var scaleFieldRect = new Rect(x, y, ScaleFieldWidth, ScaleFieldLine);
+        scaleProp.floatValue = EditorGUI.FloatField(scaleFieldRect, scaleProp.floatValue);
+        y += ScaleFieldLine + AxisGap;
     }
 }
 #endif

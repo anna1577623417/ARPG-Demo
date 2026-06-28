@@ -94,6 +94,12 @@ public struct GameplayIntent
     /// </summary>
     public int ComboIndex;
 
+    /// <summary>
+    /// 组合键修饰槽位（仅 <see cref="InputSemanticType.Chord"/> 时有意义）。
+    /// <see cref="SkillEntrySlot.Any"/> 表示无修饰键。
+    /// </summary>
+    public SkillEntrySlot ModifierSlot;
+
     public static GameplayIntent ForEntry(
         SkillEntrySlot slot,
         float time,

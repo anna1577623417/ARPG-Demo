@@ -1,4 +1,5 @@
 #if UNITY_EDITOR
+#pragma warning disable CS0618 // Legacy LocomotionStateBinding 字段 — Editor 迁移/同步专用
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -1227,7 +1228,7 @@ public static class LocomotionProfileSyncAdapter
     }
 
     static bool HasAssignedAssets(LocomotionStateBinding row) =>
-        row.DiscreteAction != null || row.ContinuousClip != null;
+        row.LocomotionAction != null || row.HasLocomotionAction();
 
     static LocomotionStateBinding CreateDefaultSimple(SimpleKey key) => CreateDefaultSimple(key.State);
 
@@ -1237,8 +1238,6 @@ public static class LocomotionProfileSyncAdapter
         {
             State = id,
             FallbackState = GetDefaultFallback(id),
-            Speed = 1f,
-            TransitionDuration = 0.08f,
             StrafeDirection = StrafeDirection8.None,
             TurnDirection = TurnDirection4.None,
             RunRequirement = LocomotionRunRequirement.Any,
@@ -1251,8 +1250,6 @@ public static class LocomotionProfileSyncAdapter
         {
             State = LocomotionStateId.StrafeLocomotion,
             FallbackState = LocomotionStateId.Walk,
-            Speed = 1f,
-            TransitionDuration = 0.08f,
             StrafeDirection = key.Direction,
             TurnDirection = TurnDirection4.None,
             RunRequirement = key.RunRequirement,
@@ -1265,8 +1262,6 @@ public static class LocomotionProfileSyncAdapter
         {
             State = LocomotionStateId.TurnInPlaceDirected,
             FallbackState = LocomotionStateId.Idle,
-            Speed = 1f,
-            TransitionDuration = 0.08f,
             StrafeDirection = StrafeDirection8.None,
             TurnDirection = key.Direction,
             RunRequirement = LocomotionRunRequirement.Any,
@@ -1343,4 +1338,5 @@ public static class LocomotionProfileSyncAdapter
         public int GetHashCode(BindingRowKey obj) => obj.GetHashCode();
     }
 }
+#pragma warning restore CS0618
 #endif

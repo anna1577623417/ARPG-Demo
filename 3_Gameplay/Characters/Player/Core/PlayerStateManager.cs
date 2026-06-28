@@ -26,9 +26,11 @@ public class PlayerStateManager : EntityStateManager<Player>
     [Header("Locomotion — interruption (categories)")]
     [SerializeField] ActionCategory locomotionAllowedCategories = AllPillarCategories;
 
-    [Header("Airborne — interruption (ascending / descending)")]
-    [SerializeField] ActionCategory airborneAscendingAllowedCategories;
-    [SerializeField] ActionCategory airborneDescendingAllowedCategories = AllPillarCategories;
+    [Header("Airborne — System Hard Floor (168.3)")]
+    [Tooltip("硬下限：仅声明【绝对禁止】的类别（Cinematic / Dead / 强制不可动）。\n" +
+             "默认 None = 不参与判定；正常情况完全不该填。\n" +
+             "空中状态可中断画像已下沉到 SkillEntryLoadoutSO.AirInterruptPolicy。")]
+    [SerializeField] ActionCategory airborneHardFloorBlock = ActionCategory.None;
 
     [Header("Turn-In-Place")]
     [SerializeField] TurnSettings turnSettings = TurnSettings.Default;
@@ -37,10 +39,12 @@ public class PlayerStateManager : EntityStateManager<Player>
 
     protected override List<EntityState<Player>> BuildStateList()
     {
+        // 168.3 修订：PlayerStateManager 不再持有空中 allowed mask，仅传硬下限。
+        // 空中可中断画像由 SkillEntryLoadoutSO.AirInterruptPolicy 提供。
         return new List<EntityState<Player>>
         {
             new PlayerLocomotionState(locomotionAllowedCategories, turnSettings),
-            new PlayerAirborneState(airborneAscendingAllowedCategories, airborneDescendingAllowedCategories),
+            new PlayerAirborneState(airborneHardFloorBlock),
             new PlayerActionState(),
             new PlayerDeadState(),
         };
@@ -65,6 +69,7 @@ public class PlayerStateManager : EntityStateManager<Player>
                 {
                     Debug.Log($"[IntentArb] BLOCK by TransitionResolver | state={Current.StateId} | intent={intent.Kind} | reason={reason}", this);
                 }
+                InputActionProbe.LogIntentDropped(Entity, intent.Kind.ToString(), "TransitionResolver", reason ?? "(no-reason)");
                 break;
             }
 
@@ -83,6 +88,7 @@ public class PlayerStateManager : EntityStateManager<Player>
                     Entity.ClearPendingAction();
                     if (discardIntent)
                     {
+                        InputActionProbe.LogIntentDropped(Entity, intent.Kind.ToString(), "SkillEntry.Resolve", $"no-route-discard sem={intent.Semantic}");
                         Entity.IntentBuffer.Pop();
                         continue;
                     }
@@ -91,6 +97,7 @@ public class PlayerStateManager : EntityStateManager<Player>
                     {
                         Debug.Log($"[IntentArb] BLOCK by SkillEntry resolve | intent={intent.Kind}", this);
                     }
+                    InputActionProbe.LogIntentDropped(Entity, intent.Kind.ToString(), "SkillEntry.Resolve", $"no-route-queued sem={intent.Semantic}");
                     break;
                 }
 
@@ -128,6 +135,7 @@ public class PlayerStateManager : EntityStateManager<Player>
                 {
                     Debug.Log($"[IntentArb] BLOCK by State gate | state={Current.StateId} | intent={intent.Kind} hold={intent.HoldDurationSeconds:F3} (intent stays queued)", this);
                 }
+                InputActionProbe.LogIntentDropped(Entity, intent.Kind.ToString(), "State.TryConsume", $"state={Current.StateId} sem={intent.Semantic} hold={intent.HoldDurationSeconds:F3}");
                 break;
             }
 

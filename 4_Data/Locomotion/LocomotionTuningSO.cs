@@ -44,9 +44,32 @@ public class LocomotionTuningSO : ScriptableObject
     [Tooltip("地面减速度（m/s²）—— 替代 Player.moveDeceleration。")]
     [Min(0.01f)] public float GroundDeceleration = 22f;
 
-    [Header("Rotation")]
-    [Tooltip("转身角速度（度/秒）—— 替代 Stats.RotationSpeed 的 Locomotion 侧用法。")]
+    [Header("Rotation (183.1 Layer A — 逻辑朝向)")]
+    [Tooltip("Locomotion 柱逻辑朝向策略：Smooth=RotateTowards；SnapAlways=每帧对齐输入（法环默认档）；SnapWhileMoving=跑动 Snap、站立 Smooth。")]
+    public LocomotionRotationMode RotationMode = LocomotionRotationMode.Smooth;
+
+    [Tooltip("Smooth 模式角速度（度/秒）。UseTuningRotationSpeed=true 时 Locomotion 只读此值，不读 Stats.RotationSpeed。")]
     [Min(0f)] public float RotationSpeedDegPerSec = 540f;
+
+    [Tooltip("SnapWhileMoving 模式：平面速度 ≥ 此值时 instant 对齐。须与 Player State Manager → Turn → LockSpeedThreshold 一致（默认 0.2 m/s）。")]
+    [Range(0f, 2f)] public float SnapSpeedThreshold = 0.2f;
+
+    [Tooltip("true → Locomotion 平滑转只读 RotationSpeedDegPerSec；false → 回落 Stats.RotationSpeed（兼容旧档）。")]
+    public bool UseTuningRotationSpeed;
+
+    [Header("184.1 Input Tense + Visual Facing")]
+    [Tooltip("方向键按下时长 < 此值（秒）视为 Tap（仅 Turn 表现，不进 Locomotion）。")]
+    [Range(0.05f, 0.3f)] public float TapMaxDuration = 0.15f;
+
+    [Tooltip("方向键持续 ≥ 此值（秒）视为 Hold（进入 Walk/Run Locomotion）。")]
+    [Range(0.02f, 0.2f)] public float HoldEnterDelay = 0.08f;
+
+    [Tooltip("无 Turn 动画时 VisualRoot 缓追 LogicForward 的角速度（度/秒）。")]
+    [Range(180f, 1440f)] public float VisualMaxAngularSpeedDeg = 540f;
+
+    [Header("Rotation (183.1 Layer B — Turn 表现分流)")]
+    [Tooltip("WantsRun 为 true 时 TurnResolver 不得 LOCK（A+跑略过 Turn 动画；法环默认 true）。")]
+    public bool SkipTurnPresentationWhenWantsRun = true;
 
     [Tooltip("触发 180° 原地转身（Left180/Right180）的有符号角阈值（度）—— 唯一权威，由 TurnResolver 读取。")]
     [FormerlySerializedAs("PivotThresholdDeg")]
@@ -89,6 +112,76 @@ public class LocomotionTuningSO : ScriptableObject
     [Header("Run Input (165.1 L7)")]
     [Tooltip("Hold = 按住 Sprint 键跑；Toggle = 点 Sprint 切换 Walk/Run。")]
     public RunInputMode RunInputMode = RunInputMode.Toggle;
+
+    [Header("Ability Input Context (173.1)")]
+    [Tooltip("WASD 按下后此窗口内若触发带方向修饰的技能键，Locomotion 不执行 LookAtDirection / Turn-In-Place。")]
+    [Range(0.02f, 0.25f)] public float AbilityContextWindowSec = 0.1f;
+
+    [Tooltip("Directional 技能提交时清零平面速度，避免滑步叠加翻滚。")]
+    public bool ClearPlanarVelocityOnDirectionalCommit = true;
+
+    [Header("173.3-B Direction Grace")]
+    [Tooltip("松开方向键后，多少秒内仍继承上一次身体朝向快照。\n" +
+             "用于支持「跑→松手→反向 Space」无转向延迟。\n" +
+             "0 = 关闭（旧行为）；推荐 0.10–0.15。")]
+    [Range(0f, 0.3f)] public float DirectionGraceSec = 0.12f;
+
+    [Header("206.1 方向输入双模式 (Chord vs Motion)")]
+    [Tooltip("方向键按下到 Space 按下的间隔 ≤ 此时间 → Chord 态（8 向 camera-relative）。\n" +
+             "推荐 0.10–0.15s。低于此值 = 玩家把方向键当 Space 的修饰符。")]
+    [Range(0.05f, 0.30f)] public float ChordWindowSec = 0.12f;
+
+    [Tooltip("方向键按下到 Space 按下的间隔 ≥ 此时间 → Motion 态（沿 LogicForward F-Dodge）。\n" +
+             "推荐 0.18–0.25s。高于此值 = 玩家已经在跑步，dodge 沿当前移动方向。\n" +
+             "灰色地带 (Chord, Motion) 默认归 Chord，响应更灵敏。")]
+    [Range(0.10f, 0.50f)] public float MotionWindowSec = 0.20f;
+
+    [Header("Action Exit Defaults (167.1 §3.3)")]
+    [Tooltip("MotionCurveDriven 末段斜率阈值（< 此值视作平滑收尾 → ClearPlanarVelocity）。")]
+    [Min(0f)] public float MotionCurveTailSlopeThreshold = 0.5f;
+
+    [Tooltip("LinearDecay 默认时长（秒）。")]
+    [Min(0.01f)] public float DefaultLinearDecayDuration = 0.15f;
+
+    [Tooltip("ExpDecay 默认半衰期（秒）。")]
+    [Min(0.01f)] public float DefaultExpDecayHalfLife = 0.25f;
+
+    [Tooltip("TapJumpToEndTail 默认短按窗口（秒）。")]
+    [Min(0.01f)] public float DefaultTapWindowSec = 0.15f;
+
+    [Tooltip("TapJumpToEndTail 默认 End Clip 归一化起点。")]
+    [Range(0f, 1f)] public float DefaultEndTailNormalizedStart = 0.6f;
+
+#if UNITY_EDITOR
+    void OnValidate()
+    {
+        if (SnapSpeedThreshold < 0f)
+        {
+            SnapSpeedThreshold = 0.2f;
+        }
+
+        if (Mathf.Abs(SnapSpeedThreshold - TurnSettings.Default.LockSpeedThreshold) > 0.001f)
+        {
+            Debug.LogWarning(
+                $"[{name}] SnapSpeedThreshold={SnapSpeedThreshold:F2} 与 TurnSettings 默认 LockSpeedThreshold " +
+                $"({TurnSettings.Default.LockSpeedThreshold:F2}) 不一致 —— 请与 Player Prefab → State Manager → Turn 对齐。",
+                this);
+        }
+    }
+#endif
+}
+
+/// <summary>183.1：Locomotion 柱逻辑朝向策略（Layer A）。Turn 表现仍由 TurnResolver 独立配置。</summary>
+public enum LocomotionRotationMode : byte
+{
+    /// <summary>RotateTowards，角速度见 RotationSpeedDegPerSec / Stats。</summary>
+    Smooth = 0,
+
+    /// <summary>每帧 Quaternion 对齐 MovementIntent（法环默认）。</summary>
+    SnapAlways = 1,
+
+    /// <summary>PlanarSpeed ≥ SnapSpeedThreshold 时 Snap；否则 Smooth。</summary>
+    SnapWhileMoving = 2,
 }
 
 /// <summary>165.1 L7：跑步输入模式。</summary>

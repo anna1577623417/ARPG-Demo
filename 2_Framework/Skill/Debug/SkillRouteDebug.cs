@@ -7,6 +7,7 @@ using UnityEngine;
 public static class SkillRouteDebug
 {
     public const string CatDodge4 = "Dodge4";
+    public const string CatDodge8 = "Dodge8";
     public const string CatRoll4 = "Roll4";
     public const string CatAbility = "Ability";
     public const string CatFlow = "Flow";
@@ -61,6 +62,23 @@ public static class SkillRouteDebug
         }
 
         Emit(player, CatDodge4, phase, message, context, warning: false);
+    }
+
+    /// <summary>173.3 八向选路 — Console 过滤 <c>[Dodge8]</c>，开关与 Dodge4 共用。</summary>
+    public static void LogDodge8(
+        Player player,
+        SkillGroupDefinition group,
+        string phase,
+        string message,
+        Object context = null)
+    {
+        if (!IsDodge4Enabled(player))
+        {
+            return;
+        }
+
+        var groupNote = group != null ? $" group={group.name}" : string.Empty;
+        Emit(player, CatDodge8, phase, $"{message}{groupNote}", context, warning: false);
     }
 
     public static void LogRoll4(Player player, string phase, string message, Object context = null)

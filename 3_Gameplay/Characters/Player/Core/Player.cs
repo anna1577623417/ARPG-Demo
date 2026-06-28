@@ -69,21 +69,49 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
     [SerializeField] bool debugSkillAbility;
     [Tooltip("158.2 Locomotion Resolver / ControlOwner / Tuning 决策日志（L2-L5）。")]
     [SerializeField] bool debugLocomotion;
+    [Tooltip("173.1.B 一对一探针：仅记录 Locomotion 转向闸门翻转，prefix=[RotGate]")]
+    [SerializeField] bool debugRotationGate;
+    [Tooltip("168.3 一对一探针：仅记录 Airborne 闸门对 Combat Intent 的接纳/拒绝翻转，prefix=[ComboAirGate]")]
+    [SerializeField] bool debugComboAirGate;
     [Tooltip("162.1 Locomotion 输入/移动/转身节流 Trace（Console 过滤 [Loco]）；恶性移动故障时优先开启。")]
     [SerializeField] bool debugLocomotionTrace;
+    [Tooltip("182.1 Stop Authoring 一对一探针（Console 过滤 [Stop]）。")]
+    [SerializeField] bool debugStop;
+    [Tooltip("162.1/184.1 四向 Turn 子状态 ENTER/PLAY/EXIT 验收（Console 过滤 [Turn][Sub]）。")]
+    [SerializeField] bool debugTurnSubState;
     [Tooltip("159.1 L2/L3：Play 验收用 — 模拟 LockOn 以启用 StrafeLocomotion 解析；LockOn 切片接入后删除。")]
     [SerializeField] bool debugLockOnLocomotion;
+
+    [Header("184.1 Facing vs Turn")]
+    [Tooltip("模型/Animator 子物体；LogicForward 写 root，Visual 缓追。为空时 Awake 自动取 Animator.transform。")]
+    [SerializeField] Transform visualRoot;
 
     // ─── 运行时 ───
     PlayerStateManager m_stateManager;
     PlayerKCCMotor m_motor;
     SkillEntryService m_skillEntries;
     InputSemanticResolver m_inputSemantic;
+    readonly InputContextResolver m_inputContext = new InputContextResolver();
     float m_attackTimer;
     Vector3 m_movementIntent;
+    Vector3 m_facingIntent;
+    bool m_hasLocomotionMoveIntent;
     bool m_runIntent;
     float m_runLatchEndTime;
     bool m_isInitialized;
+
+    Vector3 m_logicForward = Vector3.forward;
+    VisualFacingDriver m_visualFacing;
+    InputTense m_currentInputTense = InputTense.Idle;
+    bool m_tapTurnArmPending;
+    Vector3 m_tapTurnFromForward = Vector3.forward;
+    int m_logicForwardLockCount;
+    int m_turnPresentationInterruptGen;
+    int m_consumedTurnInterruptGen;
+    string m_lastTurnInterruptReason;
+
+    Vector3 m_pendingFacing;
+    bool m_hasPendingFacing;
 
     GameplayTagContainer m_gameplayTags;
     public ref GameplayTagContainer Tags => ref m_gameplayTags;
@@ -91,9 +119,11 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
 
     public readonly GameplayIntentBuffer IntentBuffer = new GameplayIntentBuffer(16);
 
-    GameplayIntentKind m_pendingActionKind;
+    readonly ContextWindowTracker m_contextWindows = new ContextWindowTracker();
     ActionDataSO m_pendingAction;
     bool m_pendingActionArmed;
+    GameplayIntentKind m_pendingActionKind;
+    float m_pendingActionNormalizedStart;
     bool m_jumpRequestedByIntent;
     ActionDataSO m_graphContextAction;
     LocomotionStateId m_lastActionEndStateHint = LocomotionStateId.None;
@@ -108,11 +138,19 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
     LocomotionPresentationSnapshot m_locoPresentation;
     IGameModeMovementContext m_movementContext;
 
+    // 198.x — VelocityDecayState 已删除（167.1 ExitVelocityPolicy 死代码全清；182.1 StopStrategy 唯一权威）
+
     // ─── 公开属性 ───
     public InputReader InputReader => inputReader;
     public PlayerStateManager States => m_stateManager;
     public SkillEntryService SkillEntries => m_skillEntries;
     public SkillEntryLoadoutSO SkillEntryLoadout => skillEntryLoadout;
+
+    /// <summary>185.2 — Graph EventWindowCondition 查询。</summary>
+    public ContextWindowTracker ContextWindows => m_contextWindows;
+
+    /// <summary>188.3 W9 — CombatObject 生成器（CombatTrack 时间轴触发的 Spawn 容器；运行时由 ActionTimelineRuntime 调用）。</summary>
+    public CombatObjectSpawner CombatObjectSpawner { get; } = new CombatObjectSpawner();
     public CombatGraphAsset CombatFlowGraph => skillEntryLoadout != null ? skillEntryLoadout.CombatFlow : null;
     /// <summary>158.2 L1：玩家级 Locomotion 行为资产；L2 之前仅占位，无运行时消费方。</summary>
     public LocomotionProfile LocomotionProfile => locomotionProfile;
@@ -130,13 +168,17 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
     /// <summary>158.2 L2：当前位移/朝向控制权归属（仅观测；由 PlayerStateManager 末尾自动写入）。</summary>
     public ControlOwner CurrentControlOwner { get; internal set; } = ControlOwner.Locomotion;
     public InputSemanticResolver InputSemantic => m_inputSemantic;
+    public InputContextResolver InputContext => m_inputContext;
     public bool DebugInterruptFlow => debugInterruptFlow;
     public bool DebugSkillRoute => debugSkillRoute;
     public bool DebugSkillRouteDodge4 => debugSkillRouteDodge4;
     public bool DebugSkillRouteRoll4 => debugSkillRouteRoll4;
     public bool DebugSkillAbility => debugSkillAbility;
     public bool DebugLocomotion => debugLocomotion;
+    public bool DebugStop => debugStop;
+    public bool DebugComboAirGate => debugComboAirGate;
     public bool DebugLocomotionTrace => debugLocomotionTrace;
+    public bool DebugTurnSubState => debugTurnSubState;
 
     public Vector3 PlanarVelocity => m_motor != null ? m_motor.PlanarVelocity : Vector3.zero;
     public float VerticalSpeed => m_motor != null ? m_motor.VerticalSpeed : 0f;
@@ -163,11 +205,24 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
         : 1f;
     public float WalkSpeedMultiplier => walkSpeedMultiplier;
 
-    public bool HasMovementIntent => m_movementIntent.sqrMagnitude > 0.0001f;
+    public bool HasMovementIntent => m_hasLocomotionMoveIntent;
     public bool WantsRun => m_runIntent;
     public bool RunLatchActive => Time.time < m_runLatchEndTime;
     public bool WantsWalk => HasMovementIntent && !m_runIntent;
-    public Vector3 MovementIntent => m_movementIntent;
+    /// <summary>Locomotion 位移意图；Tap/Pending 时回落 <see cref="FacingIntent"/> 供 TurnResolver 读角。</summary>
+    public Vector3 MovementIntent => m_hasLocomotionMoveIntent ? m_movementIntent : m_facingIntent;
+    /// <summary>184.1 — 当前帧方向输入（含 Tap/Pending），不含 Run 语义。</summary>
+    public Vector3 FacingIntent => m_facingIntent;
+    public InputTense CurrentInputTense => m_currentInputTense;
+    /// <summary>184.4 — Transition 期间缓存的 Tap Facing。</summary>
+    public bool HasPendingFacing => m_hasPendingFacing;
+    public Vector3 PendingFacing => m_pendingFacing;
+    /// <summary>184.1 Layer 2 — 逻辑朝向（Gameplay 唯一权威）。</summary>
+    public Vector3 LogicForward => m_logicForward;
+    public new Vector3 Forward => m_logicForward;
+    public Transform VisualRoot => visualRoot;
+    public Quaternion VisualRotation =>
+        visualRoot != null ? visualRoot.rotation : transform.rotation;
     public TurnInfo CurrentTurnInfo => m_currentTurnInfo;
     /// <summary>159.1 L2+：Resolver 连续 Clip 表现快照（Strafe 等）。</summary>
     public LocomotionPresentationSnapshot LocomotionPresentation => m_locoPresentation;
@@ -182,7 +237,46 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
 
     /// <summary>MotionProfile 局部轴 → 世界水平前向（Z 轴）；不读 MovementIntent。</summary>
     public Vector3 ResolveMotionPlanarForward(MotionSpace space)
-        => MotionSpaceBasis.ResolvePlanarForward(this, m_movementContext, space);
+    {
+        if (space == MotionSpace.CharacterForward
+            && m_inputContext.TryGetDirectionalMotionForward(out var ctxForward))
+        {
+            return ctxForward;
+        }
+
+        return MotionSpaceBasis.ResolvePlanarForward(this, m_movementContext, space);
+    }
+
+    public bool ShouldSuppressLocomotionRotation()
+        => m_inputContext.ShouldSuppressLocomotionRotation(Time.time);
+
+    void OnValidate() => SyncRotationGateDebug();
+
+    public RotationArbitrationPolicy CurrentRotationPolicy()
+        => m_inputContext.ResolvePolicy(Time.time);
+
+    public void CommitDirectionalInputContext()
+    {
+        var tuning = locomotionProfile != null ? locomotionProfile.Tuning : null;
+        var chordWin = tuning != null ? tuning.ChordWindowSec : 0.12f;
+        var holdDur = m_inputContext.MoveHoldDurationSec(Time.time);
+        m_inputContext.CommitDirectionalAbility(Forward, holdDur, chordWin);
+        if (tuning != null && tuning.ClearPlanarVelocityOnDirectionalCommit)
+        {
+            ClearPlanarVelocity();
+        }
+
+        if (debugSkillRouteDodge4 || debugSkillRouteRoll4)
+        {
+            SkillRouteDebug.LogDodge4(
+                this,
+                "InputCtx",
+                $"COMMIT directional fwd=({Forward.x:F2},{Forward.z:F2}) holdDur={holdDur:F3}s " +
+                $"policy={CurrentRotationPolicy()}");
+        }
+    }
+
+    public void ClearDirectionalInputContext() => m_inputContext.ClearDirectionalActionContext();
 
     public float NormalizedSpeed
     {
@@ -212,10 +306,18 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
             ps.ApplyLegacyStandaloneMaxStaminaToStats(Stats);
         }
         EnsurePlayerDefaultResourceStats();
+        SyncRotationGateDebug();
         Init();
     }
 
     protected override void OnEnable() { base.OnEnable(); }
+
+    /// <summary>188.3 W9 — Entity.LateUpdate 已 Tick BuffStack；本方法追加 CombatObjectSpawner Tick。</summary>
+    protected override void LateUpdate()
+    {
+        base.LateUpdate();
+        CombatObjectSpawner?.Tick(Time.deltaTime);
+    }
 
     void EnsurePlayerDefaultResourceStats()
     {
@@ -257,11 +359,278 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
         // Phase B：Semantic Resolver 初始化 + 从 Loadout 拉每槽位阈值
         m_inputSemantic = new InputSemanticResolver(this);
         RefreshSemanticConfigFromLoadout();
+        InitFacingTurn1841();
+    }
+
+    void InitFacingTurn1841()
+    {
+        var fwd = transform.forward;
+        fwd.y = 0f;
+        m_logicForward = fwd.sqrMagnitude > 0.0001f ? fwd.normalized : Vector3.forward;
+        m_facingIntent = m_logicForward;
+
+        if (visualRoot == null && Animator != null)
+        {
+            visualRoot = Animator.transform;
+        }
+
+        if (visualRoot == null || visualRoot == transform)
+        {
+            return;
+        }
+
+        m_visualFacing = visualRoot.GetComponent<VisualFacingDriver>();
+        if (m_visualFacing == null)
+        {
+            m_visualFacing = visualRoot.gameObject.AddComponent<VisualFacingDriver>();
+        }
+
+        var tuning = locomotionProfile != null ? locomotionProfile.Tuning : null;
+        var baseSpeed = tuning != null ? tuning.VisualMaxAngularSpeedDeg : 540f;
+        var fastTrigger = tuning != null ? tuning.Turn90ThresholdDeg : 60f;
+        m_visualFacing.Bind(this, baseSpeed, 1440f, fastTrigger);
+    }
+
+    /// <summary>184.1 — 由 PlayerController 每帧写入 Tap/Hold 时态。</summary>
+    public void SetCurrentInputTense(InputTense tense) => m_currentInputTense = tense;
+
+    /// <summary>184.1 — Tap 释放边沿：强制 TurnResolver 以 press 前 LogicForward 与当前 LogicForward 判定。</summary>
+    public void ArmTapTurnPresentation(in Vector3 fromLogicForward)
+    {
+        m_tapTurnArmPending = true;
+        m_tapTurnFromForward = fromLogicForward.sqrMagnitude > 0.0001f
+            ? new Vector3(fromLogicForward.x, 0f, fromLogicForward.z).normalized
+            : m_logicForward;
+    }
+
+    public bool TryConsumeTapTurnArm(out Vector3 fromLogicForward)
+    {
+        if (!m_tapTurnArmPending)
+        {
+            fromLogicForward = default;
+            return false;
+        }
+
+        m_tapTurnArmPending = false;
+        fromLogicForward = m_tapTurnFromForward;
+        return true;
+    }
+
+    /// <summary>184.1 W9 — Stop 等 Action 期禁止改写 LogicForward。</summary>
+    public bool IsLogicForwardLocked => m_logicForwardLockCount > 0;
+
+    public void PushLogicForwardLock() => m_logicForwardLockCount++;
+
+    public void PopLogicForwardLock()
+    {
+        m_logicForwardLockCount = Mathf.Max(0, m_logicForwardLockCount - 1);
+    }
+
+    /// <summary>184.4 — End/Pivot 期间缓存 Tap Facing，Transition 结束时应用。</summary>
+    public void RequestPendingFacing(Vector3 newForward)
+    {
+        var planar = new Vector3(newForward.x, 0f, newForward.z);
+        if (planar.sqrMagnitude < 0.0001f)
+        {
+            return;
+        }
+
+        var owner = States?.Current is PlayerActionState actionState ? actionState.CurrentAction : null;
+        m_pendingFacing = planar.normalized;
+        m_hasPendingFacing = true;
+        MotionGrammarProbe.LogFacingCached(this, m_logicForward, m_pendingFacing, owner);
+    }
+
+    public bool TryConsumePendingFacing(out Vector3 newForward)
+    {
+        if (!m_hasPendingFacing)
+        {
+            newForward = default;
+            return false;
+        }
+
+        newForward = m_pendingFacing;
+        m_hasPendingFacing = false;
+        return true;
+    }
+
+    public void ClearPendingFacing(string reason = null)
+    {
+        if (!m_hasPendingFacing)
+        {
+            return;
+        }
+
+        m_hasPendingFacing = false;
+        MotionGrammarProbe.LogPendingCleared(this, reason ?? "cleared");
+    }
+
+    /// <summary>184.1 W5 — 主动 Intent 打断 Turn 表现（Action / Jump 等）。</summary>
+    public void InterruptTurnPresentation(string reason = null)
+    {
+        if (!m_currentTurnInfo.IsTurning && !m_tapTurnArmPending)
+        {
+            return;
+        }
+
+        SetTurnInfo(default);
+        m_tapTurnArmPending = false;
+        m_turnPresentationInterruptGen++;
+        m_lastTurnInterruptReason = reason;
+        GetComponent<PlayerAnimController>()?.InterruptTurnIfAny(reason);
+    }
+
+    /// <summary>Locomotion 帧内消费打断请求并清 TurnResolver 锁。</summary>
+    public bool ConsumeTurnPresentationInterruptRequest()
+    {
+        if (m_consumedTurnInterruptGen >= m_turnPresentationInterruptGen)
+        {
+            return false;
+        }
+
+        m_consumedTurnInterruptGen = m_turnPresentationInterruptGen;
+        return true;
+    }
+
+    /// <summary>相机相对 WASD → 世界水平方向（与 PlayerController 口径一致）。</summary>
+    public Vector3 ResolveCameraRelativeWorldDirection(Vector2 input)
+    {
+        if (input.sqrMagnitude <= 0.0001f)
+        {
+            return Vector3.zero;
+        }
+
+        input = Vector2.ClampMagnitude(input, 1f);
+        var ctx = m_movementContext ?? GameModeManager.Instance;
+        if (ctx != null && !ctx.IsCameraRelativeMovement)
+        {
+            return new Vector3(input.x, 0f, input.y);
+        }
+
+        Quaternion refRotation;
+        if (ctx != null)
+        {
+            refRotation = ctx.GetMovementReferenceRotation();
+        }
+        else
+        {
+            var mainCam = Camera.main;
+            refRotation = mainCam != null
+                ? Quaternion.Euler(0f, mainCam.transform.eulerAngles.y, 0f)
+                : Quaternion.identity;
+        }
+
+        var forward = refRotation * Vector3.forward;
+        var right = refRotation * Vector3.right;
+        return forward * input.y + right * input.x;
+    }
+
+    /// <summary>
+    /// 206.1 / 206.2 — 八向 Skill 方向：Chord 态 camera-relative；Motion 态沿 LogicForward 强制 Forward。
+    /// </summary>
+    public DirectionalRouteType ResolveDirectionalChord(Vector2 moveBuffered, out bool isMotionMode)
+    {
+        var tuning = locomotionProfile != null ? locomotionProfile.Tuning : null;
+        var chordWin = tuning != null ? tuning.ChordWindowSec : 0.12f;
+        var motionWin = tuning != null ? tuning.MotionWindowSec : 0.20f;
+
+        var now = Time.time;
+        var holdDur = m_inputContext.MoveHoldDurationSec(now);
+        var result = DirectionalDualModeResolver.Resolve(
+            moveBuffered, holdDur, chordWin, motionWin, out isMotionMode, out var mode);
+
+        var camFwd = Vector3.forward;
+        var mainCam = Camera.main;
+        if (mainCam != null)
+        {
+            camFwd = mainCam.transform.forward;
+            camFwd.y = 0f;
+            if (camFwd.sqrMagnitude > 0.0001f)
+            {
+                camFwd.Normalize();
+            }
+        }
+
+        DodgeChord8Probe.LogAbilityDown(
+            now,
+            m_inputContext.MoveActiveSince,
+            moveBuffered,
+            chordWin,
+            motionWin,
+            mode,
+            m_inputContext.MoveActive,
+            m_inputContext.DirectionalCommitted,
+            LogicForward,
+            camFwd);
+
+        if (isMotionMode)
+        {
+            DodgeChord8Probe.LogMotionResolve(LogicForward, holdDur);
+        }
+        else
+        {
+            DodgeChord8Probe.LogChordResolve(moveBuffered, result);
+        }
+
+        return result;
+    }
+
+    public DirectionalRouteType ResolveDirectionalChord(Vector2 moveBuffered)
+        => ResolveDirectionalChord(moveBuffered, out _);
+
+    /// <summary>184.1 Layer 2 — 即时逻辑朝向；VisualRoot 世界 rotation 在存在时保持不变。</summary>
+    public void SetLogicForward(Vector3 dir)
+    {
+        if (IsLogicForwardLocked)
+        {
+            return;
+        }
+
+        var planar = new Vector3(dir.x, 0f, dir.z);
+        if (planar.sqrMagnitude < 0.0001f)
+        {
+            return;
+        }
+
+        planar.Normalize();
+        var prev = m_logicForward;
+        m_logicForward = planar;
+
+        // Probe：Action 状态期间被改写 forward → 候选异常转向源头
+        if (States?.Current is PlayerActionState __probeAct)
+        {
+            InputActionProbe.LogFacingApplied(this, __probeAct.CurrentAction, prev, planar, "Player.SetLogicForward@ActionState");
+        }
+
+        if (visualRoot != null && visualRoot != transform)
+        {
+            var visualWorldRot = visualRoot.rotation;
+            transform.rotation = Quaternion.LookRotation(m_logicForward, Vector3.up);
+            visualRoot.rotation = visualWorldRot;
+        }
+        else
+        {
+            transform.rotation = Quaternion.LookRotation(m_logicForward, Vector3.up);
+        }
+
+        if (Vector3.Angle(prev, m_logicForward) > 0.5f)
+        {
+            TurnProbe.LogFacingEdge(this, m_currentInputTense, prev, m_logicForward, "LogicForward");
+        }
+    }
+
+    public override void LookAtDirection(Vector3 worldDirection, bool immediate = false)
+    {
+        SetLogicForward(worldDirection);
     }
 
     /// <summary>
     /// Phase F：先读 SemanticConfigSO（玩家级独立配置），未配项再回落 ChargeRoute / ComboRoute / PrimaryGroup 存在性。
     /// 任一槽位若两路都拿不到值，对应字段为 0（Resolver 自动跳过该语义分流）。
+    /// </summary>
+    /// <summary>
+    /// Loadout 上是否存在针对该槽位的 ContextGroup（八向翻滚等）。
+    /// 206.2 — 不要求 RequiredSemantic=Directional；GhostSamurai 八向 ContextGroup 为 None 仍须启用方向 modifier。
     /// </summary>
     bool LoadoutHasDirectionalContext(SkillEntrySlot slot)
     {
@@ -274,7 +643,7 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
         for (var i = 0; i < groups.Length; i++)
         {
             var g = groups[i];
-            if (g == null || !g.RequireDirectional)
+            if (g == null || g.TargetGroup == null)
             {
                 continue;
             }
@@ -332,6 +701,37 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
             m_inputSemantic.ConfigureSlot(b.Slot, in cfg);
             m_skillEntries?.SyncComboSemanticConfig(b.Slot);
         }
+
+        RefreshInputContextFromLoadout();
+    }
+
+    void SyncRotationGateDebug()
+    {
+        if (m_inputContext == null) return;
+        m_inputContext.DebugRotationGate = debugRotationGate;
+        m_inputContext.SetDebugOwnerLabel(name);
+    }
+
+    void RefreshInputContextFromLoadout()
+    {
+        if (m_inputContext == null || skillEntryLoadout?.Bindings == null)
+        {
+            m_inputContext?.SetLoadoutHasDirectionalModifier(false);
+            return;
+        }
+
+        var anyDirectional = false;
+        for (var i = 0; i < skillEntryLoadout.Bindings.Length; i++)
+        {
+            var slot = skillEntryLoadout.Bindings[i].Slot;
+            if (m_inputSemantic.GetConfig(slot).EnableDirectional)
+            {
+                anyDirectional = true;
+                break;
+            }
+        }
+
+        m_inputContext.SetLoadoutHasDirectionalModifier(anyDirectional);
     }
 
     // ─── 帧上下文 ───
@@ -347,7 +747,7 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
         }
 
         var dirType = moveOverrideValid
-            ? InputChordResolver.Resolve(move)
+            ? ResolveDirectionalChord(move)
             : DirectionalRouteType.Forward;
         return new CombatContextSnapshot
         {
@@ -433,11 +833,20 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
 
     // ─── PendingAction（Locomotion/Airborne 切到 Action 前的待播）───
 
-    public void ArmPendingAction(GameplayIntentKind kind, ActionDataSO action)
+    public void ArmPendingAction(GameplayIntentKind kind, ActionDataSO action, float normalizedStart = 0f)
     {
         m_pendingActionArmed = true;
         m_pendingActionKind = kind;
         m_pendingAction = action;
+        m_pendingActionNormalizedStart = Mathf.Clamp01(normalizedStart);
+    }
+
+    /// <summary>167.1 Segment 预留：ActionState OnEnter 消费归一化起播点。</summary>
+    public float ConsumePendingActionNormalizedStart()
+    {
+        var start = m_pendingActionNormalizedStart;
+        m_pendingActionNormalizedStart = 0f;
+        return start;
     }
 
     public ActionDataSO PeekPendingAction() => m_pendingAction;
@@ -447,6 +856,7 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
     {
         m_pendingActionArmed = false;
         m_pendingAction = null;
+        m_pendingActionNormalizedStart = 0f;
     }
 
     public bool TryTakePendingAction(out GameplayIntentKind kind, out ActionDataSO action)
@@ -467,11 +877,18 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
     public void RequestActionPresentation(
         GameplayIntentKind kind,
         ActionDataSO action,
-        AnimationClip presentationClip = null)
+        AnimationClip presentationClip = null,
+        float normalizedStart = 0f,
+        float playbackAnimSpeedOverride = -1f)
     {
         if (action == null) return;
-        PublishEvent(new PlayerActionPresentationRequestEvent(GetInstanceID(), kind, action, presentationClip));
+        PublishEvent(new PlayerActionPresentationRequestEvent(
+            GetInstanceID(), kind, action, presentationClip, normalizedStart, playbackAnimSpeedOverride));
     }
+
+    /// <summary>调整 Playable 速率（表现层事件，不直接引用 Animator）。</summary>
+    public void RequestPlayablePlaybackSpeed(float speed) =>
+        PublishEvent(new PlayablePlaybackSpeedRequestEvent(GetInstanceID(), Mathf.Max(0f, speed)));
 
     /// <summary>164.1 L3：Locomotion 内 IsContinuousLocomotion Action 换片。</summary>
     public void RequestContinuousLocomotionPresentation(ActionDataSO action)
@@ -554,9 +971,38 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
     public void SetMovementIntent(Vector3 worldDirection, bool wantsRun)
     {
         var planar = new Vector3(worldDirection.x, 0f, worldDirection.z);
-        if (planar.sqrMagnitude > 1f) planar.Normalize();
-        m_movementIntent = planar;
-        m_runIntent = wantsRun && planar.sqrMagnitude > 0.0001f;
+        if (planar.sqrMagnitude > 1f)
+        {
+            planar.Normalize();
+        }
+
+        m_facingIntent = planar;
+        m_hasLocomotionMoveIntent = planar.sqrMagnitude > 0.0001f;
+        m_movementIntent = m_hasLocomotionMoveIntent ? planar : Vector3.zero;
+        m_runIntent = wantsRun && m_hasLocomotionMoveIntent;
+    }
+
+    /// <summary>184.1 Pending/Tap — 仅更新 FacingIntent，不进入 Locomotion 位移。</summary>
+    public void SetFacingIntentOnly(Vector3 worldDirection)
+    {
+        var planar = new Vector3(worldDirection.x, 0f, worldDirection.z);
+        if (planar.sqrMagnitude > 1f)
+        {
+            planar.Normalize();
+        }
+
+        m_facingIntent = planar;
+        m_hasLocomotionMoveIntent = false;
+        m_movementIntent = Vector3.zero;
+        m_runIntent = false;
+    }
+
+    public void ClearMovementIntent()
+    {
+        m_movementIntent = Vector3.zero;
+        m_facingIntent = Vector3.zero;
+        m_hasLocomotionMoveIntent = false;
+        m_runIntent = false;
     }
 
     public Vector3 GetMovementDirectionOrForward()
@@ -594,9 +1040,21 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
 
         if (hasInput)
         {
-            SetPlanarVelocity(input.normalized * newSpeed);
-            SetMoveDirection(input);
-            LookAtDirection(input);
+            // 198.3 Move 维度守卫：Action 期间默认不允许玩家输入叠加位移
+            if (ActionRotationGate.IsAllowed(this, ActionRotationGate.Kind.Move))
+            {
+                SetPlanarVelocity(input.normalized * newSpeed);
+                SetMoveDirection(input);
+            }
+
+            // 198.3 Facing 维度守卫（与 Move 独立）
+            if (!ShouldSuppressLocomotionRotation()
+                && ActionRotationGate.IsAllowed(this, ActionRotationGate.Kind.Facing))
+            {
+                ActionTurnProbe.Log(this, m_logicForward, input, "Player.MoveByLocomotionIntent");
+                SetLogicForward(input);
+                MaybeLogLocomotionRotationEdge(LocomotionRotationMode.SnapAlways, immediate: true);
+            }
         }
         else
         {
@@ -615,6 +1073,32 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
         return hasInput ? moveAcceleration : moveDeceleration;
     }
 
+    // 184.1 / 183.1：Layer A 旋转探针边沿（仅 DebugLocomotionTrace）
+    LocomotionRotationMode m_lastLoggedRotationMode = (LocomotionRotationMode)255;
+    bool m_lastLoggedRotationImmediate;
+
+    void MaybeLogLocomotionRotationEdge(LocomotionRotationMode mode, bool immediate)
+    {
+        if (!DebugLocomotionTrace && !DebugLocomotion)
+        {
+            return;
+        }
+
+        if (mode == m_lastLoggedRotationMode && immediate == m_lastLoggedRotationImmediate)
+        {
+            return;
+        }
+
+        m_lastLoggedRotationMode = mode;
+        m_lastLoggedRotationImmediate = immediate;
+
+        var turnState = m_currentTurnInfo.IsTurning ? $"LOCK{m_currentTurnInfo.Type}" : "UNLOCK";
+        LocomotionDebug.Log(
+            this,
+            LocomotionDebug.CatRotation,
+            $"mode={mode} immediate={immediate} spd={PlanarVelocity.magnitude:F2} turn={turnState}");
+    }
+
     public void StopMove()
     {
         var tuning = locomotionProfile != null ? locomotionProfile.Tuning : null;
@@ -625,6 +1109,9 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
     public void ClearPlanarVelocity() => m_motor?.ClearPlanarVelocity();
     public void SetPlanarVelocity(Vector3 v) => m_motor?.SetPlanarVelocity(v);
     public void SetVerticalSpeed(float vy) => m_motor?.SetVerticalSpeed(vy);
+
+    // 198.x — 167.1 VelocityDecay 全套实现已删除（Begin/Step/Tick/End/Stop 5 个方法）。
+    // 182.1 StopStrategy 体系已 1 年完全接管，无任何外部调用方。
 
     public void Jump()
     {

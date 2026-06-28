@@ -31,6 +31,7 @@ public static class CombatFlowGraphNodeInspector
                     typeof(ActionDataSO),
                     false);
                 DrawActionGraphParticipationHints(action.action);
+                DrawTerminalSection(action);
                 break;
             case CombatFlowRouteSwitchNode routeSwitch:
                 routeSwitch.nodeId = EditorGUILayout.TextField("Node Id", routeSwitch.nodeId);
@@ -54,6 +55,25 @@ public static class CombatFlowGraphNodeInspector
         }
 
         EditorGUIUtility.labelWidth = prevLabel;
+    }
+
+    static void DrawTerminalSection(CombatFlowActionNode node)
+    {
+        EditorGUILayout.Space(4);
+        EditorGUILayout.LabelField("Terminal (186.1)", EditorStyles.miniBoldLabel);
+        node.terminalOnComplete = EditorGUILayout.Toggle("On Complete", node.terminalOnComplete);
+        using (new EditorGUI.DisabledScope(!node.terminalOnComplete))
+        {
+            node.terminalPolicy = (CombatFlowTerminalPolicy)EditorGUILayout.EnumPopup(
+                "Policy", node.terminalPolicy);
+        }
+
+        if (node.terminalOnComplete)
+        {
+            EditorGUILayout.HelpBox(
+                "勾选后段结束自动归位（无需连 End 节点）；Runner 会短路本节点的 OnSegmentComplete 出边。",
+                MessageType.Info);
+        }
     }
 
     static void DrawActionGraphParticipationHints(ActionDataSO actionData)

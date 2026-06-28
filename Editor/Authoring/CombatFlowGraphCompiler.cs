@@ -46,6 +46,8 @@ public static class CombatFlowGraphCompiler
                 Kind = n.Kind,
                 Action = n.Action,
                 Route = n.Route,
+                TerminalOnComplete = n.TerminalOnComplete,
+                TerminalPolicy = n.TerminalPolicy,
             };
 
             if (n.Kind == CombatFlowNodeKind.Start)
@@ -64,19 +66,29 @@ public static class CombatFlowGraphCompiler
         for (var i = 0; i < srcEdges.Length; i++)
         {
             var e = srcEdges[i];
+            var authoring = e;
+            if (CombatFlowInputConditionSync.TryGetPrimaryInputCondition(
+                    authoring.EdgeConditions,
+                    out var inputCond))
+            {
+                CombatFlowInputConditionSync.SyncEdgeFromInputCondition(ref authoring, inputCond);
+            }
+
             compiledEdges[i] = new CombatFlowCompiledEdge
             {
-                FromNodeId = e.FromNodeId,
-                ToNodeId = e.ToNodeId,
-                EdgeKind = e.EdgeKind,
-                Transition = e.Transition,
-                Label = e.Label,
-                InputSlot = e.InputSlot,
-                InputSemantic = e.InputSemantic,
-                Conditions = CombatFlowConditionMerge.Merge(e.Conditions, e.ConditionRefs),
-                Priority = e.Priority,
-                TargetRoute = e.TargetRoute,
-                LateWindowSeconds = e.LateWindowSeconds,
+                FromNodeId = authoring.FromNodeId,
+                ToNodeId = authoring.ToNodeId,
+                EdgeKind = authoring.EdgeKind,
+                Transition = authoring.Transition,
+                Label = authoring.Label,
+                InputSlot = authoring.InputSlot,
+                InputSemantic = authoring.InputSemantic,
+                InputModifier = authoring.InputModifier,
+                Conditions = CombatFlowConditionMerge.Merge(authoring.Conditions, authoring.ConditionRefs),
+                EdgeConditions = authoring.EdgeConditions ?? System.Array.Empty<EdgeConditionSO>(),
+                Priority = authoring.Priority,
+                TargetRoute = authoring.TargetRoute,
+                LateWindowSeconds = authoring.LateWindowSeconds,
             };
         }
 

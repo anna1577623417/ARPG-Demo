@@ -17,15 +17,21 @@ public static class CombatFlowGraphValidator
             get
             {
                 var sb = new StringBuilder();
-                sb.AppendLine(IsValid ? "VALID" : "INVALID");
+                sb.Append(IsValid ? "VALID" : "INVALID");
+                sb.Append(" (errors=").Append(Errors.Count)
+                  .Append(", warnings=").Append(Warnings.Count).AppendLine(")");
+
+                var lineNo = 1;
                 for (var i = 0; i < Errors.Count; i++)
                 {
-                    sb.AppendLine("E: " + Errors[i]);
+                    sb.Append(lineNo++).Append(". E | ").AppendLine(Errors[i]);
+                    sb.AppendLine();
                 }
 
                 for (var i = 0; i < Warnings.Count; i++)
                 {
-                    sb.AppendLine("W: " + Warnings[i]);
+                    sb.Append(lineNo++).Append(". W | ").AppendLine(Warnings[i]);
+                    sb.AppendLine();
                 }
 
                 return sb.ToString().TrimEnd();
@@ -157,16 +163,18 @@ public static class CombatFlowGraphValidator
             }
 
             if (e.Transition == CombatFlowTransitionMode.OnInput
-                && e.InputSlot == SkillEntrySlot.Any
-                && e.InputSemantic == InputSemanticType.None)
+                && !HasOnInputContextConfigured(in e))
             {
-                result.Warnings.Add($"{edgeLabel}: OnInput 未配置 InputSlot/Semantic");
+                result.Warnings.Add(
+                    $"{edgeLabel}: OnInput 未配置输入上下文（InputSlot=Any 且 InputSemantic=None，且无 InputConditionSO）。" +
+                    "请配置 Context Input / EdgeConditions，或改为 OnSegmentComplete。");
             }
 
             ValidateComboSegmentAdvanceEdge(graph, nodesById, e, i, result);
             ValidateConditionRefs(graph, nodesById, e, i, result);
             ValidateEdgeKindRules(nodesById, e, i, result);
-            ValidateComboChainStartEdge(nodesById, e, i, result);
+            ValidateTerminalRedundantEdge(nodesById, e, i, result);
+            // 186.1 — 单节点链条已合法化：Start→FlowAction OnInput 允许（取代旧"必须经 NormalRoute"约束）
         }
 
         ValidateGraphCycles(graph, result);
@@ -374,33 +382,30 @@ public static class CombatFlowGraphValidator
         }
     }
 
-    static void ValidateComboChainStartEdge(
+    // 186.1 — 已移除 ValidateComboChainStartEdge：
+    //   Start→FlowAction OnInput 现在是合法的"单节点链条"起手；不再强制要求 Entry.NormalRoute 中转。
+    //   旧的连点重复首段问题由 EdgeCondition (185.2) + Action.EarlyWindow 在运行时解决。
+
+    static void ValidateTerminalRedundantEdge(
         Dictionary<string, CombatFlowNodeAuthoring> nodesById,
         in CombatFlowEdgeAuthoring e,
         int index,
         Result result)
     {
-        if (e.Transition != CombatFlowTransitionMode.OnInput || e.EdgeKind != CombatFlowEdgeKind.Flow)
+        if (e.Transition != CombatFlowTransitionMode.OnSegmentComplete)
         {
             return;
         }
 
-        if (!nodesById.TryGetValue(e.FromNodeId, out var fromNode) || fromNode.Kind != CombatFlowNodeKind.Start)
-        {
-            return;
-        }
-
-        if (!nodesById.TryGetValue(e.ToNodeId, out var toNode) || toNode.Kind != CombatFlowNodeKind.FlowAction)
+        if (!nodesById.TryGetValue(e.FromNodeId, out var fromNode) || !fromNode.TerminalOnComplete)
         {
             return;
         }
 
         var edgeLabel = CombatFlowEdgeKindRules.FormatEdgeLabel(index, in e, nodesById);
-        var entryName = toNode.Action != null ? toNode.Action.name : e.ToNodeId;
         result.Warnings.Add(
-            $"{edgeLabel}: Graph 单链 Combo 起手勿用 Start OnInput→{entryName}；" +
-            "请改 Entry.NormalRoute 起手 + Start→首段 OnSegmentComplete（无 Route）或删除该边；" +
-            "连点重复首段多因此边在 Start 仍命中。");
+            $"{edgeLabel}: 源节点已勾 TerminalOnComplete=true；此 OnSegmentComplete 出边将被 Runner 短路。" +
+            "建议二选一：取消 TerminalOnComplete 或删除该边。");
     }
 
     static bool ContainsAction(ActionDataSO[] pool, ActionDataSO action)
@@ -414,6 +419,16 @@ public static class CombatFlowGraphValidator
         }
 
         return false;
+    }
+
+    static bool HasOnInputContextConfigured(in CombatFlowEdgeAuthoring e)
+    {
+        if (e.InputSlot != SkillEntrySlot.Any || e.InputSemantic != InputSemanticType.None)
+        {
+            return true;
+        }
+
+        return CombatFlowInputConditionSync.TryGetPrimaryInputCondition(e.EdgeConditions, out _);
     }
 }
 #endif
