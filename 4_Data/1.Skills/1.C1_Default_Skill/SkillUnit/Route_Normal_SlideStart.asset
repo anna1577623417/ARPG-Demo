@@ -10,18 +10,21 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 50409d845c0919445a2e067fee88b2aa, type: 3}
-  m_Name: Route_Normal_SlideExit_Shift
+  m_Name: Route_Normal_SlideStart
   m_EditorClassIdentifier: 
   routeId: 
-  icon: {fileID: 0}
+  icon: {fileID: 21300000, guid: 12c151ebe8a59984fbab977b984e3d53, type: 3}
   displayName: 
-  showOnHud: 0
+  showOnHud: 1
   priority: 5
   cooldownPolicy: 1
-  baseCooldownSeconds: 0
+  baseCooldownSeconds: 1
   cooldownGroup: 
   ignoreGlobalCooldown: 0
-  costs: []
+  costs:
+  - resourceType: 2
+    baseAmount: 50
+    consumeOnlyOnHit: 0
   resourceConsumePolicy: 0
   damage:
     baseDamage: 0
@@ -36,11 +39,12 @@ MonoBehaviour:
     critChanceOverride: -1
     critMultiplierOverride: 1
   stages:
-  - {fileID: 11400000, guid: ba97102bd631f4b48929b51ce4faeeb5, type: 2}
+  - {fileID: 11400000, guid: 74e30a813375a584284380d7ea3e2556, type: 2}
   grantedStateTags: 0
   grantedAbilityTags: 0
   ownerGroup: {fileID: 0}
   overrideCooldown: 0
   overrideIcon: 0
   overrideCost: 0
-  abilityGateRules: []
+  abilityGateRules:
+  - {fileID: 11400000, guid: f1a2b3c4d5e6789012345678abcdef01, type: 2}

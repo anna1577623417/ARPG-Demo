@@ -71,16 +71,10 @@ public sealed class InputContextResolver
         {
             if (!_moveActive)
             {
-                var inheritCapture = !_capturedDirty
-                    && directionGraceSec > 0f
-                    && (now - _lastMoveReleaseTime) <= directionGraceSec;
-
                 _moveActive = true;
                 _moveActiveSince = now;
-                if (!inheritCapture)
-                {
-                    _capturedPlanarForward = planarForward;
-                }
+                // 208.1 — 每次 MoveDown 刷新捕获；Locomotion 运行中 LogicForward 会变，不可继承旧键快照。
+                _capturedPlanarForward = planarForward;
 
                 _contextRotationSuppressed = true;
                 _contextSuppressUntil = now + Mathf.Max(0.02f, contextWindowSec);
@@ -88,10 +82,16 @@ public sealed class InputContextResolver
                 // 206.1 — 方向键按下沿，输出 [DodgeChord8] MoveDown
                 DodgeChord8Probe.LogMoveDown(rawMove, Vector3.zero, planarForward, now);
             }
-            else if (_contextRotationSuppressed && now > _contextSuppressUntil)
+            else
             {
-                _contextRotationSuppressed = false;
-                LogGateIfFlipped(now);
+                // 持续按住期间同步 LogicForward，避免 Commit 时 captured 与 live 大幅偏离。
+                _capturedPlanarForward = planarForward;
+
+                if (_contextRotationSuppressed && now > _contextSuppressUntil)
+                {
+                    _contextRotationSuppressed = false;
+                    LogGateIfFlipped(now);
+                }
             }
 
             return;
@@ -130,8 +130,8 @@ public sealed class InputContextResolver
     }
 
     /// <summary>
-    /// Directional 语义入队时调用 — 锁定进入技能前的身体朝向。
-    /// 206.5 — Chord 短按（≤ChordWindow）仍用 MoveDown 捕获方向；持续按住用当前 LogicForward。
+    /// Directional 语义入队时调用 — 锁定 Motion 基底（仅 CharacterForward Profile 读取）。
+    /// 209.2 — Chord/Motion 均 commit live LogicForward；CameraForward Profile 走 MotionSpaceBasis，不读本字段。
     /// </summary>
     public void CommitDirectionalAbility(
         in Vector3 fallbackPlanarForward,
@@ -144,12 +144,12 @@ public sealed class InputContextResolver
         }
 
         _directionalCommitted = true;
-        var useCapturedChord = _moveActive
+        var useChordWindow = _moveActive
             && holdDurationSec >= 0f
             && holdDurationSec <= chordWindowSec;
-        _committedPlanarForward = useCapturedChord
-            ? _capturedPlanarForward
-            : Planarize(fallbackPlanarForward);
+        _committedPlanarForward = Planarize(fallbackPlanarForward);
+        var commitSource = useChordWindow ? "characterForward@Chord" : "liveLogicForward@Motion";
+
         _contextRotationSuppressed = true;
         _capturedDirty = true;
 
@@ -159,7 +159,7 @@ public sealed class InputContextResolver
             fallbackPlanarForward,
             holdDurationSec,
             chordWindowSec,
-            useCapturedChord);
+            commitSource);
     }
 
     public void ClearDirectionalActionContext()

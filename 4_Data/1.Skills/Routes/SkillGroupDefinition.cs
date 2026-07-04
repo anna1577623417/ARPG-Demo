@@ -59,6 +59,16 @@ public sealed class SkillGroupDefinition : ScriptableObject, ISkillUnit
                               "用于做前冲翻滚等区别于站立 F-Dodge 的独立动作。")]
     SkillRouteDefinition motionForwardRoute;
 
+    [SerializeField, Tooltip("209.3 — 输入分轨：WSAD → 八向 Route 槽。\n" +
+                              "BodyFixed = 屏感 Route（D 恒 Right 槽）；LogicProjected = 移动意图投影分槽。")]
+    DirectionalInputFrame directionalInputFrame = DirectionalInputFrame.BodyFixed;
+
+    [SerializeField, Tooltip("209.3 — 勾选后本 Group 覆盖子 Route Profile 的 MotionSpace（位移曲线基底）。")]
+    bool useMotionCurveBasisOverride = true;
+
+    [SerializeField, Tooltip("209.3 — Group 级位移曲线基底；默认 CharacterForward = 体轴位移。")]
+    MotionSpace motionCurveBasisOverride = MotionSpace.CharacterForward;
+
     [SerializeField, Tooltip("173.6 — Group 级准入规则（可选）。\n" +
                               "在 ContextGroup Gate 之后、Route Gate 之前生效。通常留空；\n" +
                               "用于「同一 ContextGroup 路由到此组后，组级再校验」的少数场景。")]
@@ -90,7 +100,21 @@ public sealed class SkillGroupDefinition : ScriptableObject, ISkillUnit
     public bool UseFallbackOnNeutral => useFallbackOnNeutral;
     public SkillRouteDefinition FallbackRoute => fallbackRoute;
     public SkillRouteDefinition MotionForwardRoute => motionForwardRoute;
+    public DirectionalInputFrame DirectionalInputFrame => directionalInputFrame;
+    public bool UseMotionCurveBasisOverride => useMotionCurveBasisOverride;
+    public MotionSpace MotionCurveBasisOverride => motionCurveBasisOverride;
     public AbilityGateRuleSO[] AbilityGateRules => abilityGateRules;
+
+    /// <summary>209.3 — 位移分轨：Group 覆盖或读 Profile.MotionSpace。</summary>
+    public MotionSpace ResolveMotionCurveBasis(MotionProfileSO profile)
+    {
+        if (useMotionCurveBasisOverride)
+        {
+            return motionCurveBasisOverride;
+        }
+
+        return profile != null ? profile.MotionSpace : MotionSpace.CharacterForward;
+    }
 
     /// <summary>173.6 — 三段 Gate 中段：选路前的组级准入校验。空数组视为放行。</summary>
     public bool PassAbilityGate(in CombatContextSnapshot ctx)

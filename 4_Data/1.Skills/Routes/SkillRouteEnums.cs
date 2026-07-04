@@ -80,6 +80,27 @@ public enum DirectionalRouteType : byte
 }
 
 /// <summary>
+/// 209.3 SplitFrameDirectional — WSAD / 摇杆 → 八向 Route 槽位的输入分轨。
+/// 与 <see cref="MotionSpace"/>（位移曲线基底）正交，禁止混称。
+/// </summary>
+public enum DirectionalInputFrame : byte
+{
+    /// <summary>角色本体分槽：Resolve(moveBuf)，D → Right 槽；不投影 LogicForward。</summary>
+    [InspectorName("Body Fixed (屏感 Route · 本体分槽)")]
+    BodyFixed = 0,
+
+    /// <summary>Camera 平面移动意图 → 世界方向 → LogicForward 系八向分槽。</summary>
+    [InspectorName("Logic Projected (逻辑投影分槽)")]
+    LogicProjected = 1,
+
+    /// <summary>209.4 OPEN — 角色系 stick 直读。</summary>
+    CharacterStick = 2,
+
+    /// <summary>209.4 OPEN — 世界 XZ 固定八向。</summary>
+    WorldStick = 3,
+}
+
+/// <summary>
 /// 资源消耗时机（Route-level）。与 <see cref="RouteCooldownPolicy"/> 解耦，可独立配置。
 /// </summary>
 public enum RouteResourceConsumePolicy : byte

@@ -17,6 +17,7 @@ alwaysApply: true
 | **Legacy 迁移工具** | `Migrate Legacy 边`、运行时读旧 SO 的 Editor 批量器 | 旧数据仅 git 历史；需迁移时 **用户点名** 再写一次性 Editor |
 | **EditMode / PlayMode 测试** | 为 Landing 验收自动新增 `*Tests.cs` | 施工 Log 写 Play 验收步骤；用户要求「加测试」再写 |
 | **示例资产批量生成** | 菜单生成整套 Route/Graph/Entry 并绑 Player | 用户指定路径时改 **单个** 资产或文档说明 |
+| **暗改既有 SO/Prefab 配置** | Landing 中直接 edit `.asset` 写枚举/引用；`OnValidate` 静默 Migrate 业务字段 | 代码字段默认值 + 文档人工配表；用户点名路径或书面迁移（见 `14-no-unrequested-so-mutation.mdc`） |
 
 ## Editor 菜单 — 只保留「效率工具」
 
@@ -45,3 +46,4 @@ alwaysApply: true
 - [ ] 是否新增了用户未点的 `*Tests.cs`？  
 - [ ] 新 Editor 能力是否可在 **Inspector / Graph 窗口** 完成而无菜单？  
 - [ ] 若删除了演示菜单，Loadout/文档是否仍指向旧菜单路径？（须改文案）
+- [ ] 是否 **未经用户要求** 改了 `.asset` / `.prefab` 配置？（见 `14-no-unrequested-so-mutation.mdc`）

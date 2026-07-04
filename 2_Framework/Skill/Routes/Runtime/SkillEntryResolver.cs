@@ -634,7 +634,18 @@ internal sealed class SkillEntryResolver
                 }
                 else
                 {
-                    picked = group.SelectByDirection(resolvedDir);
+                    if (owner != null)
+                    {
+                        picked = DirectionalRouteMotionBinding.SelectRouteForChord(
+                            group, axis, owner, out resolvedDir);
+                        SkillRouteDebug.LogDodge8(owner, group, "SplitFrame",
+                            $"input={group.DirectionalInputFrame} motion={group.ResolveMotionCurveBasis(picked?.FirstStage()?.Action?.MotionProfile)}");
+                    }
+                    else
+                    {
+                        picked = group.SelectByDirection(resolvedDir);
+                    }
+
                     if (picked == null)
                     {
                         picked = group.FallbackRoute;

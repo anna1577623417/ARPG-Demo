@@ -14,6 +14,7 @@ using UnityEngine;
 public static class DodgeChord8Probe
 {
     const string Prefix = "[DodgeChord8]";
+    const string SplitFramePrefix = "[SplitFrame]";
     const string LogPrefKey = "Core-Drive/DodgeChord8Probe/EnableLog";
 
 #if UNITY_EDITOR
@@ -153,19 +154,46 @@ public static class DodgeChord8Probe
         Debug.Log($"{Prefix} PICK mode={mode} dir={resolvedDir} route={routeName ?? "(null)"}");
     }
 
-    /// <summary>206.5 — Directional Commit 朝向：Chord 捕获 vs 持续移动 live LogicForward。</summary>
+    /// <summary>209.3 — SplitFrame 选路收口（输入分轨 + 位移分轨 + PICK）。</summary>
+    public static void LogSplitFramePick(
+        DirectionalInputFrame inputFrame,
+        MotionSpace motionBasis,
+        Vector2 moveBuffered,
+        DirectionalRouteType resolvedDir,
+        string routeName)
+    {
+        if (!s_enabled) return;
+        Debug.Log(
+            $"{SplitFramePrefix} input={inputFrame} motion={motionBasis} " +
+            $"moveBuf=({moveBuffered.x:F2},{moveBuffered.y:F2}) PICK={resolvedDir} " +
+            $"route={routeName ?? "(null)"}");
+    }
+
+    /// <summary>209.2 遗留 — LogicProjected 重映射；209.3 后应不再出现。</summary>
+    [System.Obsolete("209.3 BodyFixed 输入分轨下不应再 ChordReframe")]
+    public static void LogChordReframe(
+        DirectionalRouteType cameraDir,
+        DirectionalRouteType characterDir,
+        MotionSpace space)
+    {
+        if (!s_enabled) return;
+        Debug.Log(
+            $"{Prefix} ChordReframe camera={cameraDir} → character={characterDir} motionSpace={space}");
+    }
+
+    /// <summary>206.5 / 209.2 — Directional Commit 朝向。</summary>
     public static void LogDirectionalCommit(
         Vector3 committedForward,
         Vector3 capturedAtMoveDown,
         Vector3 liveLogicForward,
         float holdDur,
         float chordWin,
-        bool usedCapturedChord)
+        string commitSource)
     {
         if (!s_enabled) return;
         Debug.Log(
             $"{Prefix} Commit fwd=({committedForward.x:F2},{committedForward.z:F2}) " +
-            $"source={(usedCapturedChord ? "captured@MoveDown" : "liveLogicForward")} " +
+            $"source={commitSource} " +
             $"captured=({capturedAtMoveDown.x:F2},{capturedAtMoveDown.z:F2}) " +
             $"live=({liveLogicForward.x:F2},{liveLogicForward.z:F2}) " +
             $"holdDur={holdDur:F3}s chordWin={chordWin:F2}s");

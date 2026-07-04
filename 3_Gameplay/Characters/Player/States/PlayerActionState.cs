@@ -83,7 +83,10 @@ public sealed class PlayerActionState : PlayerState
         m_actionEnterElapsed = m_elapsed;
         m_actionEnterPlanarPos = player.transform.position;
 
-        m_burstFaceDir = m_motionPlayback.ResolveFacingDirection(player, m_action.MotionProfile);
+        m_burstFaceDir = m_motionPlayback.ResolveFacingDirection(
+            player,
+            m_action.MotionProfile,
+            ResolveActiveOwnerGroup(player));
 
         player.Tags.Add(TagCategory.State, (ulong)StateTag.PhaseStartup);
 
@@ -247,7 +250,10 @@ public sealed class PlayerActionState : PlayerState
         m_prevNormalizedTime = normalizedStart;
         m_actionEnterElapsed = m_elapsed;
         m_actionEnterPlanarPos = player.transform.position;
-        m_burstFaceDir = m_motionPlayback.ResolveFacingDirection(player, action.MotionProfile);
+        m_burstFaceDir = m_motionPlayback.ResolveFacingDirection(
+            player,
+            action.MotionProfile,
+            ResolveActiveOwnerGroup(player));
 
         m_motionPlayback.RestartForSwap(
             player,
@@ -841,4 +847,7 @@ public sealed class PlayerActionState : PlayerState
         normalizedTime = m_prevNormalizedTime;
         return action != null;
     }
+
+    static SkillGroupDefinition ResolveActiveOwnerGroup(Player player)
+        => player?.SkillEntries?.ActiveRoute?.Definition?.OwnerGroup;
 }

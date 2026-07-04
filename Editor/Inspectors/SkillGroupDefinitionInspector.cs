@@ -11,6 +11,7 @@ public sealed class SkillGroupDefinitionInspector : Editor
     const string PrefIdentity   = "CDA.SkillGroupInspector.Identity";
     const string PrefDirectional = "CDA.SkillGroupInspector.Directional";
     const string PrefNeutral    = "CDA.SkillGroupInspector.Neutral";
+    const string PrefSplitFrame = "CDA.SkillGroupInspector.SplitFrame";
     const string PrefMotion     = "CDA.SkillGroupInspector.Motion";
     const string PrefAdvanced   = "CDA.SkillGroupInspector.Advanced";
 
@@ -32,6 +33,9 @@ public sealed class SkillGroupDefinitionInspector : Editor
     SerializedProperty m_useFallbackOnNeutral;
     SerializedProperty m_fallbackRoute;
     SerializedProperty m_motionForwardRoute;
+    SerializedProperty m_directionalInputFrame;
+    SerializedProperty m_useMotionCurveBasisOverride;
+    SerializedProperty m_motionCurveBasisOverride;
 
     static GUIStyle s_sectionHeader;
     static GUIStyle s_cellLabel;
@@ -61,6 +65,9 @@ public sealed class SkillGroupDefinitionInspector : Editor
         m_useFallbackOnNeutral = serializedObject.FindProperty("useFallbackOnNeutral");
         m_fallbackRoute = serializedObject.FindProperty("fallbackRoute");
         m_motionForwardRoute = serializedObject.FindProperty("motionForwardRoute");
+        m_directionalInputFrame = serializedObject.FindProperty("directionalInputFrame");
+        m_useMotionCurveBasisOverride = serializedObject.FindProperty("useMotionCurveBasisOverride");
+        m_motionCurveBasisOverride = serializedObject.FindProperty("motionCurveBasisOverride");
     }
 
     public override void OnInspectorGUI()
@@ -76,6 +83,8 @@ public sealed class SkillGroupDefinitionInspector : Editor
         DrawIdentitySection();
         EditorGUILayout.Space(4f);
         DrawDirectionalSection();
+        EditorGUILayout.Space(4f);
+        DrawSplitFrameSection();
         EditorGUILayout.Space(4f);
         DrawNeutralSection();
         EditorGUILayout.Space(4f);
@@ -124,6 +133,38 @@ public sealed class SkillGroupDefinitionInspector : Editor
             EditorGUILayout.HelpBox(
                 "提示：4 个斜向槽（FL/FR/BL/BR）若留空，运行时按象限主轴回落 — FL/FR → Forward，BL/BR → Backward。",
                 MessageType.None);
+        }
+
+        EndSection();
+    }
+
+    void DrawSplitFrameSection()
+    {
+        var open = SessionState.GetBool(PrefSplitFrame, true);
+        var next = BeginSection("SplitFrame Directional (209.3 · 输入 + 位移分轨)", open);
+        SessionState.SetBool(PrefSplitFrame, next);
+        if (next)
+        {
+            EditorGUILayout.PropertyField(
+                m_directionalInputFrame,
+                new GUIContent("Directional Input Frame", "WSAD → 八向 Route 槽"));
+            EditorGUILayout.PropertyField(
+                m_useMotionCurveBasisOverride,
+                new GUIContent("Override Motion Curve Basis"));
+            using (new EditorGUI.DisabledScope(!m_useMotionCurveBasisOverride.boolValue))
+            {
+                EditorGUILayout.PropertyField(
+                    m_motionCurveBasisOverride,
+                    new GUIContent("Motion Curve Basis", "Motion 曲线 XYZ → 世界"));
+            }
+
+            EditorGUILayout.HelpBox(
+                "推荐默认（屏感 Route + 体轴位移）：\n" +
+                "· Input Frame = Body Fixed\n" +
+                "· Override Motion Curve Basis = ✓\n" +
+                "· Motion Curve Basis = Character Forward\n\n" +
+                "Logic Projected = 移动意图投影分槽（对脸 D 可能 Left 槽）。",
+                MessageType.Info);
         }
 
         EndSection();

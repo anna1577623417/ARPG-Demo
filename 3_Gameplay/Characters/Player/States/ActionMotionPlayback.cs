@@ -49,14 +49,19 @@ public sealed class ActionMotionPlayback
         return duration * player.LocomotionProfile.Tuning.StartActionDurationScale;
     }
 
-    public Vector3 ResolveFacingDirection(Player player, MotionProfileSO profile)
+    public Vector3 ResolveFacingDirection(
+        Player player,
+        MotionProfileSO profile,
+        SkillGroupDefinition ownerGroup = null)
     {
         if (player == null)
         {
             return Vector3.forward;
         }
 
-        var space = profile != null ? profile.MotionSpace : MotionSpace.CharacterForward;
+        var space = ownerGroup != null
+            ? ownerGroup.ResolveMotionCurveBasis(profile)
+            : profile != null ? profile.MotionSpace : MotionSpace.CharacterForward;
         return player.ResolveMotionPlanarForward(space);
     }
 

@@ -1,0 +1,52 @@
+---
+description: 禁止 AI 未经用户要求修改 SO/Prefab 资产配置；Landing 只改代码默认值与文档
+globs: Assets/GameMain/Scripts/**/*
+alwaysApply: true
+---
+
+# 禁止暗改 SO / Prefab 配置
+
+> 与 `12-no-unrequested-scaffolding.mdc`（不擅自加工具/测试）、`13-so-list-authority-sync.mdc`（OnValidate 只读 Validate）配套。  
+> **用户决议（209.3 后）**：AI **不得**在未被点名的情况下，直接改仓库里已有 `.asset` / `.prefab` 的 SerializeField 业务配置。
+
+---
+
+## 1. 硬规则
+
+| 禁止 | 说明 |
+|------|------|
+| **直接改 `.asset` / `.prefab` YAML** | 含引用、枚举、数值、Toggle、数组元素；即使用于「Landing 通电」「迁移默认值」「与蓝图对齐」 |
+| **OnValidate / Import 静默写配置** | 仅允许 **只读 Validate + 缓存告警**（见 `13` §3.5）；**禁止** `OnValidate` 内 `SetDirty` 改业务字段 |
+| **批量改未点名的资产** | 禁止「顺手」改 `Group_*` / `Route_*` / `Entry_*` / `Loadout_*` 等整套数据 |
+| **用 Runtime fallback 代替未改表** | 配置应在 Inspector 可见；不得代码里偷偷覆盖 SO 读出的值当长期方案 |
+
+## 2. 允许（无需逐资产点名）
+
+| 允许 | 说明 |
+|------|------|
+| **C# 新增 `[SerializeField]` + 字段默认值** | 只影响 **新 Create 的资产**；既有资产 Unity 按序列化规则补默认值时，须在交付说明 **哪些 Group 需人工核对** |
+| **用户点名路径** | 用户给出 **具体 asset 路径** 或「改 GhostSamurai 的 Group_Wuxia_Roll」类明确范围 |
+| **用户书面要求迁移** | 「写一次性 Editor 迁移」「帮我把某文件夹 SO 批量改 X」 |
+| **Editor 按钮 + 确认** | Sync / AutoFix 须 Undo + 对话框；**禁止**默认 MenuItem 全项目 Migrate All（见 `12`） |
+| **文档写人工配表步骤** | Landing Done 时资产未改 → 标 **OPEN**，写 Inspector 操作清单 |
+
+## 3. 交付协议
+
+1. **若本次任务需要改 SO** → 开工前确认范围；改完后在回复 **显式列出**：路径 + 字段 before/after（或 git diff 摘要）。  
+2. **若只落代码设施** → **不改**既有 SO；在 Record/蓝图写：「Play 前请在 Group Inspector 设 InputFrame=… MotionBasis=…」。  
+3. **禁止**把「我已经在 `.asset` 里帮你改好了」当作默认交付，除非用户本次明确要求改表。
+
+## 4. 反例（209.3）
+
+| ❌ 禁止 | ✅ 应做 |
+|---------|---------|
+| 直接 edit `Group_Wuxia_Roll.asset` 写 `directionalInputFrame` | 代码默认 `BodyFixed` + 文档/回复说明策划在 Inspector 如何设 |
+| `SkillGroupDefinition.OnValidate` 自动 Migrate 写 SplitFrame 字段 | 删除静默 Migrate；需要时用 **用户点名的** Editor 一次性脚本 |
+| 「为了 Play 能过」批量改 C1 下所有 Group | 写 Play 验收步骤 + OPEN 配表项 |
+
+## 5. AI 自检（会话结束前）
+
+- [ ] 是否改动了用户 **未点名** 的 `.asset` / `.prefab`？  
+- [ ] 新增 `OnValidate` 是否 **只读**、无 `SetDirty` 业务字段？  
+- [ ] 交付说明是否写清 **OPEN 配表** 或 **已改资产清单**？  
+- [ ] 是否误把 SO 改动藏在「实现细节」里未告知用户？
