@@ -11,15 +11,15 @@ public static class Locomotion165Diagnostics
 
     /// <summary>Bug #1+#4+#5：Action 时序 / 空中 Locomotion 微调。</summary>
     public static bool IsActionTimingEnabled(Player player) =>
-        player != null && player.DebugLocomotion;
+        player != null && GameMainDebugSettings.Locomotion;
 
     /// <summary>Bug #6：多 Stage Route 末段退出。</summary>
     public static bool IsRouteExitEnabled(Player player) =>
-        player != null && player.DebugLocomotion;
+        player != null && GameMainDebugSettings.Locomotion;
 
     /// <summary>Bug #3+#7：Locomotion 边沿 / 跑步。</summary>
     public static bool IsLocomotionEnabled(Player player) =>
-        player != null && player.DebugLocomotion;
+        player != null && GameMainDebugSettings.Locomotion;
 
     public static void LogAnimSync(Player player, ActionDataSO action)
     {
@@ -154,7 +154,7 @@ public static class Locomotion165Diagnostics
             return;
         }
 
-        if (!player.DebugLocomotion && !player.DebugStop && endHint == LocomotionStateId.None)
+        if (!GameMainDebugSettings.Locomotion && !GameMainDebugSettings.Stop && endHint == LocomotionStateId.None)
         {
             return;
         }
@@ -172,7 +172,7 @@ public static class Locomotion165Diagnostics
 
     public static void LogStopOpen(Player player, ActionDataSO action, string reason)
     {
-        if (player == null || (!player.DebugLocomotion && !player.DebugStop))
+        if (player == null || (!GameMainDebugSettings.Locomotion && !GameMainDebugSettings.Stop))
         {
             return;
         }

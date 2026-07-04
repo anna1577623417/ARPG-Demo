@@ -107,7 +107,7 @@ public static class ActionInterruptResolver
         ActionDataSO incomingAction,
         string reason)
     {
-        if (player == null || !player.DebugInterruptFlow)
+        if (player == null || !GameMainDebugSettings.InterruptFlow)
         {
             return;
         }
@@ -127,7 +127,7 @@ public static class ActionInterruptResolver
         ActionCategory category,
         int priority)
     {
-        if (player == null || !player.DebugInterruptFlow)
+        if (player == null || !GameMainDebugSettings.InterruptFlow)
         {
             return;
         }

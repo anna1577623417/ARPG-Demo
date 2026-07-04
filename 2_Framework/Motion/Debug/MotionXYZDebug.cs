@@ -17,7 +17,7 @@ public static class MotionXYZDebug
 
     public static void Log(Object owner, string category, string message)
     {
-        if (owner is Player p && !p.DebugLocomotion)
+        if (owner is Player && !GameMainDebugSettings.Locomotion)
         {
             return;
         }

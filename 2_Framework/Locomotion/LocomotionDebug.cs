@@ -2,8 +2,7 @@ using UnityEngine;
 
 /// <summary>
 /// Locomotion 运行时诊断（162.1）—— 稳定前缀 <c>[Loco]</c>，供 Play Mode Console 过滤。
-/// <para><see cref="Player.DebugLocomotion"/>：Resolver 决策边沿。</para>
-/// <para><see cref="Player.DebugLocomotionTrace"/>：输入 / 移动 / 转身节流心跳 + 异常告警。</para>
+/// <para>Tools/GameMain/Debug Settings → Locomotion / Locomotion Trace。</para>
 /// </summary>
 public static class LocomotionDebug
 {
@@ -17,10 +16,10 @@ public static class LocomotionDebug
 
     const float DefaultTraceInterval = 0.12f;
 
-    public static bool IsEnabled(Player player) => player != null && player.DebugLocomotion;
+    public static bool IsEnabled(Player player) => player != null && GameMainDebugSettings.Locomotion;
 
     public static bool IsTraceEnabled(Player player) =>
-        player != null && (player.DebugLocomotionTrace || player.DebugLocomotion);
+        player != null && (GameMainDebugSettings.LocomotionTrace || GameMainDebugSettings.Locomotion);
 
     public static void Log(Player player, string category, string message, Object context = null)
     {

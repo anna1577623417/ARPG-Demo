@@ -50,7 +50,7 @@ public sealed class PlayerAirborneState : PlayerState
 
         if (r.Code != AirInterruptResolver.Verdict.Allow)
         {
-            if (player.DebugInterruptFlow)
+            if (GameMainDebugSettings.InterruptFlow)
             {
                 Debug.Log(
                     $"[Airborne/{r.Phase}] REJECT | intent={intent.Kind} | category={incomingCategory} | verdict={r.Code} | allowed={r.AllowedMaskForPhase}",
@@ -67,7 +67,7 @@ public sealed class PlayerAirborneState : PlayerState
         Player player, in AirInterruptResolver.Result r,
         GameplayIntentKind kind, ActionCategory incomingCat)
     {
-        if (!player.DebugComboAirGate) return;
+        if (!GameMainDebugSettings.ComboAirGate) return;
         var key = $"{r.Phase}|{kind}|{incomingCat}|{r.Code}";
         if (key == m_lastAirIntrKey) return;
         m_lastAirIntrKey = key;
@@ -89,7 +89,7 @@ public sealed class PlayerAirborneState : PlayerState
         var consumed = player.ConsumeJumpFromIntent();
 
         // 164.1 L0 [Jump] 探针：跳跃流程开始
-        if (player.DebugLocomotion)
+        if (GameMainDebugSettings.Locomotion)
         {
             var profileHas = player.LocomotionProfile != null
                 && player.LocomotionProfile.HasState(LocomotionStateId.JumpStart);
@@ -148,7 +148,7 @@ public sealed class PlayerAirborneState : PlayerState
 
         _pendingJumpStartArmed = true;
         _pendingJumpStartAction = jumpStartAction;
-        if (player.DebugLocomotion)
+        if (GameMainDebugSettings.Locomotion)
         {
             Debug.Log(
                 $"[LocoResolver] JumpStart action queued (will fire next tick): {_pendingJumpStartAction.name}",
@@ -174,7 +174,7 @@ public sealed class PlayerAirborneState : PlayerState
             var action = _pendingJumpStartAction;
             _pendingJumpStartArmed = false;
             _pendingJumpStartAction = null;
-            if (player.DebugLocomotion)
+            if (GameMainDebugSettings.Locomotion)
             {
                 Debug.Log($"[Jump][ArmJumpStartFire] action={action.name} frame={Time.frameCount}", player);
             }

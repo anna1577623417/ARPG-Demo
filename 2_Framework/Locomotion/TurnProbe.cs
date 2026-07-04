@@ -4,7 +4,7 @@ using UnityEngine;
 /// <summary>
 /// 184.1 / 162.1 — Turn-In-Place 四向子状态验收探针。
 /// <para>Console 过滤：<c>[Turn][Sub]</c>（ENTER / PLAY / EXIT / WARN）。</para>
-/// <para>开关：Player <see cref="Player.DebugTurnSubState"/>（推荐）或 <see cref="Player.DebugLocomotion"/>。</para>
+/// <para>开关：Tools/GameMain/Debug Settings → Turn Sub-State 或 Locomotion。</para>
 /// </summary>
 public static class TurnProbe
 {
@@ -27,7 +27,7 @@ public static class TurnProbe
     static readonly Dictionary<int, float> s_nextVisualLagLogTime = new Dictionary<int, float>(4);
 
     public static bool IsEnabled(Player player) =>
-        player != null && (player.DebugTurnSubState || player.DebugLocomotion);
+        player != null && (GameMainDebugSettings.TurnSubState || GameMainDebugSettings.Locomotion);
 
     // ─── 184.1 通用 ───
 

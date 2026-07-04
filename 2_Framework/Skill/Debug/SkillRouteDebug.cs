@@ -1,8 +1,7 @@
 using UnityEngine;
 
 /// <summary>
-/// SkillRoute 诊断 — 由 Player 上 Debug 开关分通道控制。
-/// <see cref="IsEnabled"/>（Debug Skill Route）仅输出 Combat Graph 专向 Log，不再刷 Flow/Resolve/Combo 全量。
+/// SkillRoute 诊断 — 开关见 Tools/GameMain/Debug Settings。
 /// </summary>
 public static class SkillRouteDebug
 {
@@ -34,16 +33,16 @@ public static class SkillRouteDebug
     static string s_lastGraphDedupKey;
     static float s_lastGraphDedupTime;
 
-    public static bool IsEnabled(Player player) => player != null && player.DebugSkillRoute;
+    public static bool IsEnabled(Player player) => player != null && GameMainDebugSettings.SkillRouteGraph;
 
     public static bool IsDodge4Enabled(Player player) =>
-        player != null && player.DebugSkillRouteDodge4;
+        player != null && GameMainDebugSettings.SkillRouteDodge4;
 
     public static bool IsRoll4Enabled(Player player) =>
-        player != null && player.DebugSkillRouteRoll4;
+        player != null && GameMainDebugSettings.SkillRouteRoll4;
 
     public static bool IsAbilityEnabled(Player player) =>
-        player != null && player.DebugSkillAbility;
+        player != null && GameMainDebugSettings.SkillAbility;
 
     public static bool IsDodge4TraceIntent(in GameplayIntent intent) =>
         intent.Semantic == InputSemanticType.Directional;

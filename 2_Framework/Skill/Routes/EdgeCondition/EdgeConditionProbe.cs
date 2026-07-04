@@ -8,7 +8,7 @@ public static class EdgeConditionProbe
     static string s_lastDedupKey;
     static float s_lastDedupTime;
 
-    static bool IsEnabled(Player player) => player != null && player.DebugSkillRoute;
+    static bool IsEnabled(Player player) => player != null && GameMainDebugSettings.SkillRouteGraph;
 
     public static void LogReject(
         Player player,

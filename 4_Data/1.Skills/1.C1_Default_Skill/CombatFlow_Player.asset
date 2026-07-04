@@ -40,6 +40,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 6914c26b4e2acc548aa4cd152626b858, type: 2}
   - {fileID: 11400000, guid: 9eef56a803d4bf24fa36529d257de6db, type: 2}
   - {fileID: 11400000, guid: f3a8b2c1d4e5f6789012345678abcd05, type: 2}
+  - {fileID: 11400000, guid: 025dca84ef90816458e4aafa0c296b3b, type: 2}
   conditionPool: []
   edgeConditionPool:
   - {fileID: 11400000, guid: a8c185201234567890abcdef12345601, type: 2}
@@ -341,15 +342,14 @@ MonoBehaviour:
     Transition: 1
     Label: 
     InputSlot: 0
-    InputSemantic: 8
-    InputModifier: 2
+    InputSemantic: 1
+    InputModifier: 1
     Conditions: []
     ConditionRefs: []
     EdgeConditions:
-    - {fileID: 11400000, guid: a8c185201234567890abcdef12345601, type: 2}
-    - {fileID: 0}
+    - {fileID: 11400000, guid: a8c185201234567890abcdef12345602, type: 2}
     Priority: 0
-    TargetRoute: {fileID: 0}
+    TargetRoute: {fileID: 11400000, guid: 025dca84ef90816458e4aafa0c296b3b, type: 2}
     LateWindowSeconds: 0
   missPolicy: 0
   compiledData:
@@ -625,14 +625,13 @@ MonoBehaviour:
       Transition: 1
       Label: 
       InputSlot: 0
-      InputSemantic: 8
-      InputModifier: 2
+      InputSemantic: 1
+      InputModifier: 1
       Conditions: []
       EdgeConditions:
-      - {fileID: 11400000, guid: a8c185201234567890abcdef12345601, type: 2}
-      - {fileID: 0}
+      - {fileID: 11400000, guid: a8c185201234567890abcdef12345602, type: 2}
       Priority: 0
-      TargetRoute: {fileID: 0}
+      TargetRoute: {fileID: 11400000, guid: 025dca84ef90816458e4aafa0c296b3b, type: 2}
       LateWindowSeconds: 0
   compileValid: 1
   lastCompileReport: VALID (errors=0, warnings=0)
@@ -1031,15 +1030,14 @@ MonoBehaviour:
       Transition: 1
       Label: 
       InputSlot: 0
-      InputSemantic: 8
-      InputModifier: 2
+      InputSemantic: 1
+      InputModifier: 1
       Conditions: []
       ConditionRefs: []
       EdgeConditions:
-      - {fileID: 11400000, guid: a8c185201234567890abcdef12345601, type: 2}
-      - {fileID: 0}
+      - {fileID: 11400000, guid: a8c185201234567890abcdef12345602, type: 2}
       Priority: 0
-      TargetRoute: {fileID: 0}
+      TargetRoute: {fileID: 11400000, guid: 025dca84ef90816458e4aafa0c296b3b, type: 2}
       LateWindowSeconds: 0
   references:
     version: 2

@@ -8,7 +8,7 @@ public static class MotionGrammarProbe
     public const string Prefix = "[Grammar]";
 
     static bool IsEnabled(Player player) =>
-        player != null && (player.DebugTurnSubState || player.DebugLocomotion);
+        player != null && (GameMainDebugSettings.TurnSubState || GameMainDebugSettings.Locomotion);
 
     public static void LogTapFacingDecision(
         Player player,

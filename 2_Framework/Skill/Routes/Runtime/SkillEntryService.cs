@@ -14,9 +14,12 @@ using UnityEngine;
 ///   · 不读 InputReader（输入面由 PlayerController 在仲裁阶段 fill 进 ctx.Input）。
 ///   · 不写 IAnimSpeedControl（动画速率由 PlayerActionState + MotionPlaybackContext 接管）。
 /// </summary>
-public sealed class SkillEntryService
+public sealed class SkillEntryService : IComboSessionHost, IGroupCooldownHost, ISkillEntryResolveHost
 {
     readonly Player _owner;
+    readonly ComboSessionController _comboSession;
+    readonly GroupCooldownRegistry _groupCooldowns;
+    readonly SkillEntryResolver _resolver;
     readonly Dictionary<SkillRouteDefinition, SkillRouteRuntime> _routeRuntimes
         = new Dictionary<SkillRouteDefinition, SkillRouteRuntime>(32);
 
@@ -40,8 +43,6 @@ public sealed class SkillEntryService
     CombatGraphRunner _combatGraph;
     bool _loadoutCombatFlowEnabled;
     bool _lastIntentResolvedViaGraph;
-    readonly Dictionary<SkillGroupDefinition, GroupCooldownState> _groupCooldowns
-        = new Dictionary<SkillGroupDefinition, GroupCooldownState>(8);
     bool _hitConfirmedThisStage;
     MoveDirection8 _lastInjectedMoveDir = (MoveDirection8)255;
     bool _lastInjectedAirborne;
@@ -49,19 +50,12 @@ public sealed class SkillEntryService
     float _lastLoggedExtCd = -1f;
     float _lastLoggedPriCd = -1f;
 
-    /// <summary>Combo1 末段(B1)结束后：允许进入 Combo2 整链 A2→B2→C2；Session 结束前保持 true。</summary>
-    bool _extComboHandoffArmed;
-    SkillEntrySlot _extHandoffSlot;
-
-    /// <summary>跨容器虚拟段位：A1=0,B1=1,A2=2,B2=3,C2=4（与容器内 ComboIndex 解耦）。</summary>
-    int _activeVirtualComboIndex = -1;
-
-    // Combo Session 跟踪：哪个容器 / 哪个槽位 / 本次按键是否点到最后一段。
-    ComboRouteRuntime _activeComboSession;
-    SkillEntrySlot _activeComboSessionSlot;
     public SkillEntryService(Player owner)
     {
         _owner = owner;
+        _comboSession = new ComboSessionController(this);
+        _groupCooldowns = new GroupCooldownRegistry(this);
+        _resolver = new SkillEntryResolver(this);
         _scratchCtx.HitTally = new StageHitTally();
     }
 
@@ -367,378 +361,18 @@ public sealed class SkillEntryService
     //  · 这样 TryResolveForIntent 是幂等纯函数：同一 intent 反复 Peek 不会污染状态，
     //    解决 "AABC / ABAC" — 旧实现因 state gate 阻塞导致重复 CommitAdvance 漂移段位的 BUG。
 
-    /// <summary>本次 Resolve 命中的子 Route 在 ComboChain 中的索引；NotifyRouteEntered 用于回写 _comboIndex。</summary>
-    int _pendingComboIndex = -1;
-    int _pendingComboVirtualIndex = -1;
-    SkillRouteDefinition _pendingComboContainer;
+    // 208.3 L2：Combo Session 状态与写操作见 ComboSessionController；Resolve 阶段不写 Session。
+    // 208.3 L6：TryResolveForIntent 主路径见 SkillEntryResolver。
 
-    public SkillRouteRuntime TryResolveForIntent(in GameplayIntent intent, in InputSnapshot inputSnapshot, float now)
-    {
-        return TryResolveForIntent(in intent, in inputSnapshot, now, out _);
-    }
+    public SkillRouteRuntime TryResolveForIntent(in GameplayIntent intent, in InputSnapshot inputSnapshot, float now) =>
+        _resolver.TryResolveForIntent(in intent, in inputSnapshot, now);
 
     public SkillRouteRuntime TryResolveForIntent(
         in GameplayIntent intent,
         in InputSnapshot inputSnapshot,
         float now,
-        out bool discardIntent)
-    {
-        discardIntent = false;
-        _lastIntentResolvedViaGraph = false;
-        _pendingComboIndex = -1;
-        _pendingComboVirtualIndex = -1;
-        _pendingComboContainer = null;
-
-        if (_loadout == null) return null;
-        if (!GameplayIntent.TryIntentKindToSlot(intent.Kind, out var slot)) return null;
-        slot = CanonicalEntry(slot);
-        var entry = ResolveEntryByCanonicalSlot(slot);
-        if (entry == null) return null;
-
-        var ctx = BuildContext(in inputSnapshot);
-
-        if (intent.Semantic == InputSemanticType.Directional)
-        {
-            SkillRouteDebug.LogDodge4(_owner, "Resolve",
-                $"BEGIN slot={slot} axis={intent.DirectionAxis} buffer={inputSnapshot.MoveBuffered} moveDir={ctx.CombatCtx.MoveDirection}");
-        }
-
-        // PrimaryUnit / ContextGroup → Group 四向（136.1）；Directional 不走 CombatGraph 同层选路
-        if (TryResolvePrimaryUnit(entry, slot, in intent, in inputSnapshot, in ctx, out var primaryRt))
-        {
-            return primaryRt;
-        }
-
-        if (intent.Semantic == InputSemanticType.Directional)
-        {
-            SkillRouteDebug.LogDodge4(_owner, "Resolve",
-                "NO_ROUTE (Directional) — 禁止回落 NormalRoute / CombatFlow");
-            return null;
-        }
-
-        // 149.3 — Contextual Entry Resolution：Graph Edge > Derived > Default Entry（单轨，无二次查图旁路）
-        if (GraphEnabled
-            && intent.Semantic != InputSemanticType.Release
-            && intent.Semantic != InputSemanticType.Charge)
-        {
-            if (_combatGraph.TryResolveContextual(in intent, in ctx, out var graphRt, out _))
-            {
-                _lastIntentResolvedViaGraph = true;
-                return graphRt;
-            }
-
-            if (_activeRouteRuntime != null)
-            {
-                discardIntent = true;
-                var stageName = _activeRouteRuntime.Stage?.Definition?.name ?? "?";
-                var actionName = _activeRouteRuntime.Stage?.Definition?.Action?.name ?? "?";
-                SkillRouteDebug.LogGraph(
-                    _owner,
-                    $"DUAL_GATE block in={slot} node={_combatGraph.CurrentNodeId} stage={stageName} action={actionName} " +
-                    $"reason=graph-miss (Graph启用禁Entry/派生回落；边须在「当前游标节点」。关Graph时同键可走Entry+硬优先级)");
-                return null;
-            }
-
-            if (_combatGraph.MissPolicy == CombatFlowGraphMissPolicy.Block)
-            {
-                discardIntent = true;
-                SkillRouteDebug.LogGraph(
-                    _owner,
-                    $"MISS policy=Block in={slot} node={_combatGraph.CurrentNodeId} discard");
-                return null;
-            }
-
-            SkillRouteDebug.LogGraph(
-                _owner,
-                $"MISS policy=Fallback→Entry in={slot} node={_combatGraph.CurrentNodeId}");
-        }
-
-        // 派生招（LM 命中窗内 RM 等）：Graph 未命中后
-        if (TryResolveDerivativeRuntime(entry, slot, in inputSnapshot, now, out var derivativeRt))
-        {
-            return derivativeRt;
-        }
-
-        // 拉克丝 E 等：引爆窗内优先直进 MultiStage 下一段（段内续接，不重复起手闸门）
-        if (entry.MultiStageRoute != null
-            && _routeRuntimes.TryGetValue(entry.MultiStageRoute, out var msRt)
-            && msRt is MultiStageRouteRuntime msPending
-            && msPending.TryPeekPendingEntryStage(now, out _, out _)
-            && msRt.CanCast(in ctx))
-        {
-            return msRt;
-        }
-
-        var semantic = intent.Semantic;
-        var comboIdx = intent.ComboIndex;
-
-        // ═══ 1) Charge ═══
-        if (semantic == InputSemanticType.Charge)
-        {
-            if (TryPickRouteDefinition(entry.ChargeRoute, in ctx, out var crt, logResolveSkip: true))
-            {
-                SkillRouteDebug.Log(_owner, SkillRouteDebug.CatResolve, $"PICK Charge route={entry.ChargeRoute.name}");
-                return crt;
-            }
-
-            SkillRouteDebug.Log(_owner, SkillRouteDebug.CatResolve, "SKIP Charge (ability gate / CanCast / 缺失)");
-            return null;
-        }
-
-        // ═══ 2) Release ═══
-        //   仅作"通知当前 active charge 解冻"。本服务不切 Route；
-        //   PlayerActionState 的 InputSnapshot.TriggerReleasedEdge 也会让 ChargeRouteRuntime 在 Tick 内自然解冻。
-        if (semantic == InputSemanticType.Release)
-        {
-            if (_activeRouteRuntime is ChargeRouteRuntime activeCharge && activeCharge.IsHolding)
-            {
-                activeCharge.NotifyExternalRelease();
-                SkillRouteDebug.Log(_owner, SkillRouteDebug.CatResolve, "Release → 通知 active ChargeRoute 解冻");
-            }
-            return null;
-        }
-
-        // ═══ 3) Tap / Combo / Chord / None — 连招优先于 Entry.NormalRoute ═══
-        var isComboFamilySemantic = semantic == InputSemanticType.Tap
-            || semantic == InputSemanticType.Combo
-            || semantic == InputSemanticType.None;
-        if (semantic == InputSemanticType.Chord)
-        {
-            SkillRouteDebug.Log(_owner, SkillRouteDebug.CatResolve,
-                $"Chord graph-miss slot={slot} modifier={intent.ModifierSlot} — 不走 Combo 链");
-            if (TryPickRouteDefinition(entry.NormalRoute, in ctx, out var chordRt, logResolveSkip: true))
-            {
-                return chordRt;
-            }
-
-            discardIntent = true;
-            return null;
-        }
-
-        var activeComboDef = PickComboContainerForResolve(entry, slot, comboIdx, in ctx, out var comboPickReason);
-        var hasComboRoute = activeComboDef != null;
-        if (hasComboRoute && isComboFamilySemantic)
-        {
-            LogComboContainerPick(slot, activeComboDef, comboPickReason, in ctx);
-        }
-
-        if (hasComboRoute
-            && _routeRuntimes.TryGetValue(activeComboDef, out var comboRootRt)
-            && comboRootRt is ComboRouteRuntime comboRoot)
-        {
-            var sessionRoot = TryGetActiveComboSession(slot, out var activeSession) ? activeSession : comboRoot;
-            var sessionActive = sessionRoot != null && sessionRoot.IsSessionActive;
-            var comboOnCd = entry.ExtendedComboRoute == null
-                && comboRoot.CdRemainingSeconds > 0.0001f
-                && !sessionActive;
-            var comboDef = activeComboDef;
-
-            // 容器 CD：仅允许 Entry.Normal 填充技，禁止 chain 子 Route。
-            if (comboOnCd)
-            {
-                return TryResolveEntryNormalDuringComboCooldown(
-                    entry, slot, semantic, comboIdx, in ctx, ref discardIntent);
-            }
-
-            var chain = activeComboDef.ComboChain;
-            var primaryDef = entry.ComboRoute;
-            var pickIdx = comboIdx;
-            if (activeComboDef == entry.ExtendedComboRoute && primaryDef != null)
-            {
-                pickIdx = ResolveExtendedPickIndex(primaryDef, activeComboDef, comboIdx);
-            }
-
-            if (chain != null && chain.Length > 0)
-            {
-                if (pickIdx < 0 || pickIdx >= chain.Length)
-                {
-                    SkillRouteDebug.Log(
-                        _owner, SkillRouteDebug.CatResolve,
-                        $"REJECT Combo pickIdx={pickIdx} ≥ chainLen={chain.Length} virtualIdx={comboIdx} → SESSION END");
-                    if (_activeComboSession != null)
-                    {
-                        EndComboSession(wasInterrupted: false, reason: $"pick overflow ({pickIdx} ≥ {chain.Length})");
-                    }
-                    else
-                    {
-                        _owner?.InputSemantic?.NotifyComboEnded(slot);
-                    }
-
-                    discardIntent = true;
-                    return null;
-                }
-
-                if (primaryDef != null
-                    && comboIdx >= primaryDef.ChainLength
-                    && !_extComboHandoffArmed)
-                {
-                    SkillRouteDebug.Log(
-                        _owner, SkillRouteDebug.CatResolve,
-                        $"REJECT Combo virtualIdx={comboIdx} — Combo1 未完成，Extended 未武装");
-                    if (_activeComboSession != null)
-                    {
-                        EndComboSession(wasInterrupted: false, reason: "ext without primary complete");
-                    }
-                    else
-                    {
-                        _owner?.InputSemantic?.NotifyComboEnded(slot);
-                    }
-
-                    discardIntent = true;
-                    return null;
-                }
-
-                var virtualMax = GetVirtualComboChainLength(entry, slot);
-                if (virtualMax > 0 && comboIdx >= virtualMax)
-                {
-                    SkillRouteDebug.Log(
-                        _owner, SkillRouteDebug.CatResolve,
-                        $"REJECT Combo virtualIdx={comboIdx} ≥ virtualChain={virtualMax} → SESSION END");
-                    if (_activeComboSession != null)
-                    {
-                        EndComboSession(wasInterrupted: false, reason: $"virtual overflow ({comboIdx})");
-                    }
-                    else
-                    {
-                        _owner?.InputSemantic?.NotifyComboEnded(slot);
-                    }
-
-                    discardIntent = true;
-                    return null;
-                }
-
-                // Session 内：语义/序号漂移时强制推进到 ComboIndex+1（禁止落 Normal 打断连段）。
-                TryCoerceComboIntentForActiveSession(sessionRoot, comboDef, ref semantic, ref comboIdx, now);
-
-                if (!TryValidateVirtualComboSequence(entry, slot, comboIdx, out var seqReason))
-                {
-                    SkillRouteDebug.Log(
-                        _owner, SkillRouteDebug.CatResolve,
-                        $"REJECT Combo virtualIdx={comboIdx} containerIdx={sessionRoot.ComboIndex} active={sessionRoot.IsSessionActive} | {seqReason}");
-                    discardIntent = true;
-                    return null;
-                }
-
-                if (sessionRoot.CanCast(in ctx) || (activeComboDef == entry.ExtendedComboRoute && comboRoot.CanCast(in ctx)))
-                {
-                    var gapOk = true;
-
-                    if (comboIdx > 0 && comboDef != null && sessionActive)
-                    {
-                        var gap = sessionRoot.GetGapSinceLastSegmentEnd(now);
-                        if (gap < 0f)
-                        {
-                            gapOk = false;
-                            SkillRouteDebug.Log(
-                                _owner, SkillRouteDebug.CatResolve,
-                                $"REJECT Combo[{comboIdx}] link window not open (previous segment still playing)");
-                            discardIntent = true;
-                            return null;
-                        }
-
-                        if (primaryDef != null && _extComboHandoffArmed && comboIdx >= primaryDef.ChainLength)
-                        {
-                            if (comboIdx == primaryDef.ChainLength)
-                            {
-                                if (!entry.IsExtendedHandoffGapValid(gap, primaryDef, out var handoffReason))
-                                {
-                                    gapOk = false;
-                                    SkillRouteDebug.Log(
-                                        _owner, SkillRouteDebug.CatResolve,
-                                        $"REJECT B1→A2 handoff virtualIdx={comboIdx} | {handoffReason}");
-                                    discardIntent = true;
-                                    return null;
-                                }
-                            }
-                            else if (entry.ExtendedComboRoute != null)
-                            {
-                                var extPickIdx = comboIdx - primaryDef.ChainLength;
-                                if (!entry.ExtendedComboRoute.IsTransitionGapValid(
-                                        extPickIdx, gap, sessionActive, out var extGapReason))
-                                {
-                                    gapOk = false;
-                                    SkillRouteDebug.Log(
-                                        _owner, SkillRouteDebug.CatResolve,
-                                        $"REJECT Combo2 edge virtualIdx={comboIdx} pick={extPickIdx} | {extGapReason}");
-                                    discardIntent = true;
-                                    return null;
-                                }
-                            }
-                        }
-                        else if (!comboDef.IsTransitionGapValid(comboIdx, gap, sessionActive, out var gapReason))
-                        {
-                            gapOk = false;
-                            SkillRouteDebug.Log(
-                                _owner, SkillRouteDebug.CatResolve,
-                                $"REJECT Combo node[{comboIdx}] {gapReason} (too fast)");
-                            discardIntent = true;
-                            return null;
-                        }
-                    }
-
-                    if (gapOk && activeComboDef == entry.ExtendedComboRoute && _extComboHandoffArmed
-                        && primaryDef != null && comboIdx >= primaryDef.ChainLength)
-                    {
-                        var extRt = GetComboRuntimeOrNull(entry.ExtendedComboRoute);
-                        if (extRt == null || !extRt.CanCast(in ctx))
-                        {
-                            SkillRouteDebug.Log(
-                                _owner, SkillRouteDebug.CatResolve,
-                                "REJECT ext handoff — Extended CD not ready → end primary session");
-                            EndComboSession(wasInterrupted: false, reason: "ext handoff rejected (CD)");
-                            discardIntent = true;
-                            return null;
-                        }
-                    }
-
-                    if (gapOk && TryPickComboChild(chain, pickIdx, activeComboDef, in ctx, out var pickedRt, comboIdx))
-                    {
-                        return pickedRt;
-                    }
-
-                    if (gapOk)
-                    {
-                        SkillRouteDebug.Log(
-                            _owner, SkillRouteDebug.CatResolve,
-                            $"SKIP Combo pickIdx={pickIdx} virtualIdx={comboIdx} (child=null 或 CanCast=false) chainLen={chain.Length}");
-                    }
-                }
-
-                // 连招容器可施放 / Session 进行中：禁止落到 Entry.Normal（连段优先）。
-                if (ShouldBlockEntryNormalFallback(slot, isComboFamilySemantic))
-                {
-                    SkillRouteDebug.Log(
-                        _owner, SkillRouteDebug.CatResolve,
-                        "REJECT Entry Normal fallback — combo has priority over NormalRoute");
-                    return null;
-                }
-            }
-        }
-
-        // ═══ 5) MultiStage ═══
-        if (TryPickRouteDefinition(entry.MultiStageRoute, in ctx, out var msRoot, logResolveSkip: true))
-        {
-            SkillRouteDebug.Log(_owner, SkillRouteDebug.CatResolve, $"PICK MultiStage route={entry.MultiStageRoute.name}");
-            return msRoot;
-        }
-
-        // ═══ 6) Normal — 最终兜底 ═══
-        if (TryPickRouteDefinition(entry.NormalRoute, in ctx, out var nrt))
-        {
-            if (GraphEnabled && _combatGraph != null && _combatGraph.IsEnabled)
-            {
-                CombatGraphComboChainDiagnostics.LogEntryFallback(_owner, _combatGraph, entry.NormalRoute, slot);
-            }
-
-            SkillRouteDebug.Log(_owner, SkillRouteDebug.CatResolve, $"PICK Normal route={entry.NormalRoute.name}");
-            return nrt;
-        }
-
-        SkillRouteDebug.Log(
-            _owner, SkillRouteDebug.CatResolve,
-            $"NO ROUTE slot={slot} semantic={semantic} comboIdx={comboIdx} (Charge/Combo/Directional/MultiStage/Normal 全部不可用)");
-        return null;
-    }
+        out bool discardIntent) =>
+        _resolver.TryResolveForIntent(in intent, in inputSnapshot, now, out discardIntent);
 
     // ─── 生命周期 ───
 
@@ -754,7 +388,7 @@ public sealed class SkillEntryService
         var ctx = BuildContext();
 
         // Combo SubRoute：费用由容器结算，子 Route 不进 CD。
-        if (_pendingComboContainer != null)
+        if (_comboSession.HasPending)
         {
             runtime.SuppressNextCooldown = true;
             runtime.SuppressRouteResourceConsume = true;
@@ -764,68 +398,16 @@ public sealed class SkillEntryService
         ObserveStageChangeAndNotifyPresentation();
         _combatGraph?.BindEntryAction(runtime?.Stage?.Definition?.Action);
 
-        // ─── Combo 状态写入（仲裁阶段不写，统一在此提交，避免重复 Resolve 带来的段位漂移）───
-        if (_pendingComboContainer != null
-            && _routeRuntimes.TryGetValue(_pendingComboContainer, out var comboRootRt)
-            && comboRootRt is ComboRouteRuntime comboRoot
-            && _pendingComboIndex >= 0)
-        {
-            var entry = ResolveEntryByCanonicalSlot(slot);
-            if (_extComboHandoffArmed
-                && _pendingComboContainer == entry?.ExtendedComboRoute
-                && _activeComboSession != null
-                && _activeComboSession.Definition == entry.ComboRoute)
-            {
-                _activeComboSession.EndSessionWithoutSettlement();
-                SkillRouteDebug.Log(
-                    _owner, SkillRouteDebug.CatCombo,
-                    $"HANDOFF Combo1→Combo2 container={_pendingComboContainer.name} virtualIdx={_pendingComboVirtualIndex} (A2)");
-            }
+        // 208.3 L2：Combo Session 写状态单点 — ComboSessionController.CommitOnRouteEntered
+        _comboSession.CommitOnRouteEntered(slot);
 
-            var priorContainerIdx = comboRoot.ComboIndex;
-            var priorVirtual = _activeVirtualComboIndex;
-            var isDuplicateCommit = comboRoot.IsSessionActive
-                && _pendingComboVirtualIndex >= 0
-                && _pendingComboVirtualIndex <= priorVirtual;
-            if (!isDuplicateCommit)
-            {
-                comboRoot.CommitAdvance(_pendingComboIndex, ctx.Now);
-                _activeVirtualComboIndex = _pendingComboVirtualIndex;
-                if (!comboRoot.IsSessionActive)
-                {
-                    comboRoot.BeginSession(in ctx);
-                    _activeComboSession = comboRoot;
-                    _activeComboSessionSlot = slot;
-                    var vLen = entry != null ? GetVirtualComboChainLength(entry, slot) : 0;
-                    SkillRouteDebug.Log(
-                        _owner, SkillRouteDebug.CatCombo,
-                        $"SESSION START container={_pendingComboContainer.name} pick={_pendingComboIndex} virtual={_activeVirtualComboIndex} virtualChain={vLen}");
-                    SyncComboSemanticConfig(slot);
-                }
-                else
-                {
-                    SkillRouteDebug.Log(
-                        _owner, SkillRouteDebug.CatCombo,
-                        $"SESSION ADVANCE pick={_pendingComboIndex} virtual={_activeVirtualComboIndex} isLast={comboRoot.IsAtLastIndex()} container={_pendingComboContainer.name}");
-                }
-            }
-            else
-            {
-                SkillRouteDebug.Log(
-                    _owner, SkillRouteDebug.CatCombo,
-                    $"SKIP duplicate CommitAdvance pick={_pendingComboIndex} virtual={_pendingComboVirtualIndex} priorVirtual={priorVirtual}");
-            }
-        }
-        _pendingComboContainer = null;
-        _pendingComboIndex = -1;
-        _pendingComboVirtualIndex = -1;
-
+        var activeSession = _comboSession.ActiveSession;
         SkillRouteDebug.Log(
             _owner,
             SkillRouteDebug.CatRoute,
             $"Enter slot={slot} route={runtime?.Definition?.name} kind={runtime?.Kind} " +
             $"stageIdx={runtime?.CurrentStageIndex} stageDur={runtime?.Stage?.DurationSeconds:F2}s active={runtime?.IsActive} " +
-            $"comboSession={_activeComboSession?.Definition?.name} sessionSeg={_activeComboSession?.ComboIndex ?? -1}");
+            $"comboSession={activeSession?.Definition?.name} sessionSeg={activeSession?.ComboIndex ?? -1}");
 
         CombatGraphFinisherDiagnostics.BeginTrace(
             _owner,
@@ -844,52 +426,6 @@ public sealed class SkillEntryService
 
         var ctx = BuildContext();
         return _combatGraph.TryAdvanceOnSegmentComplete(in ctx, out runtime, out _);
-    }
-
-    /// <summary>Flow 段后自动进入 Combo 链下一段时，写入 pending 并跳过 link window。</summary>
-    bool TryPrepareFlowComboHandoff(SkillRouteRuntime flowRt, out bool skipLinkWindow)
-    {
-        skipLinkWindow = false;
-        if (_activeComboSession == null || flowRt?.Definition == null)
-        {
-            return false;
-        }
-
-        var def = _activeComboSession.Definition as ComboRouteDefinition;
-        if (def == null || def.ComboChain == null || def.ComboChain.Length == 0)
-        {
-            return false;
-        }
-
-        if (!def.AllowFlowSegmentAdvance)
-        {
-            SkillRouteDebug.LogGraph(
-                _owner,
-                $"ComboHandoff BLOCKED container={def.name} AllowFlowSegmentAdvance=false");
-            return false;
-        }
-
-        var nextIdx = _activeComboSession.ComboIndex + 1;
-        if (nextIdx < 0 || nextIdx >= def.ComboChain.Length)
-        {
-            return false;
-        }
-
-        if (def.ComboChain[nextIdx] != flowRt.Definition)
-        {
-            return false;
-        }
-
-        _pendingComboContainer = def;
-        _pendingComboIndex = nextIdx;
-        _pendingComboVirtualIndex = _activeVirtualComboIndex >= 0
-            ? _activeVirtualComboIndex + 1
-            : nextIdx;
-        skipLinkWindow = true;
-        SkillRouteDebug.LogGraph(
-            _owner,
-            $"ComboHandoff flow→chain[{nextIdx}]={flowRt.Definition.name} virtual={_pendingComboVirtualIndex}");
-        return true;
     }
 
     /// <summary>
@@ -950,11 +486,7 @@ public sealed class SkillEntryService
             SkillRouteDebug.CatRoute,
             $"Exit (explicit) route={name} interrupted={wasInterrupted}");
 
-        // 外部打断时同步终止 Combo Session（避免连招容器悬挂 IsActive=true 状态）。
-        if (_activeComboSession != null && wasInterrupted)
-        {
-            EndComboSession(wasInterrupted: true, reason: "external interrupt");
-        }
+        _comboSession.OnExternalInterrupt(wasInterrupted);
     }
 
     public void TickActive(in InputSnapshot input, float dt)
@@ -974,7 +506,7 @@ public sealed class SkillEntryService
             var name = exitedRoute?.name;
             var exitingAction = _activeRouteRuntime.Stage?.Definition?.Action;
             // Combo Session 内子招不单独进 CD（SubRoute 资产亦应为 BaseCooldown=0）。
-            if (_activeComboSession != null)
+            if (_comboSession.HasActiveSession)
             {
                 _activeRouteRuntime.SuppressNextCooldown = true;
             }
@@ -991,7 +523,7 @@ public sealed class SkillEntryService
             {
                 if (flowRt != null)
                 {
-                    TryPrepareFlowComboHandoff(flowRt, out flowAutoCombo);
+                    _comboSession.TryPrepareFlowComboHandoff(flowRt, out flowAutoCombo);
                     NotifyRouteEntered(flowRt, _activeEntrySlot);
                     SkillRouteDebug.LogGraph(_owner, $"SegmentComplete→Enter route={flowRt.Definition?.name} reason={flowReason}");
                 }
@@ -1034,161 +566,8 @@ public sealed class SkillEntryService
                 _combatGraph?.CurrentNodeId,
                 idleNodeId);
 
-            if (_activeComboSession != null && !flowAutoCombo)
-            {
-                var entry = ResolveEntryByCanonicalSlot(_activeComboSessionSlot);
-                var pri = entry?.ComboRoute;
-                var atPrimaryLast = pri != null
-                    && _activeComboSession.Definition == pri
-                    && entry.ExtendedComboRoute != null
-                    && _activeComboSession.ComboIndex >= pri.ChainLength - 1;
-
-                if (atPrimaryLast)
-                {
-                    if (TryArmExtendedHandoff(_activeComboSessionSlot, entry))
-                    {
-                        _activeComboSession.NotifySubRouteSegmentEnded(Time.time);
-                        var extLen = entry.ExtendedComboRoute != null ? entry.ExtendedComboRoute.ChainLength : 0;
-                        var handoffWin = entry.GetExtendedHandoffWindowSeconds(pri);
-                        SkillRouteDebug.Log(
-                            _owner, SkillRouteDebug.CatCombo,
-                            $"COMBO2 CONTINUATION ARMED after B1 — handoffWin={handoffWin:F2}s " +
-                            $"min={entry.ExtendedHandoffMinGap:F2}s max={entry.GetExtendedHandoffMaxGapEffective(pri):F2}s " +
-                            $"remain={GetComboLinkWindowRemain(_activeComboSessionSlot, Time.time):F2}s virtual+{extLen}");
-                        SyncComboSemanticConfig(_activeComboSessionSlot);
-                    }
-                    else
-                    {
-                        EndComboSession(wasInterrupted: false, reason: "primary complete (ext unavailable)");
-                    }
-                }
-                else if (IsComboChainLastSegment(_activeComboSession))
-                {
-                    EndComboSession(wasInterrupted: false, reason: "LAST child exited");
-                }
-                else
-                {
-                    _activeComboSession.NotifySubRouteSegmentEnded(Time.time);
-                    SkillRouteDebug.Log(
-                        _owner, SkillRouteDebug.CatCombo,
-                        $"LINK WINDOW OPEN after segment end idx={_activeComboSession.ComboIndex} " +
-                        $"remain={_activeComboSession.ComboWindowRemain(Time.time):F2}s");
-                }
-            }
+            _comboSession.OnSubRouteNaturalExit(flowAutoCombo, Time.time);
         }
-    }
-
-    static bool IsComboChainLastSegment(ComboRouteRuntime session)
-    {
-        var def = session.Definition as ComboRouteDefinition;
-        if (def == null || def.ChainLength <= 0)
-        {
-            return true;
-        }
-
-        return session.ComboIndex >= def.ChainLength - 1;
-    }
-
-    /// <summary>
-    /// Session 内将 Tap/低序号纠正为下一段 Combo（Resolver 与 Service 段位对齐）。
-    /// </summary>
-    void TryCoerceComboIntentForActiveSession(
-        ComboRouteRuntime comboRoot,
-        ComboRouteDefinition comboDef,
-        ref InputSemanticType semantic,
-        ref int comboIdx,
-        float now)
-    {
-        if (_activeComboSession == null || !_activeComboSession.IsSessionActive || comboRoot != _activeComboSession)
-        {
-            return;
-        }
-
-        if (comboDef != null && _activeComboSession.IsSessionExpired(now))
-        {
-            return;
-        }
-
-        var expected = _activeVirtualComboIndex + 1;
-        if (comboIdx >= expected)
-        {
-            return;
-        }
-
-        SkillRouteDebug.Log(
-            _owner, SkillRouteDebug.CatResolve,
-            $"COERCE combo intent {semantic} virtual={comboIdx} → virtual={expected} (active session)");
-        comboIdx = expected;
-        semantic = InputSemanticType.Combo;
-    }
-
-    /// <summary>
-    /// 有连招且容器未 CD 时，Tap/Combo 不得落到 Entry.NormalRoute。
-    /// </summary>
-    bool ShouldBlockEntryNormalFallback(SkillEntrySlot slot, bool isComboFamilySemantic)
-    {
-        if (!isComboFamilySemantic)
-        {
-            return false;
-        }
-
-        if (TryGetActiveComboSession(slot, out _))
-        {
-            return true;
-        }
-
-        // 无 Session 但容器可打：起手仍走 Combo chain[0]，不走 Normal。
-        return true;
-    }
-
-    /// <summary>
-    /// Combo 容器 CD 期间：仅允许 Entry.NormalRoute（与 ComboChain 子 Route 解耦），禁止衔接段语义。
-    /// </summary>
-    SkillRouteRuntime TryResolveEntryNormalDuringComboCooldown(
-        SkillEntryDefinition entry,
-        SkillEntrySlot slot,
-        InputSemanticType semantic,
-        int comboIdx,
-        in SkillRouteContext ctx,
-        ref bool discardIntent)
-    {
-        if (comboIdx > 0 || semantic == InputSemanticType.Combo)
-        {
-            SkillRouteDebug.Log(
-                _owner, SkillRouteDebug.CatResolve,
-                $"REJECT Combo advance during container CD | semantic={semantic} comboIdx={comboIdx}");
-            _owner?.InputSemantic?.NotifyComboEnded(slot);
-            discardIntent = true;
-            return null;
-        }
-
-        if (TryPickEntryNormalRoute(entry, in ctx, out var normalRt))
-        {
-            SkillRouteDebug.Log(
-                _owner, SkillRouteDebug.CatResolve,
-                $"PICK Entry Normal (combo container CD) route={entry.NormalRoute.name}");
-            return normalRt;
-        }
-
-        SkillRouteDebug.Log(
-            _owner, SkillRouteDebug.CatResolve,
-            "SKIP Entry Normal during combo CD (NormalRoute 缺失或 CanCast=false)");
-        return null;
-    }
-
-    /// <summary>解析 Entry 级 NormalRoute；不挂 Combo Session / 不写 _pendingComboContainer。</summary>
-    bool TryPickEntryNormalRoute(SkillEntryDefinition entry, in SkillRouteContext ctx, out SkillRouteRuntime rt)
-    {
-        rt = null;
-        if (!TryPickRouteDefinition(entry?.NormalRoute, in ctx, out rt))
-        {
-            return false;
-        }
-
-        _pendingComboContainer = null;
-        _pendingComboIndex = -1;
-        _pendingComboVirtualIndex = -1;
-        return true;
     }
 
     /// <summary>Route 起手：先 Route.abilityGateRules，再 CanCast（全 Route 类型统一入口）。</summary>
@@ -1234,121 +613,8 @@ public sealed class SkillEntryService
         return false;
     }
 
-    /// <summary>虚拟连段序号：Session 内只接受 virtualIdx == ActiveVirtual+1；Session 外只接受 0。</summary>
-    bool TryValidateVirtualComboSequence(SkillEntryDefinition entry, SkillEntrySlot slot, int virtualComboIdx, out string reason)
-    {
-        reason = null;
-        if (virtualComboIdx < 0)
-        {
-            reason = "negative virtual index";
-            return false;
-        }
-
-        if (!TryGetActiveComboSession(slot, out var session) || !session.IsSessionActive)
-        {
-            if (virtualComboIdx > 0)
-            {
-                reason = $"no active session but virtualIdx={virtualComboIdx}";
-                return false;
-            }
-
-            return true;
-        }
-
-        var expected = _activeVirtualComboIndex + 1;
-        if (virtualComboIdx < expected)
-        {
-            reason = $"replay/same-segment virtual={virtualComboIdx} expected≥{expected}";
-            return false;
-        }
-
-        if (virtualComboIdx > expected)
-        {
-            reason = $"skip-ahead virtual={virtualComboIdx} expected={expected}";
-            return false;
-        }
-
-        var maxVirtual = entry != null ? GetVirtualComboChainLength(entry, slot) - 1 : 0;
-        if (virtualComboIdx > maxVirtual)
-        {
-            reason = $"virtual overflow {virtualComboIdx} > max {maxVirtual}";
-            return false;
-        }
-
-        return true;
-    }
-
-    public int GetActiveVirtualComboIndex(SkillEntrySlot slot)
-    {
-        if (!TryGetActiveComboSession(slot, out _) || _activeVirtualComboIndex < 0)
-        {
-            return 0;
-        }
-
-        return _activeVirtualComboIndex;
-    }
-
-    bool TryPickComboChild(
-        SkillRouteDefinition[] chain,
-        int pickIdx,
-        SkillRouteDefinition comboContainer,
-        in SkillRouteContext ctx,
-        out SkillRouteRuntime childRt,
-        int virtualComboIdx)
-    {
-        childRt = null;
-        if (chain == null || pickIdx < 0 || pickIdx >= chain.Length)
-        {
-            return false;
-        }
-
-        var child = chain[pickIdx];
-        if (!TryPickRouteDefinition(child, in ctx, out childRt))
-        {
-            return false;
-        }
-
-        _pendingComboContainer = comboContainer;
-        _pendingComboIndex = pickIdx;
-        _pendingComboVirtualIndex = virtualComboIdx;
-        SkillRouteDebug.Log(
-            _owner,
-            SkillRouteDebug.CatResolve,
-            $"PICK Combo pickIdx={pickIdx} virtualIdx={virtualComboIdx} child={child.name} container={comboContainer?.name}");
-        return true;
-    }
-
-    /// <summary>结束 Combo Session：触发容器 OnExit → 启动 CD（按容器 CooldownPolicy）+ 通知 Resolver 重置 ComboIndex。</summary>
-    void EndComboSession(bool wasInterrupted, string reason)
-    {
-        if (_activeComboSession == null) return;
-        var comboName = _activeComboSession.Definition?.name;
-        var comboSlot = _activeComboSessionSlot;
-        var ctx = BuildContext();
-        _activeComboSession.ResetExitFinalization();
-        _activeComboSession.OnExit(in ctx, wasInterrupted);
-        var endedContainer = _activeComboSession;
-        var entry = ResolveEntryByCanonicalSlot(comboSlot);
-        if (entry != null && SkillRouteDebug.IsEnabled(_owner))
-        {
-            FillContext(default, 0f);
-            var nextChain = PickComboForNewChain(entry, in _scratchCtx, out var nextReason);
-            SkillRouteDebug.Log(
-                _owner,
-                SkillRouteDebug.CatComboCd,
-                $"SESSION END → next new chain={nextChain?.name} ({nextReason}) slot={comboSlot}");
-        }
-
-        _activeComboSession = null;
-        _activeVirtualComboIndex = -1;
-        ClearExtHandoff();
-
-        // 关键：必须通知 InputSemanticResolver 重置该槽位的 ComboIndex，
-        // 否则 Resolver 私有计数器继续 ++，下一次按键发出 comboIdx=N（已超 chain.Length），
-        // Service 又 clamp 到末位 → 出现 "ABCCCC" 重复末位 Bug。
-        SyncComboSemanticConfig(comboSlot);
-        _owner?.InputSemantic?.NotifyComboEnded(comboSlot);
-    }
+    public int GetActiveVirtualComboIndex(SkillEntrySlot slot) =>
+        _comboSession.GetActiveVirtualIndex(slot);
 
     float _nextRouteHeartbeatLogTime;
 
@@ -1356,7 +622,7 @@ public sealed class SkillEntryService
     {
         var stats = _owner?.Stats;
         FillContext(default, dt);
-        TickGroupCooldowns(dt);
+        _groupCooldowns.Tick(dt);
         foreach (var kv in _routeRuntimes)
         {
             kv.Value.TickCooldown(dt, stats);
@@ -1366,14 +632,7 @@ public sealed class SkillEntryService
             }
         }
 
-        // Combo Session 窗口超时检测：玩家没在 ComboResetTime 内继续按 → 结束 Session → 进 CD。
-        // 注意：只有当 activeRoute 已经不是 combo child 时才结算（否则子招还在播，窗口还没真"超时"）。
-        if (_activeComboSession != null && _activeRouteRuntime == null
-            && IsActiveComboSessionWindowExpired(Time.time))
-        {
-            var win = GetActiveComboLinkWindowSeconds();
-            EndComboSession(wasInterrupted: false, reason: $"window expired ({win:F2}s after last segment end)");
-        }
+        _comboSession.TickWindowExpiry(Time.time, _activeRouteRuntime == null);
 
         TryLogDualComboCdHeartbeat();
     }
@@ -1477,11 +736,12 @@ public sealed class SkillEntryService
         var stageNt = _activeRouteRuntime?.Stage != null && _activeRouteRuntime.Stage.DurationSeconds > 0.0001f
             ? _activeRouteRuntime.Stage.Elapsed / _activeRouteRuntime.Stage.DurationSeconds
             : 0f;
+        var activeSession = _comboSession.ActiveSession;
         SkillRouteDebug.Log(
             _owner,
             SkillRouteDebug.CatStage,
             $"stage={def?.name} idx={idx} nt={stageNt:F2} route={_activeRouteRuntime?.Definition?.name} " +
-            $"container={_activeComboSession?.Definition?.name ?? "-"} sessionSeg={_activeComboSession?.ComboIndex ?? -1}");
+            $"container={activeSession?.Definition?.name ?? "-"} sessionSeg={activeSession?.ComboIndex ?? -1}");
         var action = def?.Action;
         if (action != null)
         {
@@ -1506,7 +766,7 @@ public sealed class SkillEntryService
     public bool IsComboContainerOnCooldown(SkillEntrySlot slot)
     {
         slot = CanonicalEntry(slot);
-        if (TryGetActiveComboSession(slot, out _))
+        if (_comboSession.TryGetActive(slot, out _))
         {
             return false;
         }
@@ -1522,165 +782,23 @@ public sealed class SkillEntryService
             && combo.CdRemainingSeconds > 0.0001f;
     }
 
-    /// <summary>同步 Resolver 的 chain 长度 / Session 窗 / 边时间到当前应使用的 Combo 容器。</summary>
-    public void SyncComboSemanticConfig(SkillEntrySlot slot)
-    {
-        slot = CanonicalEntry(slot);
-        if (_owner?.InputSemantic == null)
-        {
-            return;
-        }
+    public void SyncComboSemanticConfig(SkillEntrySlot slot) =>
+        _comboSession.SyncSemanticConfig(slot);
 
-        var entry = ResolveEntryByCanonicalSlot(slot);
-        if (entry == null)
-        {
-            return;
-        }
-
-        var cfg = _owner.InputSemantic.GetConfig(slot);
-        FillContext(default, 0f);
-        var primary = entry.ComboRoute;
-        var extended = entry.ExtendedComboRoute;
-        if (primary == null)
-        {
-            cfg.ComboChainLength = 0;
-            cfg.ComboEdgeTimings = null;
-        }
-        else
-        {
-            var extNodes = CountExtensionNodes(primary, extended);
-            var primaryLen = primary.ChainLength;
-            cfg.PrimaryChainLength = primaryLen;
-            cfg.HasExtendedHandoff = extended != null && extNodes > 0;
-            cfg.ExtHandoffMinGap = entry.ExtendedHandoffMinGap;
-            cfg.ExtHandoffMaxGap = entry.GetExtendedHandoffMaxGapEffective(primary);
-            cfg.ComboWindow = primary.ComboSessionResetTime;
-            if (_extComboHandoffArmed && _extHandoffSlot == slot)
-            {
-                cfg.ComboWindow = entry.GetExtendedHandoffWindowSeconds(primary);
-            }
-            cfg.ComboEdgeTimings = primary.BuildTransitionTimingsForResolver();
-            cfg.ExtComboEdgeTimings = extended != null
-                ? extended.BuildTransitionTimingsForResolver()
-                : null;
-            cfg.ComboChainLength = primaryLen;
-            if (_extComboHandoffArmed && _extHandoffSlot == slot)
-            {
-                cfg.ComboChainLength = primaryLen + extNodes;
-            }
-            else if (TryGetActiveComboSession(slot, out var session)
-                && extended != null
-                && session.Definition == extended)
-            {
-                cfg.ComboChainLength = primaryLen + extNodes;
-            }
-        }
-
-        _owner.InputSemantic.ConfigureSlot(slot, in cfg);
-    }
-
-    /// <summary>Combo1 完整打完且窗内：允许 virtualIdx 进入 Extended。</summary>
     public bool IsExtendedHandoffArmed(SkillEntrySlot slot) =>
-        _extComboHandoffArmed && _extHandoffSlot == CanonicalEntry(slot);
+        _comboSession.IsExtendedHandoffArmed(slot);
 
-    /// <summary>该槽位是否有进行中的 Combo Session（供语义层与解析层对齐段位）。</summary>
-    public bool TryGetActiveComboSession(SkillEntrySlot slot, out ComboRouteRuntime session)
-    {
-        slot = CanonicalEntry(slot);
-        if (_activeComboSession != null && _activeComboSession.IsSessionActive
-            && _activeComboSessionSlot == slot)
-        {
-            session = _activeComboSession;
-            return true;
-        }
+    public bool TryGetActiveComboSession(SkillEntrySlot slot, out ComboRouteRuntime session) =>
+        _comboSession.TryGetActive(slot, out session);
 
-        session = null;
-        return false;
-    }
+    public bool IsComboLinkWindowOpen(SkillEntrySlot slot, float now) =>
+        _comboSession.IsLinkWindowOpen(slot, now);
 
-    /// <summary>衔接窗是否已开启（上一段 SubRoute 已自然结束）。</summary>
-    public bool IsComboLinkWindowOpen(SkillEntrySlot slot, float now)
-    {
-        if (!TryGetActiveComboSession(slot, out var session))
-        {
-            return false;
-        }
+    public float GetComboLinkWindowRemain(SkillEntrySlot slot, float now) =>
+        _comboSession.GetLinkWindowRemain(slot, now);
 
-        var gap = session.GetGapSinceLastSegmentEnd(now);
-        if (gap < 0f)
-        {
-            return false;
-        }
-
-        var window = GetComboLinkWindowSeconds(slot);
-        return window > 0.0001f && gap <= window;
-    }
-
-    /// <summary>当前 Session 衔接窗剩余秒数（Combo1 段内或 B1 后双链窗）。</summary>
-    public float GetComboLinkWindowRemain(SkillEntrySlot slot, float now)
-    {
-        if (!TryGetActiveComboSession(slot, out var session))
-        {
-            return 0f;
-        }
-
-        var gap = session.GetGapSinceLastSegmentEnd(now);
-        if (gap < 0f)
-        {
-            return 0f;
-        }
-
-        return Mathf.Max(0f, GetComboLinkWindowSeconds(slot) - gap);
-    }
-
-    float GetComboLinkWindowSeconds(SkillEntrySlot slot)
-    {
-        if (_extComboHandoffArmed && _extHandoffSlot == CanonicalEntry(slot))
-        {
-            var entry = ResolveEntryByCanonicalSlot(slot);
-            return entry != null
-                ? entry.GetExtendedHandoffWindowSeconds(entry.ComboRoute)
-                : 0f;
-        }
-
-        if (TryGetActiveComboSession(slot, out var session))
-        {
-            var def = session.Definition as ComboRouteDefinition;
-            return def != null ? def.ComboSessionResetTime : 0f;
-        }
-
-        return 0f;
-    }
-
-    float GetActiveComboLinkWindowSeconds()
-    {
-        return GetComboLinkWindowSeconds(_activeComboSessionSlot);
-    }
-
-    bool IsActiveComboSessionWindowExpired(float now)
-    {
-        if (_activeComboSession == null || !_activeComboSession.IsSessionActive)
-        {
-            return false;
-        }
-
-        var gap = _activeComboSession.GetGapSinceLastSegmentEnd(now);
-        if (gap < 0f)
-        {
-            return false;
-        }
-
-        var window = GetActiveComboLinkWindowSeconds();
-        return window > 0.0001f && gap > window;
-    }
-
-    /// <summary>距上一连段结束的间隔；段中未结束返回 -1。</summary>
-    public float GetComboGapSinceLastSegmentEnd(SkillEntrySlot slot, float now)
-    {
-        return TryGetActiveComboSession(slot, out var session)
-            ? session.GetGapSinceLastSegmentEnd(now)
-            : -1f;
-    }
+    public float GetComboGapSinceLastSegmentEnd(SkillEntrySlot slot, float now) =>
+        _comboSession.GetGapSinceLastSegmentEnd(slot, now);
 
     /// <summary>仲裁通过后、Route.OnEnter 前：决定 PendingAction 应播的 Stage（含 MultiStage 跨次直进）。</summary>
     public SkillStageDefinition ResolveStartStage(SkillRouteRuntime rt, float now)
@@ -1703,61 +821,6 @@ public sealed class SkillEntryService
         return _scratchCtx;
     }
 
-    ComboRouteDefinition PickComboContainerForResolve(
-        SkillEntryDefinition entry,
-        SkillEntrySlot slot,
-        int comboIdx,
-        in SkillRouteContext ctx,
-        out string reason)
-    {
-        reason = "none";
-        if (entry == null)
-        {
-            return null;
-        }
-
-        if (ctx.CombatCtx.IsAirborne && entry.AirComboRoute != null)
-        {
-            reason = "airborne";
-            return entry.AirComboRoute;
-        }
-
-        var primary = entry.ComboRoute;
-        var extended = entry.ExtendedComboRoute;
-        var canonSlot = CanonicalEntry(slot);
-
-        if (TryGetActiveComboSession(slot, out var session)
-            && session.Definition is ComboRouteDefinition activeDef)
-        {
-            if (extended != null && activeDef == extended)
-            {
-                reason = "session_combo2";
-                return extended;
-            }
-
-            if (primary != null && activeDef == primary)
-            {
-                if (_extComboHandoffArmed
-                    && _extHandoffSlot == canonSlot
-                    && extended != null
-                    && comboIdx >= primary.ChainLength)
-                {
-                    reason = "combo2_continuation";
-                    return extended;
-                }
-
-                reason = "session_combo1";
-                return primary;
-            }
-
-            reason = "session_active";
-            return activeDef;
-        }
-
-        reason = "new_chain_primary";
-        return primary;
-    }
-
     ComboRouteDefinition PickComboForNewChain(
         SkillEntryDefinition entry,
         in SkillRouteContext ctx,
@@ -1765,99 +828,6 @@ public sealed class SkillEntryService
     {
         reason = entry?.ComboRoute != null ? "always_primary" : "none";
         return entry?.ComboRoute;
-    }
-
-    bool TryArmExtendedHandoff(SkillEntrySlot slot, SkillEntryDefinition entry)
-    {
-        if (entry?.ExtendedComboRoute == null || entry.ComboRoute == null)
-        {
-            return false;
-        }
-
-        if (entry.ExtendedComboRoute.ChainLength <= 0)
-        {
-            SkillRouteDebug.LogWarn(
-                _owner, SkillRouteDebug.CatCombo,
-                "EXT HANDOFF skip — Extended ComboChain 为空，请配置 A2→B2→C2 三条独立 NormalRoute");
-            return false;
-        }
-
-        var extNodes = CountExtensionNodes(entry.ComboRoute, entry.ExtendedComboRoute);
-        if (extNodes <= 0)
-        {
-            SkillRouteDebug.LogWarn(_owner, SkillRouteDebug.CatCombo, "EXT HANDOFF skip — 无扩展节点");
-            return false;
-        }
-
-        FillContext(default, 0f);
-        var extRt = GetComboRuntimeOrNull(entry.ExtendedComboRoute);
-        if (extRt == null || !extRt.CanCast(in _scratchCtx))
-        {
-            SkillRouteDebug.Log(
-                _owner, SkillRouteDebug.CatComboCd,
-                $"EXT HANDOFF skip — Extended CD={extRt?.CdRemainingSeconds ?? 0f:F2}s");
-            return false;
-        }
-
-        _extComboHandoffArmed = true;
-        _extHandoffSlot = CanonicalEntry(slot);
-        return true;
-    }
-
-    void ClearExtHandoff()
-    {
-        _extComboHandoffArmed = false;
-        _extHandoffSlot = default;
-    }
-
-    /// <summary>virtualIdx≥primaryLen 时映射到 Combo2 容器内段位 0,1,2…（A2,B2,C2）。</summary>
-    static int ResolveExtendedPickIndex(
-        ComboRouteDefinition primary,
-        ComboRouteDefinition extended,
-        int virtualComboIdx)
-    {
-        if (extended == null || extended.ChainLength <= 0)
-        {
-            return 0;
-        }
-
-        var primaryLen = primary?.ChainLength ?? 0;
-        var pick = virtualComboIdx - primaryLen;
-        return Mathf.Clamp(pick, 0, extended.ChainLength - 1);
-    }
-
-    /// <summary>Combo2 作为独立整链接入虚拟链（非仅末段）。</summary>
-    static int CountExtensionNodes(ComboRouteDefinition primary, ComboRouteDefinition extended)
-    {
-        return extended != null && extended.ChainLength > 0 ? extended.ChainLength : 0;
-    }
-
-    int GetVirtualComboChainLength(SkillEntryDefinition entry, SkillEntrySlot slot)
-    {
-        if (entry?.ComboRoute == null)
-        {
-            return 0;
-        }
-
-        var len = entry.ComboRoute.ChainLength;
-        if (entry.ExtendedComboRoute == null)
-        {
-            return len;
-        }
-
-        var extNodes = CountExtensionNodes(entry.ComboRoute, entry.ExtendedComboRoute);
-        if (_extComboHandoffArmed && _extHandoffSlot == CanonicalEntry(slot))
-        {
-            return len + extNodes;
-        }
-
-        if (TryGetActiveComboSession(slot, out var session)
-            && session.Definition == entry.ExtendedComboRoute)
-        {
-            return len + extNodes;
-        }
-
-        return len;
     }
 
     ComboRouteRuntime GetComboRuntimeOrNull(ComboRouteDefinition def)
@@ -1868,25 +838,6 @@ public sealed class SkillEntryService
         }
 
         return _routeRuntimes.TryGetValue(def, out var rt) && rt is ComboRouteRuntime crt ? crt : null;
-    }
-
-    void LogComboContainerPick(SkillEntrySlot slot, ComboRouteDefinition def, string reason, in SkillRouteContext ctx)
-    {
-        if (!SkillRouteDebug.IsEnabled(_owner))
-        {
-            return;
-        }
-
-        var entry = ResolveEntryByCanonicalSlot(CanonicalEntry(slot));
-        var pri = entry?.ComboRoute;
-        var ext = entry?.ExtendedComboRoute;
-        var priRt = GetComboRuntimeOrNull(pri);
-        var extRt = GetComboRuntimeOrNull(ext);
-        SkillRouteDebug.Log(
-            _owner,
-            SkillRouteDebug.CatComboCd,
-            $"PICK container={def?.name} reason={reason} | pri={pri?.name} cd={priRt?.CdRemainingSeconds ?? 0f:F2}s " +
-            $"ext={ext?.name} cd={extRt?.CdRemainingSeconds ?? 0f:F2}s canExt={extRt?.CanCast(in ctx) ?? false}");
     }
 
     void TryLogDualComboCdHeartbeat()
@@ -1916,7 +867,7 @@ public sealed class SkillEntryService
             var extCd = extRt?.CdRemainingSeconds ?? 0f;
             var priCd = priRt?.CdRemainingSeconds ?? 0f;
             if (Mathf.Abs(extCd - _lastLoggedExtCd) < 0.05f && Mathf.Abs(priCd - _lastLoggedPriCd) < 0.05f
-                && TryGetActiveComboSession(_loadout.Bindings[i].Slot, out _))
+                && _comboSession.TryGetActive(_loadout.Bindings[i].Slot, out _))
             {
                 continue;
             }
@@ -1929,416 +880,21 @@ public sealed class SkillEntryService
                 _owner,
                 SkillRouteDebug.CatComboCd,
                 $"CD slot={slot} pri={entry.ComboRoute.name} cd={priCd:F2}s ext={entry.ExtendedComboRoute.name} cd={extCd:F2}s " +
-                $"nextNewChain={next?.name} ({reason}) session={(_activeComboSession?.Definition?.name ?? "none")}");
+                $"nextNewChain={next?.name} ({reason}) session={(_comboSession.ActiveSession?.Definition?.name ?? "none")}");
         }
     }
 
     public bool TryGetGroupCooldownState(
         SkillGroupDefinition group,
         out float remainingSeconds,
-        out float totalSeconds)
-    {
-        if (group != null && _groupCooldowns.TryGetValue(group, out var state))
-        {
-            remainingSeconds = state.RemainingSeconds;
-            totalSeconds = state.TotalSeconds;
-            return true;
-        }
+        out float totalSeconds) =>
+        _groupCooldowns.TryGetState(group, out remainingSeconds, out totalSeconds);
 
-        remainingSeconds = 0f;
-        totalSeconds = 0f;
-        return false;
-    }
+    public bool IsRouteBlockedByGroupCooldown(SkillRouteDefinition route) =>
+        _groupCooldowns.IsRouteBlocked(route);
 
-    public bool IsRouteBlockedByGroupCooldown(SkillRouteDefinition route)
-    {
-        if (route == null || route.OwnerGroup == null || route.OverrideGroupCooldown)
-        {
-            return false;
-        }
-
-        return _groupCooldowns.TryGetValue(route.OwnerGroup, out var state)
-               && state.RemainingSeconds > 0.0001f;
-    }
-
-    public bool TryApplyGroupCooldown(SkillRouteDefinition route, in SkillRouteContext ctx)
-    {
-        var group = route?.OwnerGroup;
-        if (group == null || route.OverrideGroupCooldown)
-        {
-            return false;
-        }
-
-        var cd = group.CooldownSeconds;
-        var stats = ctx.Stats;
-        if (stats != null)
-        {
-            var cdr = Mathf.Clamp(stats.Get(StatType.CooldownReduction), 0f, 0.4f);
-            cd = Mathf.Max(0f, cd * (1f - cdr));
-        }
-
-        _groupCooldowns[group] = new GroupCooldownState(cd, cd);
-        SyncGroupMemberCooldowns(group, cd);
-        SkillRouteDebug.Log(
-            _owner,
-            SkillRouteDebug.CatUnit,
-            $"Group CD start group={group.name} cd={cd:F2}s via route={route.name}");
-        return true;
-    }
-
-    void TickGroupCooldowns(float dt)
-    {
-        if (_groupCooldowns.Count == 0)
-        {
-            return;
-        }
-
-        var keys = new List<SkillGroupDefinition>(_groupCooldowns.Keys);
-        for (var i = 0; i < keys.Count; i++)
-        {
-            var group = keys[i];
-            if (!_groupCooldowns.TryGetValue(group, out var state))
-            {
-                continue;
-            }
-
-            state.RemainingSeconds = Mathf.Max(0f, state.RemainingSeconds - dt);
-            _groupCooldowns[group] = state;
-            if (state.RemainingSeconds <= 0.0001f)
-            {
-                _groupCooldowns.Remove(group);
-            }
-            else
-            {
-                SyncGroupMemberCooldowns(group, state.RemainingSeconds, state.TotalSeconds);
-            }
-        }
-    }
-
-    void SyncGroupMemberCooldowns(SkillGroupDefinition group, float remaining, float total = -1f)
-    {
-        if (group?.Routes == null)
-        {
-            return;
-        }
-
-        for (var i = 0; i < group.Routes.Count; i++)
-        {
-            var member = group.Routes[i];
-            if (member == null || !_routeRuntimes.TryGetValue(member, out var rt))
-            {
-                continue;
-            }
-
-            rt.CdRemainingSeconds = remaining;
-            if (total >= 0f)
-            {
-                rt.CdScaledTotalSeconds = total;
-            }
-        }
-
-        if (group.FallbackRoute != null
-            && _routeRuntimes.TryGetValue(group.FallbackRoute, out var fb))
-        {
-            fb.CdRemainingSeconds = remaining;
-            if (total >= 0f)
-            {
-                fb.CdScaledTotalSeconds = total;
-            }
-        }
-    }
-
-    bool TryResolvePrimaryUnit(
-        SkillEntryDefinition entry,
-        SkillEntrySlot slot,
-        in GameplayIntent intent,
-        in InputSnapshot inputSnapshot,
-        in SkillRouteContext ctx,
-        out SkillRouteRuntime runtime)
-    {
-        runtime = null;
-        var semantic = intent.Semantic;
-
-        if (entry?.PrimaryRoute == null
-            && entry?.PrimaryGroup == null
-            && !HasAnyContextGroup())
-        {
-            return false;
-        }
-
-        if (entry?.PrimaryRoute != null)
-        {
-            if (TryPickRouteDefinition(entry.PrimaryRoute, in ctx, out runtime))
-            {
-                SkillRouteDebug.LogDodge4(
-                    _owner, "Unit",
-                    $"PICK PrimaryRoute unit={entry.PrimaryRoute.name}");
-                return true;
-            }
-
-            SkillRouteDebug.LogDodge4(
-                _owner, "Unit",
-                $"SKIP PrimaryRoute gate/CanCast route={entry.PrimaryRoute?.name}");
-            return false;
-        }
-
-        var group = entry?.PrimaryGroup;
-        if (TryResolveContextGroup(slot, semantic, in ctx.CombatCtx, out var ctxGroup, out var ctxGroupDef))
-        {
-            group = ctxGroup;
-            SkillRouteDebug.LogDirectional4(_owner, group, "Resolve",
-                $"ContextGroup={ctxGroupDef.name} -> Group={group.name}");
-            SkillRouteDebug.LogDodge8(_owner, group, "Context",
-                $"HIT ctxGroup={ctxGroupDef.name} slot={slot} semantic={semantic} " +
-                $"moveDir={ctx.CombatCtx.MoveDirection} airborne={ctx.CombatCtx.IsAirborne} pri={ctxGroupDef.Priority}");
-        }
-        else if (HasContextGroupCandidatesFor(slot, semantic))
-        {
-            SkillRouteDebug.LogDodge4(_owner, "Resolve",
-                $"ContextGroup DENY no match slot={slot} semantic={semantic}");
-            SkillRouteDebug.LogRoll4(_owner, "Resolve",
-                $"ContextGroup DENY no match slot={slot} semantic={semantic}");
-            SkillRouteDebug.LogDodge8(_owner, null, "Context",
-                $"DENY slot={slot} semantic={semantic} moveDir={ctx.CombatCtx.MoveDirection} " +
-                $"airborne={ctx.CombatCtx.IsAirborne} axis={intent.DirectionAxis} buffer={inputSnapshot.MoveBuffered}");
-            return false;
-        }
-
-        if (group == null)
-        {
-            return false;
-        }
-
-        // 173.6 三段 Gate 中段：选路前 Group 级准入校验
-        if (!group.PassAbilityGate(in ctx.CombatCtx))
-        {
-            SkillRouteDebug.LogDirectional4(_owner, group, "Resolve",
-                $"Group DENY by AbilityGate group={group.name}");
-            return false;
-        }
-
-        return TryPickGroupRoute(
-            group,
-            in intent,
-            in inputSnapshot,
-            in ctx,
-            semantic,
-            out runtime,
-            out _);
-    }
-
-    bool HasAnyContextGroup() =>
-        _loadout?.ContextGroups != null && _loadout.ContextGroups.Length > 0;
-
-    bool HasContextGroupCandidatesFor(SkillEntrySlot slot, InputSemanticType semantic)
-    {
-        var groups = _loadout?.ContextGroups;
-        if (groups == null || groups.Length == 0)
-        {
-            return false;
-        }
-
-        for (var i = 0; i < groups.Length; i++)
-        {
-            var def = groups[i];
-            if (def == null || def.TargetGroup == null)
-            {
-                continue;
-            }
-
-            if (def.RequiredSlot != SkillEntrySlot.Any && def.RequiredSlot != slot)
-            {
-                continue;
-            }
-
-            if (def.RequiredSemantic == InputSemanticType.Directional
-                && semantic != InputSemanticType.Directional
-                && semantic != InputSemanticType.Tap
-                && semantic != InputSemanticType.None)
-            {
-                continue;
-            }
-
-            return true;
-        }
-
-        return false;
-    }
-
-    bool TryResolveContextGroup(
-        SkillEntrySlot slot,
-        InputSemanticType semantic,
-        in CombatContextSnapshot combatCtx,
-        out SkillGroupDefinition group,
-        out SkillContextGroupDefinition matchedDef)
-    {
-        group = null;
-        matchedDef = null;
-        var groups = _loadout?.ContextGroups;
-        if (groups == null || groups.Length == 0)
-        {
-            return false;
-        }
-
-        SkillContextGroupDefinition best = null;
-        var bestPriority = int.MaxValue;
-        for (var i = 0; i < groups.Length; i++)
-        {
-            var def = groups[i];
-            if (def == null || !def.Matches(slot, semantic, in combatCtx))
-            {
-                continue;
-            }
-
-            if (def.Priority < bestPriority)
-            {
-                bestPriority = def.Priority;
-                best = def;
-            }
-        }
-
-        if (best == null || best.TargetGroup == null)
-        {
-            return false;
-        }
-
-        matchedDef = best;
-        group = best.TargetGroup;
-        return true;
-    }
-
-    bool TryPickGroupRoute(
-        SkillGroupDefinition group,
-        in GameplayIntent intent,
-        in InputSnapshot inputSnapshot,
-        in SkillRouteContext ctx,
-        InputSemanticType semantic,
-        out SkillRouteRuntime runtime,
-        out DirectionalRouteType resolvedDir)
-    {
-        runtime = null;
-        resolvedDir = DirectionalRouteType.Forward;
-        SkillRouteDefinition picked = null;
-        var hadDirectionalPick = false;
-
-        var useDirectional = semantic == InputSemanticType.Directional
-            || semantic == InputSemanticType.Tap
-            || semantic == InputSemanticType.None;
-
-        SkillRouteDebug.LogDodge8(_owner, group, "PickBegin",
-            $"semantic={semantic} axis={intent.DirectionAxis} buffer={inputSnapshot.MoveBuffered} " +
-            $"neutralFallback={group.UseFallbackOnNeutral}");
-
-        if (useDirectional)
-        {
-            const float dirDeadzoneSq = 0.0001f;
-            var axis = intent.DirectionAxis.sqrMagnitude > dirDeadzoneSq
-                ? intent.DirectionAxis
-                : inputSnapshot.MoveBuffered;
-            var hasDirection = axis.sqrMagnitude > dirDeadzoneSq;
-
-            if (hasDirection)
-            {
-                var isMotionMode = false;
-                resolvedDir = _owner != null
-                    ? _owner.ResolveDirectionalChord(axis, out isMotionMode)
-                    : InputChordResolver.Resolve(axis);
-                hadDirectionalPick = true;
-
-                if (isMotionMode && group.MotionForwardRoute != null)
-                {
-                    picked = group.MotionForwardRoute;
-                    SkillRouteDebug.LogDodge8(_owner, group, "Pick",
-                        $"motion→MotionForwardRoute route={picked.name}");
-                    DodgeChord8Probe.LogPick("Motion", resolvedDir, picked.name);
-                }
-                else
-                {
-                    picked = group.SelectByDirection(resolvedDir);
-                    if (picked == null)
-                    {
-                        picked = group.FallbackRoute;
-                        SkillRouteDebug.LogDodge8(
-                            _owner, group, "Pick",
-                            $"missing slot→fallback chord={resolvedDir}");
-                        DodgeChord8Probe.LogPick(
-                            isMotionMode ? "Motion" : "Chord",
-                            resolvedDir,
-                            picked != null ? picked.name + "(fallback)" : "(null)");
-                    }
-                    else
-                    {
-                        SkillRouteDebug.LogDodge8(
-                            _owner, group, "Pick",
-                            $"{(isMotionMode ? "motion" : "chord")}={resolvedDir} route={picked.name}");
-                        DodgeChord8Probe.LogPick(
-                            isMotionMode ? "Motion" : "Chord",
-                            resolvedDir,
-                            picked.name);
-                    }
-                }
-            }
-            else if (group.UseFallbackOnNeutral)
-            {
-                picked = group.FallbackRoute;
-                var liveMove = _owner?.InputReader != null ? _owner.InputReader.MoveInput : Vector2.zero;
-                var holdDur = _owner != null
-                    ? _owner.InputContext.MoveHoldDurationSec(Time.time)
-                    : -1f;
-                DodgeChord8Probe.LogNeutralFallback(
-                    semantic,
-                    intent.DirectionAxis,
-                    inputSnapshot.MoveBuffered,
-                    liveMove,
-                    _owner != null && _owner.InputContext.MoveActive,
-                    holdDur,
-                    picked != null ? picked.name : null);
-                SkillRouteDebug.LogDodge8(_owner, group, "Pick", "neutral→fallback");
-            }
-            else
-            {
-                resolvedDir = DirectionalRouteType.Forward;
-                hadDirectionalPick = true;
-                picked = group.SelectByDirection(DirectionalRouteType.Forward);
-                SkillRouteDebug.LogDodge8(_owner, group, "Pick", "neutral→forward");
-            }
-        }
-
-        if (picked == null)
-        {
-            picked = group.FallbackRoute;
-        }
-
-        if (TryPickRouteDefinition(picked, in ctx, out runtime))
-        {
-            var dirNote = hadDirectionalPick ? $" chord={resolvedDir}" : string.Empty;
-            SkillRouteDebug.LogDirectional4(
-                _owner, group, "Unit",
-                $"PICK Group={group.name} child={picked.name} semantic={semantic}{dirNote}");
-            SkillRouteDebug.LogDodge8(_owner, group, "Resolved",
-                $"route={picked.name}{dirNote} semantic={semantic}");
-            return true;
-        }
-
-        SkillRouteDebug.LogDirectional4(
-            _owner, group, "Unit",
-            $"SKIP Group={group.name} picked={picked?.name ?? "null"} gate/CanCast");
-        SkillRouteDebug.LogDodge8(_owner, group, "Skip",
-            $"picked={picked?.name ?? "null"} chord={resolvedDir} gate/CanCast failed");
-        return false;
-    }
-
-    struct GroupCooldownState
-    {
-        public float RemainingSeconds;
-        public float TotalSeconds;
-
-        public GroupCooldownState(float remaining, float total)
-        {
-            RemainingSeconds = remaining;
-            TotalSeconds = total;
-        }
-    }
+    public bool TryApplyGroupCooldown(SkillRouteDefinition route, in SkillRouteContext ctx) =>
+        _groupCooldowns.TryApply(route, in ctx);
 
     void FillContext(in InputSnapshot input, float dt)
     {
@@ -2405,7 +961,82 @@ public sealed class SkillEntryService
         return null;
     }
 
-    static SkillEntrySlot CanonicalEntry(SkillEntrySlot slot)
+    Player IComboSessionHost.Owner => _owner;
+
+    Player IGroupCooldownHost.Owner => _owner;
+
+    ref SkillRouteContext IComboSessionHost.ScratchContext => ref _scratchCtx;
+
+    SkillRouteContext IComboSessionHost.BuildContext() => BuildContext();
+
+    void IComboSessionHost.FillContext(in InputSnapshot input, float dt) => FillContext(in input, dt);
+
+    SkillEntryDefinition IComboSessionHost.ResolveEntry(SkillEntrySlot slot) => ResolveEntryByCanonicalSlot(slot);
+
+    bool IComboSessionHost.TryGetRouteRuntime(SkillRouteDefinition def, out SkillRouteRuntime rt) =>
+        _routeRuntimes.TryGetValue(def, out rt);
+
+    bool IGroupCooldownHost.TryGetRouteRuntime(SkillRouteDefinition def, out SkillRouteRuntime rt) =>
+        _routeRuntimes.TryGetValue(def, out rt);
+
+    ComboRouteRuntime IComboSessionHost.GetComboRuntimeOrNull(ComboRouteDefinition def) => GetComboRuntimeOrNull(def);
+
+    bool IComboSessionHost.TryPickRouteDefinition(
+        SkillRouteDefinition def,
+        in SkillRouteContext ctx,
+        out SkillRouteRuntime rt,
+        bool logResolveSkip) =>
+        TryPickRouteDefinition(def, in ctx, out rt, logResolveSkip);
+
+    ComboRouteDefinition IComboSessionHost.PickComboForNewChain(
+        SkillEntryDefinition entry,
+        in SkillRouteContext ctx,
+        out string reason) =>
+        PickComboForNewChain(entry, in ctx, out reason);
+
+    Player ISkillEntryResolveHost.Owner => _owner;
+
+    SkillEntryLoadoutSO ISkillEntryResolveHost.Loadout => _loadout;
+
+    bool ISkillEntryResolveHost.GraphEnabled => GraphEnabled;
+
+    CombatGraphRunner ISkillEntryResolveHost.CombatGraph => _combatGraph;
+
+    SkillRouteRuntime ISkillEntryResolveHost.ActiveRouteRuntime => _activeRouteRuntime;
+
+    ComboSessionController ISkillEntryResolveHost.ComboSession => _comboSession;
+
+    void ISkillEntryResolveHost.SetLastIntentResolvedViaGraph(bool value) => _lastIntentResolvedViaGraph = value;
+
+    SkillRouteContext ISkillEntryResolveHost.BuildContext(in InputSnapshot input) => BuildContext(in input);
+
+    SkillEntryDefinition ISkillEntryResolveHost.ResolveEntry(SkillEntrySlot slot) =>
+        ResolveEntryByCanonicalSlot(slot);
+
+    SkillEntrySlot ISkillEntryResolveHost.CanonicalEntry(SkillEntrySlot slot) => CanonicalEntry(slot);
+
+    bool ISkillEntryResolveHost.TryGetRouteRuntime(SkillRouteDefinition def, out SkillRouteRuntime rt) =>
+        _routeRuntimes.TryGetValue(def, out rt);
+
+    ComboRouteRuntime ISkillEntryResolveHost.GetComboRuntimeOrNull(ComboRouteDefinition def) =>
+        GetComboRuntimeOrNull(def);
+
+    bool ISkillEntryResolveHost.TryPickRouteDefinition(
+        SkillRouteDefinition def,
+        in SkillRouteContext ctx,
+        out SkillRouteRuntime rt,
+        bool logResolveSkip) =>
+        TryPickRouteDefinition(def, in ctx, out rt, logResolveSkip);
+
+    bool ISkillEntryResolveHost.TryResolveDerivativeRuntime(
+        SkillEntryDefinition entry,
+        SkillEntrySlot slot,
+        in InputSnapshot input,
+        float now,
+        out SkillRouteRuntime runtime) =>
+        TryResolveDerivativeRuntime(entry, slot, in input, now, out runtime);
+
+    internal static SkillEntrySlot CanonicalEntry(SkillEntrySlot slot)
     {
         // 旧资产若仍序列化为 1/2，运行时归并到 LM（Inspector 下拉已不再提供该枚举名）。
         return (int)slot == 2 ? SkillEntrySlot.LM : slot;

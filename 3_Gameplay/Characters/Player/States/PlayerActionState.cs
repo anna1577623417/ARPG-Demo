@@ -7,7 +7,7 @@ using UnityEngine;
 ///   · 不感知 Skill / Combo / Charge 细节 — 一律从 Player.SkillEntries.ActiveRoute 读取。
 ///   · ChargeMicroPhase / ApproachingHold / HoldingAtPoint 等微相位**完全删除** —
 ///     已下沉到 ChargeRouteRuntime 内部。
-///   · MotionExecutor 接收 ChargeRouteRuntime.Playback（蓄力压速 / 循环窗 / 冻结时钟）。
+///   · MotionExecutor 生命周期见 <see cref="ActionMotionPlayback"/>（208.3 L5）。
 /// </summary>
 public sealed class PlayerActionState : PlayerState
 {
@@ -30,16 +30,14 @@ public sealed class PlayerActionState : PlayerState
     bool m_exitDispatched;
     float m_actionEnterElapsed;
 
-    MotionExecutor m_motionExecutor;
-    PlayerMotorAdapter m_motorAdapter;
-    PlayerMotionStatsProvider m_statsProvider;
-    bool m_useMotionProfile;
     StopRuntimeContext m_stopCtx;
     bool m_stopActive;
     bool m_logicForwardLockedForStop;
     Vector3 m_actionEnterPlanarPos;
     Vector3 m_burstFaceDir;
+
     readonly ActionTimelinePlaybackState m_timelineState = new ActionTimelinePlaybackState();
+    readonly ActionMotionPlayback m_motionPlayback = new ActionMotionPlayback();
     float m_nextAirLocoMoveLogTime;
 
     /// <summary>
@@ -74,10 +72,10 @@ public sealed class PlayerActionState : PlayerState
         m_stopActive = false;
         m_logicForwardLockedForStop = false;
         EnsureMotionPlumbing(player);
-        m_baseDuration = ResolveActionDuration(player, m_action);
+        m_baseDuration = m_motionPlayback.ResolveActionDuration(player, m_action, m_kind);
 
         var normalizedStart = player.ConsumePendingActionNormalizedStart();
-        ApplyMotionDriverPolicy(player, m_action);
+        m_motionPlayback.ApplyDriverPolicy(player, m_action);
         ApplyStopAuthoring(player, m_action, ref normalizedStart);
         m_baseDuration = ResolveDurationSeconds();
         m_elapsed = m_baseDuration * normalizedStart;
@@ -85,20 +83,17 @@ public sealed class PlayerActionState : PlayerState
         m_actionEnterElapsed = m_elapsed;
         m_actionEnterPlanarPos = player.transform.position;
 
-        m_burstFaceDir = ResolveMotionFacingDirection(player, m_action.MotionProfile);
+        m_burstFaceDir = m_motionPlayback.ResolveFacingDirection(player, m_action.MotionProfile);
 
         player.Tags.Add(TagCategory.State, (ulong)StateTag.PhaseStartup);
 
-        if (m_useMotionProfile)
-        {
-            player.BeginActionMotorSession();
-            if (ShouldSuspendMotorGravity(m_action.MotionProfile))
-            {
-                player.SuspendGravity();
-            }
-
-            BeginMotionExecutor(player, m_action, normalizedStart);
-        }
+        m_motionPlayback.BeginSession(
+            player,
+            m_action,
+            normalizedStart,
+            in m_stopCtx,
+            m_burstFaceDir,
+            ResolveDurationSeconds());
 
         player.BeginAttackWithManualCompletion();
         var presentationClip = ResolvePresentationClip(player, m_action);
@@ -111,7 +106,7 @@ public sealed class PlayerActionState : PlayerState
             normalizedStart,
             presentationSpeed);
 
-        SyncInPlaceBonePresenter(player);
+        SyncInPlaceBonePresenter(player, m_motionPlayback.UseMotionProfile, m_action);
 
         // 182.3 — Tick 探针重置 + 缓存当前 presentationSpeed（用于每帧重设 / 防漂移）
         StopProbe.NotifyEnter(m_action);
@@ -164,15 +159,15 @@ public sealed class PlayerActionState : PlayerState
         switch (m_stopCtx.Strategy)
         {
             case StopStrategy.Snap:
-                m_useMotionProfile = false;
-                SetClipRootMotionForPlayer(player, false);
+                m_motionPlayback.SetUseMotionProfile(false);
+                ActionMotionPlayback.SetClipRootMotionForPlayer(player, false);
                 break;
             case StopStrategy.InheritPhysics:
                 normalizedStart = Mathf.Clamp01(normalizedStart);
                 player.ClearPlanarVelocity();
                 if (action.MotionProfile == null || !action.MotionProfile.EnableStopAuthoring)
                 {
-                    m_useMotionProfile = false;
+                    m_motionPlayback.SetUseMotionProfile(false);
                 }
 
                 break;
@@ -226,7 +221,7 @@ public sealed class PlayerActionState : PlayerState
         m_stopActive = false;
         m_logicForwardLockedForStop = false;
         m_actionEnterElapsed = 0f;
-        m_useMotionProfile = false;
+        m_motionPlayback.ResetDriverFlags();
     }
 
     /// <summary>MultiStage 同次内 Auto 衔接下一段（凯隐 Q 冲刺→旋转）。</summary>
@@ -243,8 +238,8 @@ public sealed class PlayerActionState : PlayerState
         m_prevNormalizedTime = 0f;
         m_timelineState.Reset();
         EnsureMotionPlumbing(player);
-        m_baseDuration = ResolveActionDuration(player, action);
-        ApplyMotionDriverPolicy(player, action);
+        m_baseDuration = m_motionPlayback.ResolveActionDuration(player, action, m_kind);
+        m_motionPlayback.ApplyDriverPolicy(player, action);
         var normalizedStart = 0f;
         ApplyStopAuthoring(player, action, ref normalizedStart);
         m_baseDuration = ResolveDurationSeconds();
@@ -252,18 +247,15 @@ public sealed class PlayerActionState : PlayerState
         m_prevNormalizedTime = normalizedStart;
         m_actionEnterElapsed = m_elapsed;
         m_actionEnterPlanarPos = player.transform.position;
-        m_burstFaceDir = ResolveMotionFacingDirection(player, action.MotionProfile);
+        m_burstFaceDir = m_motionPlayback.ResolveFacingDirection(player, action.MotionProfile);
 
-        if (m_useMotionProfile && m_motionExecutor != null)
-        {
-            m_motionExecutor.End();
-            if (ShouldSuspendMotorGravity(action.MotionProfile))
-            {
-                player.SuspendGravity();
-            }
-
-            BeginMotionExecutor(player, action, normalizedStart);
-        }
+        m_motionPlayback.RestartForSwap(
+            player,
+            action,
+            normalizedStart,
+            in m_stopCtx,
+            m_burstFaceDir,
+            ResolveDurationSeconds());
 
         var normalizedStartForPresentation = 0f;
         var presentationSpeed = ResolveStopPresentationAnimSpeed(action, normalizedStartForPresentation);
@@ -274,7 +266,7 @@ public sealed class PlayerActionState : PlayerState
             normalizedStartForPresentation,
             presentationSpeed);
 
-        SyncInPlaceBonePresenter(player);
+        SyncInPlaceBonePresenter(player, m_motionPlayback.UseMotionProfile, action);
     }
 
     float ResolveStopPresentationAnimSpeed(ActionDataSO action, float motionNormalizedTime)
@@ -285,26 +277,6 @@ public sealed class PlayerActionState : PlayerState
         }
 
         return StopMotionRuntime.ResolvePresentationAnimSpeed(action, in m_stopCtx, motionNormalizedTime);
-    }
-
-    void BeginMotionExecutor(Player player, ActionDataSO action, float normalizedStart)
-    {
-        if (!m_useMotionProfile || m_motionExecutor == null || action == null)
-        {
-            return;
-        }
-
-        var motionDuration = ResolveDurationSeconds();
-        var animSpeed = m_stopCtx.IsActive ? m_stopCtx.BaseAnimSpeed : action.ResolveEffectiveAnimSpeed();
-        m_motionExecutor.Begin(
-            action.MotionProfile,
-            motionDuration,
-            m_burstFaceDir,
-            player.transform.position,
-            baseAnimSpeed: animSpeed,
-            startNormalizedTime: normalizedStart,
-            action: action,
-            stopContext: in m_stopCtx);
     }
 
     protected override void OnLogicUpdate(Player player)
@@ -345,32 +317,17 @@ public sealed class PlayerActionState : PlayerState
             player.SkillEntries.TickActive(in input, dt);
         }
 
-        // MotionExecutor.Tick — nt 由 ActionState 单点推送（182.3）
-        // 196.x：若本帧发生 SwapToStageAction，跳过本帧 Tick（避免对冲帧闪现）；
-        //         m_actionSwappedThisFrame 在帧末清除，下一帧从 prevNt=0 正常开始。
-        if (m_useMotionProfile && m_motionExecutor != null && !m_actionSwappedThisFrame)
-        {
-            if (player.SkillEntries?.ActiveRoute is ChargeRouteRuntime charge)
-            {
-                var pb = charge.Playback;
-                m_motionExecutor.SetPlaybackContext(in pb);
-                m_motionExecutor.SetStopContext(in m_stopCtx);
-            }
-
-            m_motionExecutor.Tick(
-                dt,
-                1f,
-                player.transform.position,
-                m_prevNormalizedTime,
-                nt);
-            m_motorAdapter.ApplyToPlayer();
-            m_motionExecutor.SyncPostMotorPosition(player.transform.position);
-        }
-        else if (m_actionSwappedThisFrame && m_useMotionProfile && m_motionExecutor != null)
-        {
-            // swap 帧：把 nt 强制压回 0，避免下一帧 prevNt 继承到 swap 前的 1.0
-            nt = 0f;
-        }
+        var chargeRoute = player.SkillEntries?.ActiveRoute as ChargeRouteRuntime;
+        var hasChargePlayback = chargeRoute != null;
+        var chargePlayback = hasChargePlayback ? chargeRoute.Playback : default;
+        nt = m_motionPlayback.TickFrame(
+            player,
+            m_prevNormalizedTime,
+            nt,
+            m_actionSwappedThisFrame,
+            in m_stopCtx,
+            chargePlayback,
+            hasChargePlayback);
 
         // 182.3 — 每帧重设 Animator.speed：让 AnimSpeedCurve（ProfileFactor(nt)）真正按 nt 生效
         //   * 旧 BUG：presentationSpeed 仅 OnEnter 设一次，整个 Action 期间 Animator.speed 不更新
@@ -472,7 +429,7 @@ public sealed class PlayerActionState : PlayerState
     protected override void OnExit(Player player)
     {
         StopInPlaceBonePresenter(player);
-        SetClipRootMotionForPlayer(player, false);
+        ActionMotionPlayback.SetClipRootMotionForPlayer(player, false);
 
         LocomotionStateId endHint = LocomotionStateId.None;
         if (m_isLocomotionOnlyAction && m_action != null)
@@ -480,21 +437,9 @@ public sealed class PlayerActionState : PlayerState
             endHint = ResolveLocomotionEndStateHint(player, m_action);
         }
 
-        var hadActionMotorSession = m_useMotionProfile && m_motionExecutor != null;
-
-        if (m_useMotionProfile && m_motionExecutor != null)
+        if (m_motionPlayback.HasActiveExecutor)
         {
-            m_motionExecutor.End();
-            if (m_action != null && m_action.MotionProfile != null
-                && ShouldSuspendMotorGravity(m_action.MotionProfile))
-            {
-                player.ReleaseGravity();
-            }
-        }
-
-        if (hadActionMotorSession)
-        {
-            player.EndActionMotorSession();
+            m_motionPlayback.EndSession(player, m_action);
         }
 
         player.SkillEntries?.NotifyRouteExited(wasInterrupted: false);
@@ -646,110 +591,19 @@ public sealed class PlayerActionState : PlayerState
 
     // ─── 内部 ───
 
-    void EnsureMotionPlumbing(Player player)
-    {
-        if (m_motorAdapter == null)
-        {
-            m_motorAdapter = new PlayerMotorAdapter(player);
-        }
-
-        if (m_statsProvider == null)
-        {
-            m_statsProvider = new PlayerMotionStatsProvider(player);
-        }
-
-        if (m_motionExecutor == null)
-        {
-            m_motionExecutor = new MotionExecutor(
-                m_motorAdapter,
-                new EventBusAnimSpeedControl(player),
-                m_statsProvider,
-                player);
-        }
-    }
-
-    static Vector3 ResolveMotionFacingDirection(Player player, MotionProfileSO profile)
-    {
-        if (player == null)
-        {
-            return Vector3.forward;
-        }
-
-        var space = profile != null ? profile.MotionSpace : MotionSpace.CharacterForward;
-        return player.ResolveMotionPlanarForward(space);
-    }
-
-    float ResolveActionDuration(Player player, ActionDataSO action)
-    {
-        var duration = MotionDurationResolver.Resolve(action, m_statsProvider);
-        if (m_kind != GameplayIntentKind.Move || player?.LocomotionProfile?.Tuning == null)
-        {
-            return duration;
-        }
-
-        return duration * player.LocomotionProfile.Tuning.StartActionDurationScale;
-    }
-
-    /// <summary>164.1 L6：MotionProfile 程序化位移 vs Clip RootMotion 二选一。</summary>
-    void ApplyMotionDriverPolicy(Player player, ActionDataSO action)
-    {
-        if (action == null)
-        {
-            m_useMotionProfile = false;
-            SetClipRootMotionForPlayer(player, false);
-            return;
-        }
-
-        if (action.UseClipRootMotion)
-        {
-            m_useMotionProfile = false;
-            SetClipRootMotionForPlayer(player, true);
-            if (LocomotionDebug.IsEnabled(player))
-            {
-                LocomotionDebug.Log(
-                    player,
-                    LocomotionDebug.CatResolve,
-                    $"[Motion] driver=ClipRootMotion action={action.name}");
-            }
-
-            return;
-        }
-
-        SetClipRootMotionForPlayer(player, false);
-        m_useMotionProfile = action.MotionProfile != null;
-        if (m_useMotionProfile && LocomotionDebug.IsEnabled(player))
-        {
-            LocomotionDebug.Log(
-                player,
-                LocomotionDebug.CatResolve,
-                $"[Motion] driver=MotionProfile action={action.name}");
-        }
-    }
-
-    static void SetClipRootMotionForPlayer(Player player, bool enabled)
-    {
-        if (player == null)
-        {
-            return;
-        }
-
-        var anim = player.GetComponent<EntityAnimController>();
-        anim?.SetClipRootMotionEnabled(enabled);
-    }
+    void EnsureMotionPlumbing(Player player) => m_motionPlayback.EnsurePlumbing(player);
 
     /// <summary>197.3 — MotionProfile 动作期剥离 Clip Hips 平面位移，与 Timeline MotionDriven 预览同口径。</summary>
-    static void SyncInPlaceBonePresenter(Player player)
+    static void SyncInPlaceBonePresenter(Player player, bool useMotionProfile, ActionDataSO action)
     {
         if (player == null)
         {
             return;
         }
 
-        var state = player.States?.Current as PlayerActionState;
-        var shouldEnable = state != null
-                           && state.m_useMotionProfile
-                           && state.m_action != null
-                           && !state.m_action.UseClipRootMotion;
+        var shouldEnable = useMotionProfile
+                           && action != null
+                           && !action.UseClipRootMotion;
 
         var presenter = player.GetComponent<MotionProfileInPlacePresenter>();
         if (!shouldEnable)
@@ -809,16 +663,6 @@ public sealed class PlayerActionState : PlayerState
         return picked;
     }
 
-    static bool ShouldSuspendMotorGravity(MotionProfileSO profile)
-    {
-        if (profile == null)
-        {
-            return false;
-        }
-
-        return profile.GetYAxisConfig().Gravity == GravityMode.SuspendGravity;
-    }
-
     InputSnapshot BuildInputSnapshot(Player player)
     {
         InputSnapshot snap = default;
@@ -847,7 +691,7 @@ public sealed class PlayerActionState : PlayerState
         //   "Graph 游标到 End = 回 Idle" 的语义不再在 Action 退出层被隐式注入打断。
         //   旧 takeJumpLandBranch 强插 JumpLand 已删除（详见 169.1 蓝图）；
         //   LocomotionGraphContext.JumpLand 字段仅保留作 Combat Graph 编辑期合法上下文池（165.1 §14 契约）。
-        if (player.DebugLocomotion)
+        if (GameMainDebugSettings.Locomotion)
         {
             Debug.Log(
                 $"[Jump][ActionExit] action={(m_action != null ? m_action.name : "NULL")} " +
@@ -862,7 +706,7 @@ public sealed class PlayerActionState : PlayerState
             && player.IsGrounded
             && m_action != null
             && m_action.IntentCategory == ActionIntentCategory.Combat
-            && player.DebugSkillRoute)
+            && GameMainDebugSettings.SkillRouteGraph)
         {
             Debug.Log(
                 $"[CombatGraph][Finisher] 169.1-NOTE Combat 空中→落地结束 action={m_action.name} —— " +
@@ -952,7 +796,7 @@ public sealed class PlayerActionState : PlayerState
         }
         // 182.1 后 Stop 功能由 EnableStopFeature + StopStrategy 唯一权威。
 
-        if (endHint != LocomotionStateId.None || player.DebugLocomotion || player.DebugStop)
+        if (endHint != LocomotionStateId.None || GameMainDebugSettings.Locomotion || GameMainDebugSettings.Stop)
         {
             Locomotion165Diagnostics.LogActionExitStop(
                 player,

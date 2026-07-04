@@ -56,32 +56,6 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
              "未指派或某槽位未在 SO 中配置时回落到 ChargeRoute / ComboRoute 资产字段。")]
     [SerializeField] SemanticConfigSO semanticConfig;
 
-    // ─── Debug ───
-    [Header("Debug")]
-    [SerializeField] bool debugInterruptFlow;
-    [Tooltip("Combat Graph 专向 Log：Console 过滤 [SkillRoute][Graph] 与 [CombatGraph][Finisher]；不含 Resolve/Combo/Route 全量 Flow。")]
-    [SerializeField] bool debugSkillRoute;
-    [Tooltip("四向站立闪避链 [SkillRoute][Dodge4]；默认关。")]
-    [SerializeField] bool debugSkillRouteDodge4;
-    [Tooltip("四向武侠翻滚链 [SkillRoute][Roll4]；默认关，调试 Wuxia Group 时开。")]
-    [SerializeField] bool debugSkillRouteRoll4;
-    [Tooltip("能力准入 [Ability] route gate / loadout map（与 Route.abilityGateRules 对应）。")]
-    [SerializeField] bool debugSkillAbility;
-    [Tooltip("158.2 Locomotion Resolver / ControlOwner / Tuning 决策日志（L2-L5）。")]
-    [SerializeField] bool debugLocomotion;
-    [Tooltip("173.1.B 一对一探针：仅记录 Locomotion 转向闸门翻转，prefix=[RotGate]")]
-    [SerializeField] bool debugRotationGate;
-    [Tooltip("168.3 一对一探针：仅记录 Airborne 闸门对 Combat Intent 的接纳/拒绝翻转，prefix=[ComboAirGate]")]
-    [SerializeField] bool debugComboAirGate;
-    [Tooltip("162.1 Locomotion 输入/移动/转身节流 Trace（Console 过滤 [Loco]）；恶性移动故障时优先开启。")]
-    [SerializeField] bool debugLocomotionTrace;
-    [Tooltip("182.1 Stop Authoring 一对一探针（Console 过滤 [Stop]）。")]
-    [SerializeField] bool debugStop;
-    [Tooltip("162.1/184.1 四向 Turn 子状态 ENTER/PLAY/EXIT 验收（Console 过滤 [Turn][Sub]）。")]
-    [SerializeField] bool debugTurnSubState;
-    [Tooltip("159.1 L2/L3：Play 验收用 — 模拟 LockOn 以启用 StrafeLocomotion 解析；LockOn 切片接入后删除。")]
-    [SerializeField] bool debugLockOnLocomotion;
-
     [Header("184.1 Facing vs Turn")]
     [Tooltip("模型/Animator 子物体；LogicForward 写 root，Visual 缓追。为空时 Awake 自动取 Animator.transform。")]
     [SerializeField] Transform visualRoot;
@@ -89,8 +63,7 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
     // ─── 运行时 ───
     PlayerStateManager m_stateManager;
     PlayerKCCMotor m_motor;
-    SkillEntryService m_skillEntries;
-    InputSemanticResolver m_inputSemantic;
+    PlayerSkillComponent m_skillComponent;
     readonly InputContextResolver m_inputContext = new InputContextResolver();
     float m_attackTimer;
     Vector3 m_movementIntent;
@@ -143,7 +116,7 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
     // ─── 公开属性 ───
     public InputReader InputReader => inputReader;
     public PlayerStateManager States => m_stateManager;
-    public SkillEntryService SkillEntries => m_skillEntries;
+    public SkillEntryService SkillEntries => m_skillComponent?.Service;
     public SkillEntryLoadoutSO SkillEntryLoadout => skillEntryLoadout;
 
     /// <summary>185.2 — Graph EventWindowCondition 查询。</summary>
@@ -167,18 +140,8 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
 
     /// <summary>158.2 L2：当前位移/朝向控制权归属（仅观测；由 PlayerStateManager 末尾自动写入）。</summary>
     public ControlOwner CurrentControlOwner { get; internal set; } = ControlOwner.Locomotion;
-    public InputSemanticResolver InputSemantic => m_inputSemantic;
+    public InputSemanticResolver InputSemantic => m_skillComponent?.InputSemantic;
     public InputContextResolver InputContext => m_inputContext;
-    public bool DebugInterruptFlow => debugInterruptFlow;
-    public bool DebugSkillRoute => debugSkillRoute;
-    public bool DebugSkillRouteDodge4 => debugSkillRouteDodge4;
-    public bool DebugSkillRouteRoll4 => debugSkillRouteRoll4;
-    public bool DebugSkillAbility => debugSkillAbility;
-    public bool DebugLocomotion => debugLocomotion;
-    public bool DebugStop => debugStop;
-    public bool DebugComboAirGate => debugComboAirGate;
-    public bool DebugLocomotionTrace => debugLocomotionTrace;
-    public bool DebugTurnSubState => debugTurnSubState;
 
     public Vector3 PlanarVelocity => m_motor != null ? m_motor.PlanarVelocity : Vector3.zero;
     public float VerticalSpeed => m_motor != null ? m_motor.VerticalSpeed : 0f;
@@ -226,8 +189,8 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
     public TurnInfo CurrentTurnInfo => m_currentTurnInfo;
     /// <summary>159.1 L2+：Resolver 连续 Clip 表现快照（Strafe 等）。</summary>
     public LocomotionPresentationSnapshot LocomotionPresentation => m_locoPresentation;
-    /// <summary>159.1 L2：LockOn 信号；当前为 debug 占位，LockOn 切片接入后改读真实目标锁定。</summary>
-    public bool IsLockedOn => debugLockOnLocomotion;
+    /// <summary>159.1 L2：LockOn 信号；Play 验收见 Tools/GameMain/Debug Settings → Simulate LockOn。</summary>
+    public bool IsLockedOn => GameMainDebugSettings.SimulateLockOnLocomotion;
 
     public void ActivateRunLatch(float seconds) => m_runLatchEndTime = Time.time + Mathf.Max(0.01f, seconds);
     public void SetTurnInfo(in TurnInfo info) => m_currentTurnInfo = info;
@@ -266,7 +229,7 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
             ClearPlanarVelocity();
         }
 
-        if (debugSkillRouteDodge4 || debugSkillRouteRoll4)
+        if (GameMainDebugSettings.SkillRouteDodge4 || GameMainDebugSettings.SkillRouteRoll4)
         {
             SkillRouteDebug.LogDodge4(
                 this,
@@ -336,7 +299,7 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
         m_motor = GetComponent<PlayerKCCMotor>();
         if (m_motor != null)
         {
-            m_motor.Bind(this, m_stateManager, debugInterruptFlow);
+            m_motor.Bind(this, m_stateManager, GameMainDebugSettings.InterruptFlow);
             SyncLocomotionMotorTuning();
             m_motor.RefreshInitialGroundedState();
         }
@@ -353,12 +316,9 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
                 initialCurrent: Stats.Get(StatType.MaxMana));
         }
 
-        m_skillEntries = new SkillEntryService(this);
-        m_skillEntries.Rebuild(skillEntryLoadout);
+        m_skillComponent = new PlayerSkillComponent(this);
+        m_skillComponent.Initialize(skillEntryLoadout, semanticConfig, m_inputContext);
 
-        // Phase B：Semantic Resolver 初始化 + 从 Loadout 拉每槽位阈值
-        m_inputSemantic = new InputSemanticResolver(this);
-        RefreshSemanticConfigFromLoadout();
         InitFacingTurn1841();
     }
 
@@ -626,112 +586,16 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
 
     /// <summary>
     /// Phase F：先读 SemanticConfigSO（玩家级独立配置），未配项再回落 ChargeRoute / ComboRoute / PrimaryGroup 存在性。
-    /// 任一槽位若两路都拿不到值，对应字段为 0（Resolver 自动跳过该语义分流）。
+    /// 208.3 L4 — 实现已迁至 <see cref="PlayerSkillComponent"/>。
     /// </summary>
-    /// <summary>
-    /// Loadout 上是否存在针对该槽位的 ContextGroup（八向翻滚等）。
-    /// 206.2 — 不要求 RequiredSemantic=Directional；GhostSamurai 八向 ContextGroup 为 None 仍须启用方向 modifier。
-    /// </summary>
-    bool LoadoutHasDirectionalContext(SkillEntrySlot slot)
-    {
-        var groups = skillEntryLoadout?.ContextGroups;
-        if (groups == null)
-        {
-            return false;
-        }
-
-        for (var i = 0; i < groups.Length; i++)
-        {
-            var g = groups[i];
-            if (g == null || g.TargetGroup == null)
-            {
-                continue;
-            }
-
-            if (g.RequiredSlot == SkillEntrySlot.Any || g.RequiredSlot == slot)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    void RefreshSemanticConfigFromLoadout()
-    {
-        if (m_inputSemantic == null || skillEntryLoadout?.Bindings == null) return;
-        for (var i = 0; i < skillEntryLoadout.Bindings.Length; i++)
-        {
-            var b = skillEntryLoadout.Bindings[i];
-            var entry = b.Entry;
-            if (entry == null) continue;
-
-            InputSemanticResolver.PerSlotConfig cfg;
-            if (semanticConfig != null && semanticConfig.TryResolve(b.Slot, out cfg))
-            {
-                // SemanticConfigSO 命中 — 玩家级阈值为权威来源。
-            }
-            else
-            {
-                cfg = new InputSemanticResolver.PerSlotConfig
-                {
-                    TapThreshold = entry.ChargeRoute != null ? entry.ChargeRoute.TapThreshold : 0f,
-                    ComboWindow = entry.ComboRoute != null ? entry.ComboRoute.ComboSessionResetTime : 0f,
-                    EnableDirectional = entry.PrimaryGroup != null
-                        || LoadoutHasDirectionalContext(b.Slot),
-                };
-            }
-
-            // 116.1：边窗口注入 Resolver（与 SkillEntryService 双点校验，打通全链路）。
-            if (entry.ComboRoute is ComboRouteDefinition comboDef)
-            {
-                cfg.ComboChainLength = comboDef.ChainLength;
-                cfg.ComboEdgeTimings = comboDef.BuildTransitionTimingsForResolver();
-                if (cfg.ComboWindow <= 0.0001f)
-                {
-                    cfg.ComboWindow = comboDef.ComboSessionResetTime;
-                }
-            }
-            else
-            {
-                cfg.ComboChainLength = 0;
-                cfg.ComboEdgeTimings = null;
-            }
-
-            m_inputSemantic.ConfigureSlot(b.Slot, in cfg);
-            m_skillEntries?.SyncComboSemanticConfig(b.Slot);
-        }
-
-        RefreshInputContextFromLoadout();
-    }
+    void RefreshSemanticConfigFromLoadout() =>
+        m_skillComponent?.RefreshSemanticConfigFromLoadout(m_inputContext);
 
     void SyncRotationGateDebug()
     {
         if (m_inputContext == null) return;
-        m_inputContext.DebugRotationGate = debugRotationGate;
+        m_inputContext.DebugRotationGate = GameMainDebugSettings.RotationGate;
         m_inputContext.SetDebugOwnerLabel(name);
-    }
-
-    void RefreshInputContextFromLoadout()
-    {
-        if (m_inputContext == null || skillEntryLoadout?.Bindings == null)
-        {
-            m_inputContext?.SetLoadoutHasDirectionalModifier(false);
-            return;
-        }
-
-        var anyDirectional = false;
-        for (var i = 0; i < skillEntryLoadout.Bindings.Length; i++)
-        {
-            var slot = skillEntryLoadout.Bindings[i].Slot;
-            if (m_inputSemantic.GetConfig(slot).EnableDirectional)
-            {
-                anyDirectional = true;
-                break;
-            }
-        }
-
-        m_inputContext.SetLoadoutHasDirectionalModifier(anyDirectional);
     }
 
     // ─── 帧上下文 ───
@@ -791,7 +655,7 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
         }
 
         m_graphContextAction = action;
-        if (debugSkillRoute && action != null)
+        if (GameMainDebugSettings.SkillRouteGraph && action != null)
         {
             var part = ActionIntentRouting.ResolveGraphParticipation(action);
             SkillRouteDebug.LogGraph(this, $"Ctx SET action={action.name} C={part} reason={reason ?? "-"}");
@@ -805,7 +669,7 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
             return;
         }
 
-        if (debugSkillRoute)
+        if (GameMainDebugSettings.SkillRouteGraph)
         {
             SkillRouteDebug.LogGraph(
                 this,
@@ -1079,7 +943,7 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
 
     void MaybeLogLocomotionRotationEdge(LocomotionRotationMode mode, bool immediate)
     {
-        if (!DebugLocomotionTrace && !DebugLocomotion)
+        if (!GameMainDebugSettings.LocomotionTrace && !GameMainDebugSettings.Locomotion)
         {
             return;
         }

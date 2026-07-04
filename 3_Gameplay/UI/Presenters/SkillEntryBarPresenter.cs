@@ -49,7 +49,7 @@ public sealed class SkillEntryBarPresenter : MonoBehaviour
         EnsurePool();
         RefreshFromPlayer();
 
-        if (player != null && player.DebugSkillRoute)
+        if (player != null && GameMainDebugSettings.SkillRouteGraph)
         {
             LogHudSetup(player, "Bind");
         }
@@ -177,7 +177,7 @@ public sealed class SkillEntryBarPresenter : MonoBehaviour
         if (_player == null || _player.SkillEntries == null)
         {
             SetPoolActiveRange(0, false);
-            if (_player != null && _player.DebugSkillRoute)
+            if (_player != null && GameMainDebugSettings.SkillRouteGraph)
             {
                 SkillRouteDebug.LogWarn(_player, SkillRouteDebug.CatHud, "Refresh: SkillEntries 为空");
             }
@@ -195,7 +195,7 @@ public sealed class SkillEntryBarPresenter : MonoBehaviour
             _pool[i].Bind(handles[i]);
             var show = handles[i] != null && handles[i].ShowOnHud;
             SetWidgetActive(_pool[i], show);
-            if (_player.DebugSkillRoute && handles[i] != null)
+            if (GameMainDebugSettings.SkillRouteGraph && handles[i] != null)
             {
                 SkillRouteDebug.Log(
                     _player,
@@ -206,7 +206,7 @@ public sealed class SkillEntryBarPresenter : MonoBehaviour
 
         SetPoolActiveRange(n, false);
 
-        if (_player.DebugSkillRoute)
+        if (GameMainDebugSettings.SkillRouteGraph)
         {
             LogHudSetup(_player, $"Refresh handles={handles.Count} shown={n} pool={_pool.Count}");
         }

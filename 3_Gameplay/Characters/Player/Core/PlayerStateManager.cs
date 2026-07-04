@@ -17,7 +17,6 @@ using UnityEngine;
 public class PlayerStateManager : EntityStateManager<Player>
 {
     [SerializeField] int maxIntentConsumptionsPerFrame = 1;
-    [SerializeField] bool debugIntentArbitration;
 
     const ActionCategory AllPillarCategories =
         ActionCategory.Movement | ActionCategory.Offense | ActionCategory.Defensive | ActionCategory.Utility
@@ -65,7 +64,7 @@ public class PlayerStateManager : EntityStateManager<Player>
             var ctx = Entity.BuildFrameContext(deltaTime);
             if (!TransitionResolver.CanOfferIntent(in ctx, in intent, out var reason))
             {
-                if (debugIntentArbitration || Entity.DebugInterruptFlow)
+                if (GameMainDebugSettings.IntentArbitration || GameMainDebugSettings.InterruptFlow)
                 {
                     Debug.Log($"[IntentArb] BLOCK by TransitionResolver | state={Current.StateId} | intent={intent.Kind} | reason={reason}", this);
                 }
@@ -93,7 +92,7 @@ public class PlayerStateManager : EntityStateManager<Player>
                         continue;
                     }
 
-                    if (debugIntentArbitration || Entity.DebugInterruptFlow)
+                    if (GameMainDebugSettings.IntentArbitration || GameMainDebugSettings.InterruptFlow)
                     {
                         Debug.Log($"[IntentArb] BLOCK by SkillEntry resolve | intent={intent.Kind}", this);
                     }
@@ -117,12 +116,12 @@ public class PlayerStateManager : EntityStateManager<Player>
                         $"→ route={resolvedRoute?.Definition?.name} stage={firstStage?.name}");
                 }
 
-                if (debugIntentArbitration)
+                if (GameMainDebugSettings.IntentArbitration)
                 {
                     Debug.Log($"[Lane] Combat→Graph intent={intent.Kind} route={resolvedRoute?.Definition?.name}", this);
                 }
             }
-            else if (debugIntentArbitration || Entity.DebugInterruptFlow)
+            else if (GameMainDebugSettings.IntentArbitration || GameMainDebugSettings.InterruptFlow)
             {
                 Debug.Log($"[Lane] {lane}→Global intent={intent.Kind}", this);
             }
@@ -131,7 +130,7 @@ public class PlayerStateManager : EntityStateManager<Player>
             if (!Current.TryConsumeGameplayIntent(Entity, in ctx, in intent))
             {
                 Entity.ClearPendingAction();
-                if (debugIntentArbitration || Entity.DebugInterruptFlow)
+                if (GameMainDebugSettings.IntentArbitration || GameMainDebugSettings.InterruptFlow)
                 {
                     Debug.Log($"[IntentArb] BLOCK by State gate | state={Current.StateId} | intent={intent.Kind} hold={intent.HoldDurationSeconds:F3} (intent stays queued)", this);
                 }
@@ -154,7 +153,7 @@ public class PlayerStateManager : EntityStateManager<Player>
                     $"NO_ROUTE intent={intent.Kind} semantic={intent.Semantic} axis={intent.DirectionAxis}");
             }
 
-            if (debugIntentArbitration || Entity.DebugInterruptFlow)
+            if (GameMainDebugSettings.IntentArbitration || GameMainDebugSettings.InterruptFlow)
             {
                 var consumedNote = intent.Kind == GameplayIntentKind.Move ? " → Locomotion" : string.Empty;
                 Debug.Log($"[IntentArb] CONSUMED intent={intent.Kind}{consumedNote} | state={Current.StateId}", this);
@@ -183,7 +182,7 @@ public class PlayerStateManager : EntityStateManager<Player>
         if (prev == nextOwner) return;
 
         Entity.CurrentControlOwner = nextOwner;
-        if (Entity.DebugLocomotion)
+        if (GameMainDebugSettings.Locomotion)
         {
             Debug.Log(
                 $"[LocoOwner] Owner: {prev} → {nextOwner} | state={Current.StateId} | frame={Time.frameCount}",

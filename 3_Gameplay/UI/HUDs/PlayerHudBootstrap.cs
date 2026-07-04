@@ -36,7 +36,7 @@ public sealed class PlayerHudBootstrap : MonoBehaviour
     [Tooltip("Buff 条 Presenter。")]
     [SerializeField] BuffStripPresenter buffStripPresenter;
 
-    [Tooltip("可选：Route 运行时叠层（需 Player.DebugSkillRoute）。")]
+    [Tooltip("可选：Route 运行时叠层（需 Tools/GameMain/Debug Settings → Skill Route Graph）。")]
     [SerializeField] RouteHudDebugOverlay routeDebugOverlay;
 
     Player m_currentPlayer;
@@ -92,7 +92,7 @@ public sealed class PlayerHudBootstrap : MonoBehaviour
             return;
         }
 
-        if (skillBarRoutePresenter == null && player.DebugSkillRoute)
+        if (skillBarRoutePresenter == null && GameMainDebugSettings.SkillRouteGraph)
         {
             Debug.LogWarning(
                 "[PlayerHudBootstrap] skillBarRoutePresenter 未指派 → RouteWidget 不会在运行时生成。",

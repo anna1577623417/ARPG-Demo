@@ -67,7 +67,7 @@ public sealed class PlayerLocomotionState : PlayerState
         var incomingCategory = ActionInterruptResolver.ResolveIncomingCategory(in intent, incomingAction);
         if (incomingCategory != ActionCategory.None && (m_allowedCategories & incomingCategory) == 0)
         {
-            if (player.DebugInterruptFlow)
+            if (GameMainDebugSettings.InterruptFlow)
             {
                 Debug.Log(
                     $"[Locomotion] REJECT | intent={intent.Kind} | category={incomingCategory} | reason=not in locomotionAllowedCategories",
@@ -92,7 +92,7 @@ public sealed class PlayerLocomotionState : PlayerState
         m_lastContinuousLocomotionAction = null;
 
         // 164.1 L0 [Jump] 探针：进入 Locomotion 时机（与 Airborne/Action 探针共同重现 Jump 流程）
-        if (player.DebugLocomotion)
+        if (GameMainDebugSettings.Locomotion)
         {
             Debug.Log(
                 $"[Jump][LocoEnter] grounded={player.IsGrounded} hasInput={player.HasMovementIntent} " +

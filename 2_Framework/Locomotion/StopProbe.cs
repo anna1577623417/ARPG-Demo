@@ -9,7 +9,7 @@ public static class StopProbe
     public const string WarnPrefix = "[Stop][WARN]";
 
     public static bool IsEnabled(Player player) =>
-        player != null && player.DebugStop;
+        player != null && GameMainDebugSettings.Stop;
 
     public static void LogBegin(Player player, in StopRuntimeContext ctx, ActionDataSO action)
     {

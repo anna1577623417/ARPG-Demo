@@ -206,7 +206,7 @@ public class PlayerController : EntityController
         if (inputReader.ConsumeJumpPressed())
         {
             player.EnqueueGameplayIntent(SkillEntryIntentFactory.ForJump(Time.time));
-            if (player.DebugInterruptFlow)
+            if (GameMainDebugSettings.InterruptFlow)
             {
                 Debug.Log($"[Input] JumpPressed → Jump intent enqueued | currentState={player.States?.Current?.StateId}", this);
             }
@@ -287,7 +287,7 @@ public class PlayerController : EntityController
             player.EnqueueGameplayIntent(intent);
         }
 
-        if (player.DebugInterruptFlow)
+        if (GameMainDebugSettings.InterruptFlow)
         {
             Debug.Log($"[IntentInput] EntryPulse slot={slot} hold={holdSeconds:F3}s moveBuf={moveBuf} valid={moveBufValid}", this);
         }
@@ -346,7 +346,7 @@ public class PlayerController : EntityController
             Time.time, moveBuf, moveBufValid, forbidden));
         _moveInterruptQueuedForWindow = true;
 
-        if (player.DebugInterruptFlow)
+        if (GameMainDebugSettings.InterruptFlow)
         {
             var trigger = edge ? "edge" : "hold-in-window";
             Debug.Log(

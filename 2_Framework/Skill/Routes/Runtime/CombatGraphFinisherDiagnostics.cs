@@ -305,7 +305,7 @@ public static class CombatGraphFinisherDiagnostics
             "— 查 EXIT-GATE / BASELINE-EXIT / SEGMENT-END");
     }
 
-    static bool IsOwnerEnabled(Player owner) => owner != null && owner.DebugSkillRoute;
+    static bool IsOwnerEnabled(Player owner) => owner != null && GameMainDebugSettings.SkillRouteGraph;
 
     static bool ShouldEmit(
         Player owner,

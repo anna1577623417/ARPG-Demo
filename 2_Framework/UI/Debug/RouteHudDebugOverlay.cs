@@ -2,7 +2,7 @@ using UnityEngine;
 
 /// <summary>
 /// Play 模式 HUD 叠层：Entry / Route / Stage / CD / Action 支柱 / HudHandles。
-/// 与 Player.DebugSkillRoute 配合；挂到 HUD 根并由 PlayerHudBootstrap 绑定 Player。
+/// 与 Tools/GameMain/Debug Settings → Skill Route Graph 配合。
 /// </summary>
 [DisallowMultipleComponent]
 [AddComponentMenu("GameMain/UI/Route HUD Debug Overlay")]
@@ -37,7 +37,7 @@ public sealed class RouteHudDebugOverlay : MonoBehaviour
             return;
         }
 
-        if (!player.DebugSkillRoute)
+        if (!GameMainDebugSettings.SkillRouteGraph)
         {
             return;
         }
