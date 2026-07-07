@@ -34,10 +34,14 @@ MonoBehaviour:
   - slot: 7
     entry: {fileID: 11400000, guid: 96229d4c4051d954caa5979b04042076, type: 2}
     hudKeyLabel: Space
+  - slot: 6
+    entry: {fileID: 11400000, guid: 6b8eef6920e2a9e4da1df215d72c0d36, type: 2}
+    hudKeyLabel: Shift
   combatFlowEnabled: 1
   combatFlow: {fileID: 11400000, guid: 25708567479bfd74da47966592ad45b3, type: 2}
   contextGroups:
   - {fileID: 11400000, guid: fd0a3264f599331479de69f28c575635, type: 2}
+  - {fileID: 11400000, guid: 45ba4497c8035cb40a099bf7e743f140, type: 2}
   locomotionGraphContext:
     JumpStart: {fileID: 11400000, guid: 05d0c0b53bf8cfc41a6317827d08769a, type: 2}
     JumpLoop: {fileID: 11400000, guid: 507d62e5e65437444b0c8530c1c957f7, type: 2}

@@ -27,6 +27,12 @@ public class SkillStageDefinition : ScriptableObject
     [SerializeField, Tooltip("本段在技能栏显示的图标；空则继承 Route.Icon。")]
     private Sprite hudIcon;
 
+    [SerializeField, Tooltip("211.3 — 本段 HUD 显示名；空则继承 Route/Group。")]
+    string hudDisplayName;
+
+    [SerializeField, Tooltip("211.3 — 本段 HUD 角标文本；空则由 Badge 段号填充。")]
+    string hudBadgeText;
+
     [Header("Stage-Local Cost (独立于 Route Cost)")]
     [SerializeField, Tooltip("进入本 Stage 时额外扣的资源（与 Route.costs 叠加，可为空）。")]
     private SkillCostEntry[] additionalCosts;
@@ -57,6 +63,8 @@ public class SkillStageDefinition : ScriptableObject
     public string StageId => stageId;
     public ActionDataSO Action => action;
     public Sprite HudIcon => hudIcon;
+    public string HudDisplayName => hudDisplayName ?? string.Empty;
+    public string HudBadgeText => hudBadgeText ?? string.Empty;
     public SkillCostEntry[] AdditionalCosts => additionalCosts;
     public float StageLocalCooldownSeconds => stageLocalCooldownSeconds;
     public SkillTransition[] Transitions => transitions;

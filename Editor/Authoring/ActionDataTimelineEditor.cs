@@ -127,7 +127,7 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
         ActionTimelineEditorUI.SaveGizmoAnchor(_gizmoAnchorOverride);
     }
 
-    [MenuItem("Tools/GameMain/Action Timeline Editor")]
+    [MenuItem("GameMain/Action/Timeline Editor")]
     static void OpenFromMenu()
     {
         var w = GetWindow<ActionDataTimelineEditor>(false, "Action Timeline", true);

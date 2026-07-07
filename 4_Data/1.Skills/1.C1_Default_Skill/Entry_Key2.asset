@@ -20,7 +20,7 @@ MonoBehaviour:
   extendedComboRoute: {fileID: 0}
   airComboRoute: {fileID: 0}
   multiStageRoute: {fileID: 0}
-  normalRoute: {fileID: 11400000, guid: db4eed8bc926fd84c9779557195b4361, type: 2}
+  normalRoute: {fileID: 11400000, guid: e8d6e0061c692bf4b80df8d1d170ec04, type: 2}
   extendedHandoffWindowSeconds: 0
   extendedHandoffMinGap: 0
   extendedHandoffMaxGap: 0

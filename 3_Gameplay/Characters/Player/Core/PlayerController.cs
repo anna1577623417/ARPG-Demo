@@ -170,6 +170,7 @@ public class PlayerController : EntityController
         }
 
         var tuning = player.LocomotionProfile != null ? player.LocomotionProfile.Tuning : null;
+        SyncDirectionModifierBuffer(tuning);
         var window = tuning != null ? tuning.AbilityContextWindowSec : 0.1f;
         var grace = tuning != null ? tuning.DirectionGraceSec : 0.12f;
         var fwd = player.LogicForward;
@@ -190,6 +191,19 @@ public class PlayerController : EntityController
             fwd,
             window,
             grace);
+    }
+
+    void SyncDirectionModifierBuffer(LocomotionTuningSO tuning)
+    {
+        if (inputReader?.MoveModifierBuffer == null)
+        {
+            return;
+        }
+
+        var sec = tuning != null
+            ? tuning.DirectionModifierBufferSec
+            : InputModifierBuffer.DefaultBufferSeconds;
+        inputReader.MoveModifierBuffer.SetBufferSeconds(sec);
     }
 
     /// <summary>
@@ -249,6 +263,13 @@ public class PlayerController : EntityController
             return;
         }
 
+        if (slot == SkillEntrySlot.Space)
+        {
+            HoldMotionDodgeProbe.NotifySpacePulse();
+        }
+
+        DirectionalInputDiagProbe.NotifyAbilityPulse(slot);
+
         Vector2 moveBuf = default;
         var moveBufValid = inputReader.MoveModifierBuffer != null
             && (moveBuf = inputReader.MoveModifierBuffer.GetBufferedMove(Time.time)).sqrMagnitude > 0.0001f;
@@ -263,6 +284,62 @@ public class PlayerController : EntityController
         }
 
         var ctx = player.InputContext;
+        var ctxHold = ctx != null && ctx.MoveActive
+            ? Time.time - ctx.MoveActiveSince
+            : -1f;
+        var tuning = player.LocomotionProfile != null ? player.LocomotionProfile.Tuning : null;
+        var chordWin = tuning != null ? tuning.ChordWindowSec : 0.12f;
+
+        // 213.6 — Chord 窗内 MoveContext 已激活，同帧 live 刚按下。
+        if (!moveBufValid
+            && ctx != null
+            && ctx.MoveActive
+            && ctxHold >= 0f
+            && ctxHold <= chordWin)
+        {
+            var live = inputReader.MoveInput;
+            if (live.sqrMagnitude > moveReleaseThreshold * moveReleaseThreshold)
+            {
+                moveBuf = live;
+                moveBufValid = true;
+                branchNote = "branch=ctxChordLive_fallback";
+            }
+        }
+
+        // 213.6 — Shift 软过期：硬 Buffer 刚过仍读 last WASD。
+        if (!moveBufValid
+            && slot == SkillEntrySlot.Shift
+            && inputReader.MoveModifierBuffer != null)
+        {
+            var softSec = tuning != null ? tuning.ShiftModifierSoftGraceSec : 0.12f;
+            if (softSec > 0f
+                && inputReader.MoveModifierBuffer.TryGetSoftBufferedMove(Time.time, softSec, out var softMove))
+            {
+                moveBuf = softMove;
+                moveBufValid = true;
+                branchNote = "branch=bufferSoftGrace_fallback";
+            }
+        }
+
+        var bufferMaxAge = tuning != null
+            ? tuning.DirectionModifierBufferSec
+            : InputModifierBuffer.DefaultBufferSeconds;
+        DirectionalInputDiagProbe.LogBufferState(
+            inputReader.MoveModifierBuffer != null
+                ? inputReader.MoveModifierBuffer.GetBufferAgeSec(Time.time)
+                : -1f,
+            moveBufValid ? moveBuf : Vector2.zero,
+            inputReader.MoveInput,
+            bufferMaxAge);
+        DirectionalInputDiagProbe.LogDispatch(
+            slot,
+            moveBuf,
+            moveBufValid,
+            inputReader.MoveInput,
+            ctx != null && ctx.MoveActive,
+            ctxHold,
+            ctx != null && ctx.DirectionalCommitted,
+            branchNote);
         DodgeChord8Probe.LogDispatchPulse(
             slot,
             moveBuf,

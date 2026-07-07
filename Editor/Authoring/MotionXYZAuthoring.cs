@@ -8,7 +8,7 @@ public static class MotionXYZAuthoring
 {
     const string VerifyRoot = "Assets/_Verification/MotionProfiles";
 
-    [MenuItem("Tools/Motion XYZ/Create Verification Profiles")]
+    [MenuItem("GameMain/Motion/Create Verification Profiles")]
     public static void CreateVerificationProfiles()
     {
         Directory.CreateDirectory(VerifyRoot);
@@ -22,7 +22,7 @@ public static class MotionXYZAuthoring
         Debug.Log("[MotionXYZ] Verification profiles created under Assets/_Verification/MotionProfiles/");
     }
 
-    [MenuItem("Tools/Motion XYZ/Preview Trajectory In Scene (Selected Profile)")]
+    [MenuItem("GameMain/Motion/Preview Trajectory In Scene (Selected Profile)")]
     public static void PreviewSelectedInScene()
     {
         var profile = Selection.activeObject as MotionProfileSO;

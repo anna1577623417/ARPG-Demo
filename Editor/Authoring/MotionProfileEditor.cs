@@ -54,8 +54,10 @@ public sealed partial class MotionProfileEditor : Editor
         // 174.2 V2 七小节 —— 各自折叠组渲染
         nameof(MotionProfileSO.V2GravityWeightMode),
         nameof(MotionProfileSO.V2GravityWeight),
-        nameof(MotionProfileSO.V2RotationMode),
-        nameof(MotionProfileSO.V2YawOverTime),
+        nameof(MotionProfileSO.YawPolicy),
+        nameof(MotionProfileSO.YawStartDegrees),
+        nameof(MotionProfileSO.YawEndDegrees),
+        nameof(MotionProfileSO.YawBlendOverTime),
         nameof(MotionProfileSO.V2FacingInputWeight),
         nameof(MotionProfileSO.V2MoveInputWeight),
         nameof(MotionProfileSO.V2TargetTrackingWeight),

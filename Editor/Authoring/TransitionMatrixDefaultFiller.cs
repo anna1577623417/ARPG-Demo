@@ -4,13 +4,12 @@ using UnityEditor;
 using UnityEngine;
 
 /// <summary>
-/// 178.1 — Transition 资产工厂：一键产 Matrix / Config / Database 三件套并填默认值。
+/// 178.1 — Transition 资产工厂（菜单已移除；保留 API 供脚本调用）。
 /// </summary>
 public static class TransitionMatrixDefaultFiller
 {
     const string Folder = "Assets/GameMain/4_Data/Animation/Presets";
 
-    [MenuItem("GameMain/Animation/Create All Transition Assets")]
     public static void CreateAll()
     {
         EnsureFolder(Folder);
@@ -22,7 +21,6 @@ public static class TransitionMatrixDefaultFiller
         Debug.Log($"[Transition] All assets created under {Folder}");
     }
 
-    [MenuItem("GameMain/Animation/Create Transition Matrix (with defaults)")]
     public static void CreateMatrix()
     {
         EnsureFolder(Folder);
@@ -39,7 +37,6 @@ public static class TransitionMatrixDefaultFiller
         EditorUtility.SetDirty(matrix);
     }
 
-    [MenuItem("GameMain/Animation/Create Transition Config")]
     public static void CreateConfig()
     {
         EnsureFolder(Folder);
@@ -49,7 +46,6 @@ public static class TransitionMatrixDefaultFiller
         AssetDatabase.CreateAsset(c, path);
     }
 
-    [MenuItem("GameMain/Animation/Create Transition Database (empty)")]
     public static void CreateDatabase()
     {
         EnsureFolder(Folder);

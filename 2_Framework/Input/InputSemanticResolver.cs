@@ -245,6 +245,7 @@ public sealed class InputSemanticResolver
             EnqueueSemantic(slot, now, InputSemanticType.Directional, holdSeconds, comboIndex: 0,
                 directionAxis: moveBuffered, moveBuffered: moveBuffered, moveBufferValid: true);
             var chord = InputChordResolver.Resolve(moveBuffered);
+            DirectionalInputDiagProbe.LogSemantic(slot, InputSemanticType.Directional, moveBuffered, true);
             DodgeChord8Probe.LogSemanticBranch(slot, InputSemanticType.Directional, moveBuffered, true, moveBuffered);
             SkillRouteDebug.LogDodge4(_owner, "Semantic",
                 $"ENQUEUE Directional slot={slot} axis={moveBuffered} chord={chord} hold={holdSeconds:F2}s bufferValid={moveBufferValid}");
@@ -273,6 +274,7 @@ public sealed class InputSemanticResolver
         if (TryApplyComboOutcome(slot, now, holdSeconds, ref st, outcome, semantic, newComboIdx, detail,
                 moveBuffered, moveBufferValid))
         {
+            DirectionalInputDiagProbe.LogSemantic(slot, semantic, moveBuffered, moveBufferValid);
             DodgeChord8Probe.LogSemanticBranch(slot, semantic, moveBuffered, moveBufferValid, default);
         }
     }
@@ -494,9 +496,12 @@ public sealed class InputSemanticResolver
     {
         if (_owner == null) return;
 
+        var tuning = _owner.LocomotionProfile != null ? _owner.LocomotionProfile.Tuning : null;
+
         if (semantic == InputSemanticType.Directional)
         {
-            _owner.CommitDirectionalInputContext();
+            var pulseMove = moveBufferValid ? moveBuffered : directionAxis;
+            _owner.CommitDirectionalInputContext(pulseMove);
         }
 
         var intent = SkillEntryIntentFactory.ForEntryWithSemantic(
@@ -506,7 +511,8 @@ public sealed class InputSemanticResolver
             directionAxis: directionAxis,
             moveBuffered: moveBuffered,
             moveBufferValid: moveBufferValid,
-            modifierSlot: modifierSlot);
+            modifierSlot: modifierSlot,
+            tuning: tuning);
         InputActionProbe.LogSemanticDispatched(_owner, slot.ToString(), semantic.ToString(), comboIndex, hold);
         _owner.EnqueueGameplayIntent(intent);
     }

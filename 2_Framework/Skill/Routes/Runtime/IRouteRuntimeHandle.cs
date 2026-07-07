@@ -74,4 +74,34 @@ public interface IRouteRuntimeHandle
     /// 为 true 时 HUD 隐藏高光；CD 进度仍只驱动 CD 遮罩与（未抑制时的）高光 fill。
     /// </summary>
     bool IsHighlightSuppressed { get; }
+
+    /// <summary>213 — 稳定展示 ID（Validate Warning；Play 不依赖）。</summary>
+    string PresentationId { get; }
+
+    /// <summary>HUD 诊断 — RouteId / GroupId（未配时 = 资产名）。</summary>
+    string UnitId { get; }
+
+    /// <summary>HUD 诊断 — Route | Group。</summary>
+    string HudUnitKind { get; }
+
+    /// <summary>HUD 诊断 — 资产所在目录（Editor Play 为 Assets/... 路径）。</summary>
+    string AssetFolder { get; }
+
+    /// <summary>HUD 诊断 — 资产完整路径（Editor Play）。</summary>
+    string AssetPath { get; }
+
+    /// <summary>213 — Stage/段切换时递增；Widget 比较后 RefreshPresentation。</summary>
+    int PresentationRevision { get; }
+
+    /// <summary>213/214 — Loadout layout 或 slot_subIndex。</summary>
+    string HudIdentity { get; }
+
+    /// <summary>215 — CD/Charge/Combo/MultiStage 合成展示态。</summary>
+    SkillPresentationState PresentationState { get; }
+
+    /// <summary>215 — 主角标（段号 / Combo 段）。</summary>
+    PresentationBadge PrimaryBadge { get; }
+
+    /// <summary>215 — 副角标（预留）。</summary>
+    PresentationBadge SecondaryBadge { get; }
 }

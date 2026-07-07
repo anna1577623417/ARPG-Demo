@@ -45,11 +45,21 @@ public sealed class RouteWidget : MonoBehaviour
     [SerializeField] GameObject multiStageGroup;
     [SerializeField] TMP_Text multiStageIndexLabel;
     [SerializeField] Image stageProgressBar;
+    [SerializeField, Tooltip("215 — MultiStage Pending 窗口高亮环（可选）。")]
+    Image multiStagePendingRing;
+
+    [Header("Presentation Badge (215)")]
+    [SerializeField] GameObject badgePrimaryRoot;
+    [SerializeField] TMP_Text badgePrimaryLabel;
 
     IRouteRuntimeHandle _handle;
     float _comboWindowReference = 1.2f;
     readonly char[] _cdTextBuffer = new char[UiCooldownSecondsFormatter.MaxChars];
     int _lastCdDisplayTenths = -1;
+    Sprite _lastIcon;
+    string _lastDisplayName;
+    int _lastPresentationRevision = -1;
+    SkillPresentationState _lastPresentationState;
 
     public void Bind(IRouteRuntimeHandle handle, float comboReferenceSeconds = 1.2f)
     {
@@ -71,14 +81,24 @@ public sealed class RouteWidget : MonoBehaviour
         if (comboGroup != null) comboGroup.SetActive(handle.HasComboOverlay);
         if (multiStageGroup != null) multiStageGroup.SetActive(handle.HasMultiStageOverlay);
 
+        _lastIcon = null;
+        _lastDisplayName = null;
+        _lastPresentationRevision = -1;
+        _lastPresentationState = SkillPresentationState.None;
         _lastCdDisplayTenths = -1;
+        ApplyPresentationVisuals(handle, force: true);
+        ApplyPresentationState(handle, force: true);
         ApplyCooldownAndMasks(handle);
     }
 
     public void Unbind()
     {
+        HudBugProbe.NotifyWidgetUnbind(GetInstanceID());
         _handle = null;
         _lastCdDisplayTenths = -1;
+        _lastIcon = null;
+        _lastDisplayName = null;
+        _lastPresentationRevision = -1;
         SetCooldownTimerVisible(false);
     }
 
@@ -86,6 +106,14 @@ public sealed class RouteWidget : MonoBehaviour
     {
         if (_handle == null) return;
 
+        if (_handle.PresentationRevision != _lastPresentationRevision)
+        {
+            _lastPresentationRevision = _handle.PresentationRevision;
+            RefreshPresentation();
+        }
+
+        ApplyPresentationVisuals(_handle, force: false);
+        ApplyPresentationState(_handle, force: false);
         ApplyCooldownAndMasks(_handle);
 
         if (_handle.HasChargeBar && chargeBar != null)
@@ -107,6 +135,116 @@ public sealed class RouteWidget : MonoBehaviour
                 multiStageIndexLabel.text = _handle.MultiStageIndex >= 0 ? (_handle.MultiStageIndex + 1).ToString() : "";
             if (stageProgressBar != null)
                 stageProgressBar.fillAmount = _handle.CurrentStageProgress01;
+        }
+
+        HudBugProbe.TickWidgetCd(
+            GetInstanceID(),
+            _handle,
+            _lastCdDisplayTenths,
+            cooldownTimerText != null && cooldownTimerText.gameObject.activeSelf,
+            cooldownMask != null ? cooldownMask.fillAmount : -1f);
+    }
+
+    /// <summary>HudBug 扫描用 — 只读快照，不暴露 Handle 引用。</summary>
+    public bool TryGetHudBugSnapshot(out HudBugProbe.WidgetSnapshot snapshot)
+    {
+        if (_handle == null)
+        {
+            snapshot = default;
+            return false;
+        }
+
+        snapshot = new HudBugProbe.WidgetSnapshot(
+            _handle.HudUnitKind,
+            _handle.UnitId,
+            _handle.PresentationId,
+            _handle.HudIdentity,
+            _handle.EntrySlot,
+            _handle.KeyLabel,
+            _handle.DisplayName,
+            _handle.AssetFolder,
+            _handle.AssetPath,
+            true);
+        return true;
+    }
+
+    void RefreshPresentation()
+    {
+        if (_handle == null)
+        {
+            return;
+        }
+
+        ApplyPresentationVisuals(_handle, force: true);
+        ApplyPresentationState(_handle, force: true);
+    }
+
+    void ApplyPresentationVisuals(IRouteRuntimeHandle handle, bool force)
+    {
+        var icon = handle.Icon;
+        if (force || icon != _lastIcon)
+        {
+            if (iconImage != null)
+            {
+                iconImage.sprite = icon;
+            }
+
+            _lastIcon = icon;
+        }
+
+        var name = handle.DisplayName;
+        if (force || name != _lastDisplayName)
+        {
+            if (displayNameLabel != null)
+            {
+                displayNameLabel.text = name ?? string.Empty;
+            }
+
+            _lastDisplayName = name;
+        }
+    }
+
+    void ApplyPresentationState(IRouteRuntimeHandle handle, bool force)
+    {
+        var state = handle.PresentationState;
+        if (!force && state == _lastPresentationState)
+        {
+            return;
+        }
+
+        _lastPresentationState = state;
+
+        if (multiStagePendingRing != null)
+        {
+            var showPending = (state & SkillPresentationState.MultiStagePending) != 0;
+            if (multiStagePendingRing.enabled != showPending)
+            {
+                multiStagePendingRing.enabled = showPending;
+            }
+
+            if (showPending && handle.HasMultiStageOverlay)
+            {
+                multiStagePendingRing.fillAmount = 1f;
+            }
+        }
+
+        var badge = handle.PrimaryBadge;
+        if (badgePrimaryRoot != null)
+        {
+            var showBadge = badge.IsVisible;
+            if (badgePrimaryRoot.activeSelf != showBadge)
+            {
+                badgePrimaryRoot.SetActive(showBadge);
+            }
+        }
+
+        if (badgePrimaryLabel != null && badge.IsVisible)
+        {
+            badgePrimaryLabel.text = !string.IsNullOrEmpty(badge.Text)
+                ? badge.Text
+                : badge.Number >= 0
+                    ? badge.Number.ToString()
+                    : string.Empty;
         }
     }
 

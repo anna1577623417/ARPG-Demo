@@ -34,7 +34,7 @@ public sealed class MotionAxisCurveEditorWindow : EditorWindow
         win.Focus();
     }
 
-    [MenuItem("Tools/GameMain/Motion Axis Curve Editor")]
+    [MenuItem("GameMain/Motion/Axis Curve Editor")]
     static void OpenFromMenu()
     {
         var profile = Selection.activeObject as MotionProfileSO;

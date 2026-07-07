@@ -10,26 +10,32 @@ using UnityEngine;
 /// </summary>
 public static class SkillEntryIntentFactory
 {
-    public static float ResolveBufferSeconds(SkillEntrySlot slot)
+    public static float ResolveBufferSeconds(SkillEntrySlot slot, LocomotionTuningSO tuning = null)
     {
         switch (slot)
         {
             case SkillEntrySlot.Shift:
             case SkillEntrySlot.Space:
-                return 0.28f;
+                return tuning != null
+                    ? tuning.DirectionModifierBufferSec
+                    : InputModifierBuffer.DefaultBufferSeconds;
             default:
                 return 0.18f;
         }
     }
+
+    public static float ResolveBufferSeconds(SkillEntrySlot slot) =>
+        ResolveBufferSeconds(slot, null);
 
     public static GameplayIntent ForEntry(
         SkillEntrySlot slot,
         float time,
         float holdSeconds = 0f,
         Vector2 moveBuffered = default,
-        bool moveBufferValid = false)
+        bool moveBufferValid = false,
+        LocomotionTuningSO tuning = null)
     {
-        var buffer = ResolveBufferSeconds(slot);
+        var buffer = ResolveBufferSeconds(slot, tuning);
         var forbidden = (ulong)StateTag.Dead;
         ulong requiredAbility = ResolveRequiredAbilityTags(slot);
         return GameplayIntent.ForEntry(
@@ -57,9 +63,10 @@ public static class SkillEntryIntentFactory
         Vector2 directionAxis = default,
         Vector2 moveBuffered = default,
         bool moveBufferValid = false,
-        SkillEntrySlot modifierSlot = SkillEntrySlot.Any)
+        SkillEntrySlot modifierSlot = SkillEntrySlot.Any,
+        LocomotionTuningSO tuning = null)
     {
-        var intent = ForEntry(slot, time, holdSeconds, moveBuffered, moveBufferValid);
+        var intent = ForEntry(slot, time, holdSeconds, moveBuffered, moveBufferValid, tuning);
         intent.Semantic = semantic;
         intent.DirectionAxis = directionAxis;
         intent.ComboIndex = comboIndex;

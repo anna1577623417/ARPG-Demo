@@ -13,8 +13,11 @@ MonoBehaviour:
   m_Name: Group_8-dir-Dodge
   m_EditorClassIdentifier: 
   displayName: 
-  icon: {fileID: 21300000, guid: d73faddfc2dcc594f83c9041a83bedfa, type: 3}
+  icon: {fileID: 21300000, guid: a6ebf3b3b338ed442a8da8887fb61c95, type: 3}
+  presentationId: 
   showOnHud: 1
+  showPolicy: 0
+  description: {fileID: 0}
   baseCooldownSeconds: 0
   costs: []
   requiredAbilityTags: 0
@@ -40,6 +43,9 @@ MonoBehaviour:
   useFallbackOnNeutral: 1
   fallbackRoute: {fileID: 11400000, guid: 52e875ef26ff6f24f87004db035a4160, type: 2}
   motionForwardRoute: {fileID: 11400000, guid: db4eed8bc926fd84c9779557195b4361, type: 2}
+  directionalInputFrame: 0
+  useMotionCurveBasisOverride: 1
+  motionCurveBasisOverride: 0
   abilityGateRules: []
   defaultToForwardWhenNeutral: 1
   _1733NeutralMigrated: 1

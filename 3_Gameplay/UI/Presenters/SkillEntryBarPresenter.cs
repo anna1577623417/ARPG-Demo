@@ -11,6 +11,7 @@ using UnityEngine;
 ///   · 未走 PlayerHudBootstrap 时，可勾选 autoBindFromPlayerManager 自行订阅在场 Player。
 /// </summary>
 [DefaultExecutionOrder(-40)]
+[System.Obsolete("Use SkillBarRoutePresenter (211.3 D1).")]
 public sealed class SkillEntryBarPresenter : MonoBehaviour
 {
     const float DefaultWidgetCellSize = 100f;
@@ -48,6 +49,27 @@ public sealed class SkillEntryBarPresenter : MonoBehaviour
         SuppressSceneChildrenUnderRoot();
         EnsurePool();
         RefreshFromPlayer();
+
+        HudBugProbe.LogLegacyPresenterActive(this, player);
+        var handles = player.SkillEntries?.HudHandles;
+        var visible = 0;
+        if (handles != null)
+        {
+            for (var i = 0; i < handles.Count; i++)
+            {
+                if (handles[i] != null && handles[i].ShowOnHud)
+                {
+                    visible++;
+                }
+            }
+        }
+
+        HudBugProbe.LogPresenterBind(
+            this,
+            player,
+            visible,
+            CountActivePooledWidgets(),
+            nameof(SkillEntryBarPresenter));
 
         if (player != null && GameMainDebugSettings.SkillRouteGraph)
         {
@@ -267,6 +289,21 @@ public sealed class SkillEntryBarPresenter : MonoBehaviour
 
             SetWidgetActive(_pool[i], active);
         }
+    }
+
+    int CountActivePooledWidgets()
+    {
+        var count = 0;
+        for (var i = 0; i < _pool.Count; i++)
+        {
+            var w = _pool[i];
+            if (w != null && w.gameObject.activeSelf)
+            {
+                count++;
+            }
+        }
+
+        return count;
     }
 
     static void SetWidgetActive(RouteWidget widget, bool active)

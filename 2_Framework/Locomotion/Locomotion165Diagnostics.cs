@@ -154,7 +154,7 @@ public static class Locomotion165Diagnostics
             return;
         }
 
-        if (!GameMainDebugSettings.Locomotion && !GameMainDebugSettings.Stop && endHint == LocomotionStateId.None)
+        if (!GameMainDebugSettings.Locomotion && !GameMainDebugSettings.Stop)
         {
             return;
         }

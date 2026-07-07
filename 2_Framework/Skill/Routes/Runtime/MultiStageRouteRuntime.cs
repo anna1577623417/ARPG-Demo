@@ -60,13 +60,24 @@ public sealed class MultiStageRouteRuntime : SkillRouteRuntime
             }
         }
 
+        if (IsActive && def.Stages != null
+            && CurrentStageIndex >= 0 && CurrentStageIndex < def.Stages.Length)
+        {
+            var active = def.Stages[CurrentStageIndex];
+            if (active != null && active.HudIcon != null)
+            {
+                icon = active.HudIcon;
+                return true;
+            }
+        }
+
         if (def.Stages != null && def.Stages.Length > 0 && def.Stages[0] != null && def.Stages[0].HudIcon != null)
         {
             icon = def.Stages[0].HudIcon;
             return true;
         }
 
-        icon = def.Icon;
+        icon = def.GetEffectiveIcon();
         return icon != null;
     }
 
@@ -91,7 +102,7 @@ public sealed class MultiStageRouteRuntime : SkillRouteRuntime
             return;
         }
 
-        ArmPendingStage(1, ctx.Now, def.StageChainArmSeconds);
+        ArmPendingStage(1, ctx.Now, def.StageChainArmSeconds, ctx.Self as Player);
     }
 
     /// <summary>首段播完、等待锚点（仅 PressToAdvance + OnSkillAnchorReady）。</summary>
@@ -126,7 +137,7 @@ public sealed class MultiStageRouteRuntime : SkillRouteRuntime
 
         if (ctx.HitTally != null && ctx.HitTally.HitsHero > 0)
         {
-            ArmPendingStage(1, ctx.Now, def.StageChainArmSeconds);
+            ArmPendingStage(1, ctx.Now, def.StageChainArmSeconds, ctx.Self as Player);
         }
     }
 
@@ -144,6 +155,7 @@ public sealed class MultiStageRouteRuntime : SkillRouteRuntime
         {
             ClearPendingEntry();
             CurrentStageIndex = idx;
+            BumpPresentationRevisionAndLog(ctx.Self as Player, -1, idx);
         }
         else
         {
@@ -308,7 +320,7 @@ public sealed class MultiStageRouteRuntime : SkillRouteRuntime
             case MultiStageChainMode.PressToAdvance:
                 if (def.ArmNextStageTrigger == MultiStageArmTrigger.OnFirstStageComplete)
                 {
-                    ArmPendingStage(1, ctx.Now, def.StageChainArmSeconds);
+                    ArmPendingStage(1, ctx.Now, def.StageChainArmSeconds, ctx.Self as Player);
                 }
                 else
                 {
@@ -319,13 +331,13 @@ public sealed class MultiStageRouteRuntime : SkillRouteRuntime
             case MultiStageChainMode.HitToAdvance:
                 if (ctx.HitTally != null && ctx.HitTally.HitsHero > 0)
                 {
-                    ArmPendingStage(1, ctx.Now, def.StageChainArmSeconds);
+                    ArmPendingStage(1, ctx.Now, def.StageChainArmSeconds, ctx.Self as Player);
                 }
                 break;
         }
     }
 
-    void ArmPendingStage(int stageIndex, float now, float windowSeconds)
+    void ArmPendingStage(int stageIndex, float now, float windowSeconds, Player player)
     {
         var def = Definition as MultiStageRouteDefinition;
         if (def?.Stages == null || stageIndex < 0 || stageIndex >= def.Stages.Length)
@@ -334,8 +346,24 @@ public sealed class MultiStageRouteRuntime : SkillRouteRuntime
         }
 
         var win = windowSeconds > 0f ? windowSeconds : 5f;
+        var prev = _pendingEntryStageIndex;
         _pendingEntryStageIndex = stageIndex;
         _pendingEntryExpireTime = now + win;
+        BumpPresentationRevisionAndLog(player, prev, stageIndex);
+    }
+
+    void BumpPresentationRevisionAndLog(Player player, int fromStage, int toStage)
+    {
+        BumpPresentationRevision();
+        if (player == null)
+        {
+            return;
+        }
+
+        SkillRouteDebug.Log(
+            player,
+            SkillRouteDebug.CatHud,
+            $"revision bump slot=- idx={toStage} stage={fromStage}→{toStage} rev={PresentationRevision}");
     }
 
     static void ClearAnchorMechanicTag(in SkillRouteContext ctx)

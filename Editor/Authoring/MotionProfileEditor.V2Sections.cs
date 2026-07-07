@@ -50,23 +50,47 @@ public sealed partial class MotionProfileEditor
     void DrawV2RotationSection()
     {
         s_v2RotationFoldout = EditorGUILayout.BeginFoldoutHeaderGroup(
-            s_v2RotationFoldout, "▸ V2 · Rotation / 朝向旋转");
+            s_v2RotationFoldout, "▸ 210.5 · Action Yaw / 水平旋转（表现层）");
         if (s_v2RotationFoldout)
         {
             EditorGUILayout.HelpBox(
-                "动作期间角色 Yaw 的旋转策略。\n" +
-                "• None → 不旋转（默认；外层 PlayerState 决定）。\n" +
-                "• YawCurve → 按 YawOverTime 曲线驱动 Yaw（度，相对起手朝向）；适合「斩击转身」「旋风斩」。\n" +
-                "• AlignToVelocity → 持续对齐位移方向；适合 DMC 冲刺斩。\n" +
-                "• AlignToTargetLock → 持续对齐锁定目标。",
+                "Action 期绕 Y 轴的朝向偏移（相对起手 forward）。\n" +
+                "• None — 不参与 Action Yaw（默认）。\n" +
+                "• Constant — 恒为 Start 角度；End 锁定只读。\n" +
+                "• Curve — Start° → End°，Yaw Blend 曲线 0→1 为插值进度。\n" +
+                "【重要】Yaw 不改变 MP 位移轨迹；位移请编辑 XYZ 曲线 + Motion Space。",
                 MessageType.Info);
 
-            EditorGUILayout.PropertyField(
-                serializedObject.FindProperty(nameof(MotionProfileSO.V2RotationMode)),
-                new GUIContent("Rotation Mode"));
-            EditorGUILayout.PropertyField(
-                serializedObject.FindProperty(nameof(MotionProfileSO.V2YawOverTime)),
-                new GUIContent("Yaw Over Time (deg)"));
+            var policyProp = serializedObject.FindProperty(nameof(MotionProfileSO.YawPolicy));
+            EditorGUILayout.PropertyField(policyProp, new GUIContent("Yaw Policy"));
+
+            var policy = (YawPolicyMode)policyProp.enumValueIndex;
+            if (policy != YawPolicyMode.None)
+            {
+                var startProp = serializedObject.FindProperty(nameof(MotionProfileSO.YawStartDegrees));
+                EditorGUILayout.PropertyField(startProp, new GUIContent("Yaw Start (deg)"));
+
+                if (policy == YawPolicyMode.Constant)
+                {
+                    serializedObject.FindProperty(nameof(MotionProfileSO.YawEndDegrees)).floatValue =
+                        startProp.floatValue;
+                    using (new EditorGUI.DisabledScope(true))
+                    {
+                        EditorGUILayout.FloatField(
+                            new GUIContent("Yaw End (deg)"),
+                            startProp.floatValue);
+                    }
+                }
+                else
+                {
+                    EditorGUILayout.PropertyField(
+                        serializedObject.FindProperty(nameof(MotionProfileSO.YawEndDegrees)),
+                        new GUIContent("Yaw End (deg)"));
+                    EditorGUILayout.PropertyField(
+                        serializedObject.FindProperty(nameof(MotionProfileSO.YawBlendOverTime)),
+                        new GUIContent("Yaw Blend Over Time"));
+                }
+            }
         }
         EditorGUILayout.EndFoldoutHeaderGroup();
     }

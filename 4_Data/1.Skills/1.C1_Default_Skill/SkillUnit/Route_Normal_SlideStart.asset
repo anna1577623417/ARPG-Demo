@@ -15,7 +15,11 @@ MonoBehaviour:
   routeId: 
   icon: {fileID: 21300000, guid: 12c151ebe8a59984fbab977b984e3d53, type: 3}
   displayName: 
+  presentationId: 
   showOnHud: 1
+  showPolicy: 0
+  presentationAsset: {fileID: 0}
+  description: {fileID: 0}
   priority: 5
   cooldownPolicy: 1
   baseCooldownSeconds: 1
@@ -48,3 +52,4 @@ MonoBehaviour:
   overrideCost: 0
   abilityGateRules:
   - {fileID: 11400000, guid: f1a2b3c4d5e6789012345678abcdef01, type: 2}
+  singleAction: 1

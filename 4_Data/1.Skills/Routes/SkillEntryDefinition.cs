@@ -23,9 +23,6 @@ public class SkillEntryDefinition : ScriptableObject
     [SerializeField, Tooltip("入口绑定的槽位 — 与 InputReader 物理键映射。")]
     private SkillEntrySlot slot;
 
-    [SerializeField, Tooltip("HUD 显示名（本地化前的原文）。")]
-    private string displayName;
-
     [SerializeField, Tooltip("HUD 备用图标（当无 Route 激活时显示）。")]
     private Sprite fallbackIcon;
 
@@ -76,7 +73,6 @@ public class SkillEntryDefinition : ScriptableObject
 
     // ── 公有只读暴露 ──
     public SkillEntrySlot Slot => slot;
-    public string DisplayName => displayName;
     public Sprite FallbackIcon => fallbackIcon;
     public ChargeRouteDefinition ChargeRoute => chargeRoute;
     public ComboRouteDefinition ComboRoute => comboRoute;
@@ -213,26 +209,6 @@ public class SkillEntryDefinition : ScriptableObject
         }
 
         return true;
-    }
-
-    /// <summary>聚合所有 Route 给 HUD Presenter 用（不含派生招池）。</summary>
-    /// <remarks>0-GC 调用方需提供 buffer，长度 ≥ 5。返回写入的数量。</remarks>
-    public int CollectVisibleRoutes(SkillRouteDefinition[] buffer)
-    {
-        var n = 0;
-        if (buffer == null || buffer.Length == 0)
-        {
-            return 0;
-        }
-
-        if (chargeRoute     != null && chargeRoute.ShowOnHud     && n < buffer.Length) buffer[n++] = chargeRoute;
-        if (comboRoute      != null && comboRoute.ShowOnHud      && n < buffer.Length) buffer[n++] = comboRoute;
-        if (extendedComboRoute != null && extendedComboRoute.ShowOnHud && n < buffer.Length) buffer[n++] = extendedComboRoute;
-        if (airComboRoute   != null && airComboRoute.ShowOnHud   && n < buffer.Length) buffer[n++] = airComboRoute;
-        if (multiStageRoute != null && multiStageRoute.ShowOnHud && n < buffer.Length) buffer[n++] = multiStageRoute;
-        if (normalRoute     != null && normalRoute.ShowOnHud     && n < buffer.Length) buffer[n++] = normalRoute;
-
-        return n;
     }
 
 #if UNITY_EDITOR

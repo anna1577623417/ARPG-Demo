@@ -39,7 +39,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 83f8cc9046897f84e902da4c736344f7, type: 2}
   grantedStateTags: 0
   grantedAbilityTags: 0
-  ownerGroup: {fileID: 11400000, guid: 2535ec7a6cbfc244c8d8c171bb8e1940, type: 2}
+  ownerGroup: {fileID: 0}
   overrideCooldown: 0
   overrideIcon: 0
   overrideCost: 0

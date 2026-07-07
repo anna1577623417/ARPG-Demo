@@ -163,6 +163,7 @@ public sealed class SkillGroupDefinitionInspector : Editor
                 "· Input Frame = Body Fixed\n" +
                 "· Override Motion Curve Basis = ✓\n" +
                 "· Motion Curve Basis = Character Forward\n\n" +
+                "Slide 斜向（210.2）：Profile Motion Space = Displacement Aligned + Rotation = Align To Velocity。\n" +
                 "Logic Projected = 移动意图投影分槽（对脸 D 可能 Left 槽）。",
                 MessageType.Info);
         }

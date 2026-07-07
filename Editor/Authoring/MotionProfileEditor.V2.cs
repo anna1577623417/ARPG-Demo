@@ -15,7 +15,7 @@ public sealed partial class MotionProfileEditor
     static readonly (string Label, string PropName)[] s_v2CurveTargets = new (string, string)[]
     {
         ("Gravity Weight",      nameof(MotionProfileSO.V2GravityWeight)),
-        ("Yaw Over Time",       nameof(MotionProfileSO.V2YawOverTime)),
+        ("Yaw Blend Over Time", nameof(MotionProfileSO.YawBlendOverTime)),
         ("Facing Input Weight", nameof(MotionProfileSO.V2FacingInputWeight)),
         ("Move Input Weight",   nameof(MotionProfileSO.V2MoveInputWeight)),
         ("Target Tracking",     nameof(MotionProfileSO.V2TargetTrackingWeight)),
@@ -80,9 +80,9 @@ public sealed partial class MotionProfileEditor
             sb.Append("Gravity(Curve) ");
             anyActive = true;
         }
-        if (p.V2RotationMode != RotationMode.None)
+        if (p.UsesActionYaw)
         {
-            sb.Append($"Rotation({p.V2RotationMode}) ");
+            sb.Append($"ActionYaw({p.YawPolicy}) ");
             anyActive = true;
         }
         if (p.V2YStrategy != YStrategyV2.Default)

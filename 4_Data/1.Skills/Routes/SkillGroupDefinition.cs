@@ -14,8 +14,14 @@ public sealed class SkillGroupDefinition : ScriptableObject, ISkillUnit
     // 173.3 — Header attributes removed; SkillGroupDefinitionInspector owns layout.
     [SerializeField] string displayName;
     [SerializeField] Sprite icon;
+    [SerializeField, Tooltip("211.3 — 稳定展示 ID（Validate Warning）。")]
+    string presentationId;
     [SerializeField, Tooltip("是否在 HUD 显示本技能组（一槽一个 Widget；子 Route 无需单独勾选 Show On Hud）。")]
     bool showOnHud;
+    [SerializeField, Tooltip("214 — HUD 显隐策略；Auto 时回落 showOnHud。")]
+    HudShowPolicy showPolicy = HudShowPolicy.Auto;
+    [SerializeField, Tooltip("214 D5 — 技能描述（Tooltip OPEN）。")]
+    SkillDescriptionSO description;
     [SerializeField, Min(0f)] float baseCooldownSeconds = 1f;
     [SerializeField] SkillCostEntry[] costs;
     [SerializeField] ulong requiredAbilityTags;
@@ -82,8 +88,17 @@ public sealed class SkillGroupDefinition : ScriptableObject, ISkillUnit
 #endif
 
     public string DisplayName => string.IsNullOrEmpty(displayName) ? name : displayName;
+    public string GetEffectiveDisplayName() => DisplayName;
+    public string PresentationId => presentationId ?? string.Empty;
+
+    /// <summary>HUD 诊断用 — presentationId 非空优先，否则回落资产名（= 默认 GroupId）。</summary>
+    public string GetEffectiveUnitId() => !string.IsNullOrEmpty(presentationId) ? presentationId : name;
+
     public Sprite Icon => icon;
+    [System.Obsolete("Use IsHudVisible() / showPolicy (211.3).")]
     public bool ShowOnHud => showOnHud;
+    public HudShowPolicy HudShowPolicy => showPolicy;
+    public SkillDescriptionSO Description => description;
     public float CooldownSeconds => baseCooldownSeconds;
     public SkillCostEntry[] Costs => costs;
     public ulong RequiredAbilityTags => requiredAbilityTags;
@@ -104,6 +119,22 @@ public sealed class SkillGroupDefinition : ScriptableObject, ISkillUnit
     public bool UseMotionCurveBasisOverride => useMotionCurveBasisOverride;
     public MotionSpace MotionCurveBasisOverride => motionCurveBasisOverride;
     public AbilityGateRuleSO[] AbilityGateRules => abilityGateRules;
+
+    /// <summary>214 — 运行时 HUD 显隐。</summary>
+    public bool IsHudVisible()
+    {
+        switch (showPolicy)
+        {
+            case HudShowPolicy.ForceVisible:
+                return true;
+            case HudShowPolicy.ForceHidden:
+                return false;
+            case HudShowPolicy.DebugOnly:
+                return GameMainDebugSettings.SkillRouteGraph;
+            default:
+                return showOnHud;
+        }
+    }
 
     /// <summary>209.3 — 位移分轨：Group 覆盖或读 Profile.MotionSpace。</summary>
     public MotionSpace ResolveMotionCurveBasis(MotionProfileSO profile)

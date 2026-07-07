@@ -42,7 +42,7 @@ public sealed class ActionSkillStageBatchWindow : EditorWindow
     Vector2 m_scroll;
     readonly List<StagePreview> m_previews = new List<StagePreview>(32);
 
-    [MenuItem("Tools/Skill/Action → SkillStage Batch...", false, 11)]
+    [MenuItem("GameMain/Skill/Action → SkillStage Batch...", false, 11)]
     public static void OpenWindow()
     {
         var w = GetWindow<ActionSkillStageBatchWindow>(true, "Action → SkillStage", true);

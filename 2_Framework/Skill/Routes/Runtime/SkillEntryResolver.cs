@@ -600,6 +600,8 @@ internal sealed class SkillEntryResolver
         SkillRouteDefinition picked = null;
         var hadDirectionalPick = false;
         var owner = _host.Owner;
+        var isMotionModeForDiag = false;
+        var pulseAxisForDiag = Vector2.zero;
 
         var useDirectional = semantic == InputSemanticType.Directional
             || semantic == InputSemanticType.Tap
@@ -615,6 +617,7 @@ internal sealed class SkillEntryResolver
             var axis = intent.DirectionAxis.sqrMagnitude > dirDeadzoneSq
                 ? intent.DirectionAxis
                 : inputSnapshot.MoveBuffered;
+            pulseAxisForDiag = axis;
             var hasDirection = axis.sqrMagnitude > dirDeadzoneSq;
 
             if (hasDirection)
@@ -623,6 +626,7 @@ internal sealed class SkillEntryResolver
                 resolvedDir = owner != null
                     ? owner.ResolveDirectionalChord(axis, out isMotionMode)
                     : InputChordResolver.Resolve(axis);
+                isMotionModeForDiag = isMotionMode;
                 hadDirectionalPick = true;
 
                 if (isMotionMode && group.MotionForwardRoute != null)
@@ -666,6 +670,17 @@ internal sealed class SkillEntryResolver
                             isMotionMode ? "Motion" : "Chord",
                             resolvedDir,
                             picked.name);
+                        if (!isMotionMode
+                            && owner != null
+                            && owner.InputContext.MoveActive
+                            && owner.InputContext.MoveHoldDurationSec(Time.time) > 0.12f)
+                        {
+                            HoldMotionDodgeProbe.LogPickMismatch(
+                                isMotionMode,
+                                resolvedDir,
+                                picked.name,
+                                "move_still_held_but_chord_picked");
+                        }
                     }
                 }
             }
@@ -699,6 +714,22 @@ internal sealed class SkillEntryResolver
         {
             picked = group.FallbackRoute;
         }
+
+        var ctxHoldDur = owner != null ? owner.InputContext.MoveHoldDurationSec(Time.time) : -1f;
+        var chordWin = owner?.LocomotionProfile?.Tuning != null
+            ? owner.LocomotionProfile.Tuning.ChordWindowSec
+            : 0.12f;
+        DirectionalInputDiagProbe.NotifyResolvedDir(resolvedDir);
+        DirectionalInputDiagProbe.LogPick(
+            owner,
+            group,
+            semantic,
+            pulseAxisForDiag,
+            isMotionModeForDiag,
+            resolvedDir,
+            picked != null ? picked.name : null,
+            ctxHoldDur,
+            chordWin);
 
         if (_host.TryPickRouteDefinition(picked, in ctx, out runtime))
         {

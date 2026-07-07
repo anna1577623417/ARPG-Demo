@@ -105,12 +105,18 @@ public class MotionProfileSO : ScriptableObject
     [Tooltip("重力权重曲线（0=Suspend / 1=Use / >1=强化下坠）。仅 V2GravityWeightMode=Curve 生效。")]
     public AnimationCurve V2GravityWeight = AnimationCurve.Constant(0f, 1f, 1f);
 
-    [Header("V2 · Rotation (174.2)")]
-    [Tooltip("Yaw 旋转模式：None / YawCurve / AlignToVelocity / AlignToTargetLock。")]
-    public RotationMode V2RotationMode = RotationMode.None;
+    [Header("210.5 · Action Yaw (Presentation)")]
+    [Tooltip("Action 期绕 Y 轴朝向策略。仅影响 LogicForward / 表现；不改变 MP 位移轨迹。")]
+    public YawPolicyMode YawPolicy = YawPolicyMode.None;
 
-    [Tooltip("Yaw 旋转曲线（度，相对动作起手朝向）。仅 V2RotationMode=YawCurve 生效。")]
-    public AnimationCurve V2YawOverTime = AnimationCurve.Linear(0f, 0f, 1f, 0f);
+    [Tooltip("相对 Action 起手 forward 的起始 Yaw 偏移（度）。")]
+    public float YawStartDegrees;
+
+    [Tooltip("Curve 策略下的结束 Yaw 偏移（度）。Constant 策略下运行时恒等于 Start。")]
+    public float YawEndDegrees;
+
+    [Tooltip("Curve 策略：归一化 motionT→[0,1] 插值因子；0=Start，1=End。")]
+    public AnimationCurve YawBlendOverTime = AnimationCurve.Linear(0f, 0f, 1f, 1f);
 
     [Header("V2 · Control (174.2)")]
     [Tooltip("玩家输入对角色朝向的影响权重 0~1。0=完全锁朝向；1=完全跟随输入。\n" +
@@ -269,17 +275,22 @@ public class MotionProfileSO : ScriptableObject
         return Mathf.Max(0f, V2GravityWeight.Evaluate(Mathf.Clamp01(t)));
     }
 
-    /// <summary>174.2 — Yaw 旋转覆盖（度）。仅 RotationMode=YawCurve 时返回曲线值；其余返回 0。</summary>
-    public float SampleYawOverride(float t)
+    /// <summary>210.5 — Action 期 Yaw 偏移（度，相对起手 forward）。不影响位移。</summary>
+    public float SampleActionYawDegrees(float motionT)
+        => ActionYawResolver.SampleActionYawDegrees(this, motionT);
+
+    /// <summary>210.5 — 是否启用 Action Yaw 策略。</summary>
+    public bool UsesActionYaw => YawPolicy != YawPolicyMode.None;
+
+    /// <summary>210.5 — Curve 策略下的 [0,1] 混合因子。</summary>
+    public float SampleYawBlendFactor(float motionT)
     {
-        if (V2RotationMode != RotationMode.YawCurve
-            || V2YawOverTime == null
-            || V2YawOverTime.length == 0)
+        if (YawBlendOverTime == null || YawBlendOverTime.length == 0)
         {
-            return 0f;
+            return Mathf.Clamp01(motionT);
         }
 
-        return V2YawOverTime.Evaluate(Mathf.Clamp01(t));
+        return Mathf.Clamp01(YawBlendOverTime.Evaluate(Mathf.Clamp01(motionT)));
     }
 
     /// <summary>174.2 — 玩家朝向输入权重 0~1。默认 1（V1 由外层 PlayerState 决定）。</summary>

@@ -87,6 +87,7 @@ public sealed class PlayerActionState : PlayerState
             player,
             m_action.MotionProfile,
             ResolveActiveOwnerGroup(player));
+        m_motionPlayback.SetBurstFaceDir(m_burstFaceDir);
 
         player.Tags.Add(TagCategory.State, (ulong)StateTag.PhaseStartup);
 
@@ -97,6 +98,13 @@ public sealed class PlayerActionState : PlayerState
             in m_stopCtx,
             m_burstFaceDir,
             ResolveDurationSeconds());
+
+        DirectionalInputDiagProbe.LogPlay(
+            player,
+            m_action,
+            ResolveActiveOwnerGroup(player),
+            m_burstFaceDir,
+            DirectionalInputDiagProbe.LastResolvedDir);
 
         player.BeginAttackWithManualCompletion();
         var presentationClip = ResolvePresentationClip(player, m_action);
@@ -254,6 +262,7 @@ public sealed class PlayerActionState : PlayerState
             player,
             action.MotionProfile,
             ResolveActiveOwnerGroup(player));
+        m_motionPlayback.SetBurstFaceDir(m_burstFaceDir);
 
         m_motionPlayback.RestartForSwap(
             player,
@@ -328,6 +337,7 @@ public sealed class PlayerActionState : PlayerState
         var chargePlayback = hasChargePlayback ? chargeRoute.Playback : default;
         nt = m_motionPlayback.TickFrame(
             player,
+            m_action,
             m_prevNormalizedTime,
             nt,
             m_actionSwappedThisFrame,

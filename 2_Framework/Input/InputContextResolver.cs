@@ -61,25 +61,43 @@ public sealed class InputContextResolver
         float contextWindowSec,
         float directionGraceSec = DefaultDirectionGraceSec)
     {
-        if (!_loadoutHasDirectionalModifier || _directionalCommitted)
+        if (!_loadoutHasDirectionalModifier)
         {
             return;
         }
 
         var hasMove = rawMove.sqrMagnitude > moveDeadZone * moveDeadZone;
+
+        // 212.2 — Commit 期间仍跟踪松手，避免 moveActive 脏留；Hold 计时不在此清。
+        if (_directionalCommitted)
+        {
+            if (!hasMove && _moveActive)
+            {
+                _moveActive = false;
+                _lastMoveReleaseTime = now;
+            }
+
+            return;
+        }
+
         if (hasMove)
         {
             if (!_moveActive)
             {
+                var prevSince = _moveActiveSince;
                 _moveActive = true;
                 _moveActiveSince = now;
-                // 208.1 — 每次 MoveDown 刷新捕获；Locomotion 运行中 LogicForward 会变，不可继承旧键快照。
                 _capturedPlanarForward = planarForward;
 
                 _contextRotationSuppressed = true;
                 _contextSuppressUntil = now + Mathf.Max(0.02f, contextWindowSec);
                 LogGateIfFlipped(now);
-                // 206.1 — 方向键按下沿，输出 [DodgeChord8] MoveDown
+                HoldMotionDodgeProbe.LogMoveDown(
+                    now,
+                    prevSince,
+                    prevSince > -900f,
+                    rawMove,
+                    prevSince > -900f ? "re-press" : "fresh");
                 DodgeChord8Probe.LogMoveDown(rawMove, Vector3.zero, planarForward, now);
             }
             else
@@ -130,13 +148,17 @@ public sealed class InputContextResolver
     }
 
     /// <summary>
-    /// Directional 语义入队时调用 — 锁定 Motion 基底（仅 CharacterForward Profile 读取）。
-    /// 209.2 — Chord/Motion 均 commit live LogicForward；CameraForward Profile 走 MotionSpaceBasis，不读本字段。
+    /// Directional 语义入队时调用 — 锁定 Motion 基底。
+    /// 213.6 契约：CharacterForward Profile 读 _committedPlanarForward；
+    /// Chord / Motion 均由 Player 传入 live LogicForward（characterForward@Chord / liveLogicForward@Motion）。
+    /// 禁止 cameraAxis@Chord — 见 213.5 / 213.6 蓝图。
     /// </summary>
     public void CommitDirectionalAbility(
-        in Vector3 fallbackPlanarForward,
+        in Vector3 committedPlanarForward,
+        in Vector3 livePlanarForward,
         float holdDurationSec,
-        float chordWindowSec)
+        float chordWindowSec,
+        string commitSource)
     {
         if (!_loadoutHasDirectionalModifier)
         {
@@ -144,11 +166,7 @@ public sealed class InputContextResolver
         }
 
         _directionalCommitted = true;
-        var useChordWindow = _moveActive
-            && holdDurationSec >= 0f
-            && holdDurationSec <= chordWindowSec;
-        _committedPlanarForward = Planarize(fallbackPlanarForward);
-        var commitSource = useChordWindow ? "characterForward@Chord" : "liveLogicForward@Motion";
+        _committedPlanarForward = Planarize(committedPlanarForward);
 
         _contextRotationSuppressed = true;
         _capturedDirty = true;
@@ -156,19 +174,44 @@ public sealed class InputContextResolver
         DodgeChord8Probe.LogDirectionalCommit(
             _committedPlanarForward,
             _capturedPlanarForward,
-            fallbackPlanarForward,
+            livePlanarForward,
+            holdDurationSec,
+            chordWindowSec,
+            commitSource);
+        DirectionalInputDiagProbe.LogCommit(
+            _committedPlanarForward,
+            _capturedPlanarForward,
+            livePlanarForward,
             holdDurationSec,
             chordWindowSec,
             commitSource);
     }
 
-    public void ClearDirectionalActionContext()
+    /// <summary>Directional 动作结束 — 清 Commit；若 WASD 仍按住则保留 MoveHold 计时（212.2）。</summary>
+    public void ClearDirectionalActionContext(Vector2 liveMoveInput = default, float moveDeadZone = 0.12f)
     {
+        var moveActiveBefore = _moveActive;
+        var moveActiveSinceBefore = _moveActiveSince;
+        var committedBefore = _directionalCommitted;
+        var preserveMoveHold = liveMoveInput.sqrMagnitude > moveDeadZone * moveDeadZone;
+
         _directionalCommitted = false;
         _contextRotationSuppressed = false;
-        _moveActive = false;
         _contextSuppressUntil = -999f;
         _capturedDirty = false;
+
+        if (!preserveMoveHold)
+        {
+            _moveActive = false;
+        }
+
+        HoldMotionDodgeProbe.LogContextClear(
+            "ClearDirectionalActionContext",
+            preserveMoveHold,
+            moveActiveBefore,
+            moveActiveSinceBefore,
+            liveMoveInput,
+            committedBefore);
     }
 
     public void ClearAll()

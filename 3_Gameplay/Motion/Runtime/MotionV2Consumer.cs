@@ -3,7 +3,7 @@ using UnityEngine;
 /// <summary>
 /// 174.2 — Player / Motor 层消费 V2 通道的统一 helper。
 /// <para>暴露的接入点（Player 层调用）：</para>
-/// <para>  · <see cref="ComposeFinalYaw"/> — Yaw 曲线 + 玩家输入按 FacingInputWeight 加权</para>
+/// <para>  · <see cref="ComposeFinalYaw"/> — 起手 Yaw + 玩家输入按 FacingInputWeight 加权</para>
 /// <para>  · <see cref="ComposeFinalMoveDelta"/> — XYZ 曲线位移 + 玩家输入按 MoveInputWeight 叠加</para>
 /// <para>  · <see cref="ComposeFinalPositionWithRm"/> — 曲线位移与 Animator Root Motion 按 RmBlend 混合</para>
 /// <para>  · <see cref="ApplyHitstopToDeltaTime"/> — 按 HitstopMultiplier 调整 motionT 推进速率</para>
@@ -12,7 +12,7 @@ using UnityEngine;
 public static class MotionV2Consumer
 {
     /// <summary>
-    /// 合成 Yaw：曲线 + 玩家输入按 FacingInputWeight 加权。
+    /// 合成 Yaw：起手 Yaw + 玩家输入按 FacingInputWeight 加权（210.5 后位移 Yaw 曲线已移除）。
     /// </summary>
     /// <param name="startYawDegrees">动作起手时角色 Yaw（度，世界空间）。</param>
     /// <param name="contribution">MotionExecutor.LastContribution。</param>
@@ -23,9 +23,7 @@ public static class MotionV2Consumer
         in MotionContribution contribution,
         float playerInputYawDegrees)
     {
-        var curveYaw = contribution.RotationMode == RotationMode.YawCurve
-            ? startYawDegrees + contribution.YawOverrideDegrees
-            : startYawDegrees;
+        var curveYaw = startYawDegrees;
 
         var facingW = contribution.ResolvedFacingInputWeight;
         if (facingW <= 0.0001f)

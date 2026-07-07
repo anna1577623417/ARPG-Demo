@@ -4,14 +4,12 @@ using UnityEditor;
 using UnityEngine;
 
 /// <summary>
-/// 175.2 — Jump 系统资产工厂菜单。
-/// 一键生成 5 基础 Variant + 2 雨2 Modifier + 1 LandingProfile + 1 BaseConfig。
+/// 175.2 — Jump 系统资产工厂（菜单已移除；保留 API 供脚本调用）。
 /// </summary>
 public static class JumpPresetFactory
 {
     const string Folder = "Assets/GameMain/4_Data/Jump/Presets";
 
-    [MenuItem("GameMain/Jump/Create All P0 Assets")]
     public static void CreateAll()
     {
         EnsureFolder(Folder);

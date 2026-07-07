@@ -27,6 +27,14 @@ public sealed class SkillEntryLoadoutEditor : Editor
         DrawCombatFlowRuntimeSummary((SkillEntryLoadoutSO)target);
 
         EditorGUILayout.Space(6f);
+        if (GUILayout.Button("Validate HUD Presentation"))
+        {
+            var loadout = (SkillEntryLoadoutSO)target;
+            var validation = SkillHudPresentationValidator.Validate(loadout);
+            SkillHudPresentationValidator.LogToConsole(validation);
+        }
+
+        EditorGUILayout.Space(6f);
         DrawPropertiesExcluding(serializedObject, "m_Script", "combatFlowEnabled", "combatFlow");
 
         serializedObject.ApplyModifiedProperties();

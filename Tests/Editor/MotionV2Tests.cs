@@ -16,7 +16,6 @@ public sealed class MotionV2Tests
         try
         {
             Assert.AreEqual(1f, p.SampleGravityWeight(0.5f), 0.001f, "默认 GravityWeight 应=1");
-            Assert.AreEqual(0f, p.SampleYawOverride(0.5f), 0.001f, "默认 Yaw=0");
             Assert.AreEqual(1f, p.SampleFacingInputWeight(0.5f), 0.001f, "默认 FacingW=1");
             Assert.AreEqual(0f, p.SampleMoveInputWeight(0.5f), 0.001f, "默认 MoveW=0");
             Assert.AreEqual(1f, p.SampleTargetTrackingWeight(0.5f), 0.001f, "默认 TrackW=1");

@@ -49,6 +49,11 @@ public abstract class SkillRouteRuntime
     /// <summary>本次 Cast 周期是否已完成 OnExit 收口（防重入：避免双倍结算 CD/资源）。</summary>
     protected bool m_finalizedExit;
 
+    /// <summary>213 — MultiStage 段切换时递增；HUD Widget 比较后 Refresh。</summary>
+    public int PresentationRevision { get; protected set; }
+
+    protected void BumpPresentationRevision() => PresentationRevision++;
+
     /// <summary>本 Route 周期内是否已按策略扣过 Route 级资源（每种策略各触发一次）。</summary>
     bool m_consumedOnRouteStart;
     bool m_consumedOnFirstStageStart;
@@ -67,6 +72,7 @@ public abstract class SkillRouteRuntime
         SuppressNextCooldown = false;
         SuppressRouteResourceConsume = false;
         m_finalizedExit = false;
+        PresentationRevision = 0;
         ResetResourceConsumeFlags();
     }
 

@@ -40,6 +40,7 @@ MonoBehaviour:
   IsLocomotionRecovery: 1
   RecoveryMoveLockSeconds: 0
   RecoveryJumpLockSeconds: 0
+  EnableRotationInput: 0
   TransitionType: 2
   OverrideGrammar: 0
   GrammarOverride:
@@ -52,8 +53,8 @@ MonoBehaviour:
   CanMoveDuringLocomotion: 1
   LeftFootSupportClip: {fileID: 0}
   RightFootSupportClip: {fileID: 0}
-  EnableStopFeature: 0
-  StopStrategy: 1
+  EnableStopFeature: 1
+  StopStrategy: 0
   InheritPhysics:
     MinSpeed: 1
     MaxSpeed: 8
@@ -65,11 +66,6 @@ MonoBehaviour:
     AffectY: 0
     AffectZ: 1
   ReferenceDuration: 0.25
-  EnableTailSegment: 0
-  TailSegmentStart: 0.75
-  TailSegmentEnd: 1
-  TapWindowSec: 0
-  ExitVelocityPolicy: 0
   LinearDecayDuration: 0.15
   ExpDecayHalfLife: 0.25
   FixedDecelDuration: 0.3
@@ -91,6 +87,8 @@ MonoBehaviour:
     InterruptibleByCategories: 31
     MinIncomingPriority: 0
     AllowSelfInterrupt: 0
+    AllowFacingInput: 0
+    AllowMoveInput: 0
     incomingAbilityGate: 0
     _legacyDirectStateTagMask: 0
   TeleportTriggers: []

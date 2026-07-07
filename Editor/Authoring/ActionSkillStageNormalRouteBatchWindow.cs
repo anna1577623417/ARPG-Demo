@@ -49,7 +49,7 @@ public sealed class ActionSkillStageNormalRouteBatchWindow : EditorWindow
     Vector2 m_scroll;
     readonly List<PipelinePreview> m_previews = new List<PipelinePreview>(32);
 
-    [MenuItem("Tools/Skill/Action → Stage → Route Batch...", false, 10)]
+    [MenuItem("GameMain/Skill/Action → Stage → Route Batch...", false, 10)]
     public static void OpenWindow()
     {
         var w = GetWindow<ActionSkillStageNormalRouteBatchWindow>(true, "Action → Stage → Route", true);

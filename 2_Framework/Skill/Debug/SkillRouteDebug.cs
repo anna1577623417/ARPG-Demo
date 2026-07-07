@@ -272,6 +272,9 @@ public static class SkillRouteDebug
             case CatGraph:
                 return true;
 
+            case CatHud:
+                return true;
+
             case CatSemantic:
                 return message.StartsWith("DIRECTIONAL");
 

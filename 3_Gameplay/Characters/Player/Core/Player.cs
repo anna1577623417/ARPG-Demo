@@ -210,6 +210,43 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
         return MotionSpaceBasis.ResolvePlanarForward(this, m_movementContext, space);
     }
 
+    /// <summary>Motion 管道专用 LogicForward 写入；绕过 InputContext 冻结与 Stop 锁。</summary>
+    public void SetLogicForwardFromMotion(
+        Vector3 dir,
+        RotationMode mode,
+        Vector3 worldDelta,
+        string source)
+    {
+        _ = mode;
+        _ = worldDelta;
+        _ = source;
+        var planar = PlanarizeFacing(dir);
+        var prev = m_logicForward;
+        if (Vector3.Angle(prev, planar) < 0.05f)
+        {
+            return;
+        }
+
+        m_logicForward = planar;
+
+        if (visualRoot != null && visualRoot != transform)
+        {
+            var visualWorldRot = visualRoot.rotation;
+            transform.rotation = Quaternion.LookRotation(m_logicForward, Vector3.up);
+            visualRoot.rotation = visualWorldRot;
+        }
+        else
+        {
+            transform.rotation = Quaternion.LookRotation(m_logicForward, Vector3.up);
+        }
+    }
+
+    static Vector3 PlanarizeFacing(Vector3 dir)
+    {
+        dir.y = 0f;
+        return dir.sqrMagnitude > 0.0001f ? dir.normalized : Vector3.forward;
+    }
+
     public bool ShouldSuppressLocomotionRotation()
         => m_inputContext.ShouldSuppressLocomotionRotation(Time.time);
 
@@ -218,12 +255,27 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
     public RotationArbitrationPolicy CurrentRotationPolicy()
         => m_inputContext.ResolvePolicy(Time.time);
 
-    public void CommitDirectionalInputContext()
+    public void CommitDirectionalInputContext(Vector2 pulseMoveBuffered)
     {
         var tuning = locomotionProfile != null ? locomotionProfile.Tuning : null;
         var chordWin = tuning != null ? tuning.ChordWindowSec : 0.12f;
-        var holdDur = m_inputContext.MoveHoldDurationSec(Time.time);
-        m_inputContext.CommitDirectionalAbility(Forward, holdDur, chordWin);
+        var now = Time.time;
+        var holdDur = m_inputContext.MoveHoldDurationSec(now);
+        var isChord = m_inputContext.MoveActive
+                      && holdDur >= 0f
+                      && holdDur <= chordWin;
+
+        // 213.6 — CharacterForward 契约：Commit 仅锁 LogicForward；pulse 只供 Pick / 诊断。
+        var commitFwd = PlanarizeFacing(Forward);
+        var source = isChord ? "characterForward@Chord" : "liveLogicForward@Motion";
+
+        m_inputContext.CommitDirectionalAbility(
+            commitFwd,
+            Forward,
+            holdDur,
+            chordWin,
+            source);
+
         if (tuning != null && tuning.ClearPlanarVelocityOnDirectionalCommit)
         {
             ClearPlanarVelocity();
@@ -234,12 +286,17 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
             SkillRouteDebug.LogDodge4(
                 this,
                 "InputCtx",
-                $"COMMIT directional fwd=({Forward.x:F2},{Forward.z:F2}) holdDur={holdDur:F3}s " +
+                $"COMMIT directional fwd=({commitFwd.x:F2},{commitFwd.z:F2}) source={source} " +
+                $"pulse=({pulseMoveBuffered.x:F2},{pulseMoveBuffered.y:F2}) holdDur={holdDur:F3}s " +
                 $"policy={CurrentRotationPolicy()}");
         }
     }
 
-    public void ClearDirectionalInputContext() => m_inputContext.ClearDirectionalActionContext();
+    public void ClearDirectionalInputContext()
+    {
+        var liveMove = InputReader != null ? InputReader.MoveInput : Vector2.zero;
+        m_inputContext.ClearDirectionalActionContext(liveMove, 0.12f);
+    }
 
     public float NormalizedSpeed
     {
@@ -498,6 +555,32 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
         var holdDur = m_inputContext.MoveHoldDurationSec(now);
         var result = DirectionalDualModeResolver.Resolve(
             moveBuffered, holdDur, chordWin, motionWin, out isMotionMode, out var mode);
+
+        var liveMove = InputReader != null ? InputReader.MoveInput : Vector2.zero;
+        HoldMotionDodgeProbe.LogModeResolve(
+            now,
+            holdDur,
+            chordWin,
+            motionWin,
+            isMotionMode,
+            mode,
+            m_inputContext.MoveActive,
+            m_inputContext.DirectionalCommitted,
+            liveMove,
+            moveBuffered,
+            HoldMotionDodgeProbe.CurrentSpacePulseIndex);
+
+        DirectionalInputDiagProbe.LogMode(
+            now,
+            moveBuffered,
+            holdDur,
+            chordWin,
+            motionWin,
+            isMotionMode,
+            mode,
+            m_inputContext.MoveActive,
+            m_inputContext.DirectionalCommitted,
+            liveMove);
 
         var camFwd = Vector3.forward;
         var mainCam = Camera.main;

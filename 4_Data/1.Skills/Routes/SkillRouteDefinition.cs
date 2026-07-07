@@ -21,8 +21,20 @@ public abstract class SkillRouteDefinition : ScriptableObject, ISkillUnit
     [SerializeField, Tooltip("HUD 显示名（本地化前的原文）。")]
     private string displayName;
 
+    [SerializeField, Tooltip("211.3 — 稳定展示 ID（Validate Warning；不参与运行时分发）。")]
+    string presentationId;
+
     [SerializeField, Tooltip("是否在 HUD 显示该 Route。属于 SkillGroup 时由组的 Show On Hud 统一控制，本项无效。")]
     private bool showOnHud = true;
+
+    [SerializeField, Tooltip("214 — HUD 显隐策略；Auto 时回落 showOnHud。")]
+    HudShowPolicy showPolicy = HudShowPolicy.Auto;
+
+    [SerializeField, Tooltip("214 — 可选展示资产包（未配则读本 Route 字段）。")]
+    SkillPresentationSO presentationAsset;
+
+    [SerializeField, Tooltip("214 D5 — 技能描述（Tooltip OPEN）。")]
+    SkillDescriptionSO description;
 
     [Header("Routing")]
     [SerializeField, Tooltip("Resolver 选择优先级。一个 Entry 内多条 Route 时按本字段从小到大求值。")]
@@ -88,9 +100,18 @@ public abstract class SkillRouteDefinition : ScriptableObject, ISkillUnit
 
     // ── 公有只读暴露 ──
     public string RouteId => routeId;
+    public string PresentationId => presentationId ?? string.Empty;
+
+    /// <summary>HUD 诊断用 — routeId 非空优先，否则回落资产名（= 默认 RouteId）。</summary>
+    public string GetEffectiveUnitId() => !string.IsNullOrEmpty(routeId) ? routeId : name;
+
     public Sprite Icon => icon;
     public string DisplayName => displayName;
+    [System.Obsolete("Use IsHudVisible() / showPolicy (211.3).")]
     public bool ShowOnHud => showOnHud;
+    public HudShowPolicy HudShowPolicy => showPolicy;
+    public SkillPresentationSO PresentationAsset => presentationAsset;
+    public SkillDescriptionSO Description => description;
     public RoutePriority Priority => priority;
     public RouteCooldownPolicy CooldownPolicy => cooldownPolicy;
     public float BaseCooldownSeconds => baseCooldownSeconds;
@@ -107,6 +128,22 @@ public abstract class SkillRouteDefinition : ScriptableObject, ISkillUnit
     public bool OverrideGroupIcon => overrideIcon;
     public bool OverrideGroupCost => overrideCost;
     public AbilityGateRuleSO[] AbilityGateRules => abilityGateRules;
+
+    /// <summary>214 — 运行时 HUD 显隐（showPolicy + legacy showOnHud）。</summary>
+    public bool IsHudVisible()
+    {
+        switch (showPolicy)
+        {
+            case HudShowPolicy.ForceVisible:
+                return true;
+            case HudShowPolicy.ForceHidden:
+                return false;
+            case HudShowPolicy.DebugOnly:
+                return GameMainDebugSettings.SkillRouteGraph;
+            default:
+                return showOnHud;
+        }
+    }
 
     /// <summary>Route 级能力准入；无规则时恒通过。</summary>
     public bool PassesAbilityGates(in CombatContextSnapshot ctx, out string denyReason)
@@ -148,6 +185,11 @@ public abstract class SkillRouteDefinition : ScriptableObject, ISkillUnit
 
     public string GetEffectiveDisplayName()
     {
+        if (presentationAsset != null && !string.IsNullOrEmpty(presentationAsset.DisplayName))
+        {
+            return presentationAsset.DisplayName;
+        }
+
         if (!string.IsNullOrEmpty(displayName))
         {
             return displayName;
@@ -155,7 +197,7 @@ public abstract class SkillRouteDefinition : ScriptableObject, ISkillUnit
 
         if (ownerGroup != null)
         {
-            return ownerGroup.DisplayName;
+            return ownerGroup.GetEffectiveDisplayName();
         }
 
         return name;
@@ -163,6 +205,11 @@ public abstract class SkillRouteDefinition : ScriptableObject, ISkillUnit
 
     public Sprite GetEffectiveIcon()
     {
+        if (presentationAsset != null && presentationAsset.Icon != null)
+        {
+            return presentationAsset.Icon;
+        }
+
         if (overrideIcon || icon != null)
         {
             return icon;

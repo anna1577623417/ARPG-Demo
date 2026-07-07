@@ -126,6 +126,18 @@ public class LocomotionTuningSO : ScriptableObject
              "0 = 关闭（旧行为）；推荐 0.10–0.15。")]
     [Range(0f, 0.3f)] public float DirectionGraceSec = 0.12f;
 
+    [Header("213.2 WASD + Space/Shift 方向缓冲")]
+    [Tooltip("松键后 WASD 仍写入 InputModifierBuffer 的有效秒数。\n" +
+             "影响 Shift / Space 能否判为 Directional（八向）；与 ChordWindow 无关。\n" +
+             "推荐 0.22~0.35；旧版硬编码 0.15，213.2 默认 0.28。")]
+    [Range(0.05f, 0.50f)] public float DirectionModifierBufferSec = 0.28f;
+
+    [Header("213.6 Shift Direction Grace")]
+    [Tooltip("Shift 脉冲专用：硬 Buffer 过期后仍允许读取 last WASD 的软宽（秒）。\n" +
+             "用于 W 松手 → 立刻 Shift；不影响 Space ChordWindow。\n" +
+             "0 = 关闭；推荐 0.10~0.15。")]
+    [Range(0f, 0.25f)] public float ShiftModifierSoftGraceSec = 0.12f;
+
     [Header("206.1 方向输入双模式 (Chord vs Motion)")]
     [Tooltip("方向键按下到 Space 按下的间隔 ≤ 此时间 → Chord 态（8 向 camera-relative）。\n" +
              "推荐 0.10–0.15s。低于此值 = 玩家把方向键当 Space 的修饰符。")]

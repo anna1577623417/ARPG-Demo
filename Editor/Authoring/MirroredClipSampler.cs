@@ -21,37 +21,21 @@ using UnityEngine;
 internal static class MirroredClipSampler
 {
     const string DiagPrefix = "[MirrorDiag]";
-    const string LogPrefKey = "Core-Drive/MirroredClipSampler/EnableDiag";
     const double DiagThrottleSec = 0.5;
 
-    static bool s_diagEnabled;
     static readonly System.Collections.Generic.Dictionary<string, double> s_lastDiagPerTag
         = new System.Collections.Generic.Dictionary<string, double>();
     static int s_sampleCallCount;
 
     static MirroredClipSampler()
     {
-        s_diagEnabled = EditorPrefs.GetBool(LogPrefKey, false);
     }
 
-    [MenuItem("Tools/Action Timeline/Enable Mirror Diag Log", false, 210)]
-    static void ToggleDiag()
-    {
-        s_diagEnabled = !s_diagEnabled;
-        EditorPrefs.SetBool(LogPrefKey, s_diagEnabled);
-        Debug.Log($"{DiagPrefix} log {(s_diagEnabled ? "ENABLED" : "DISABLED")}");
-    }
-
-    [MenuItem("Tools/Action Timeline/Enable Mirror Diag Log", true)]
-    static bool ToggleDiagValidate()
-    {
-        Menu.SetChecked("Tools/Action Timeline/Enable Mirror Diag Log", s_diagEnabled);
-        return true;
-    }
+    internal static bool IsDiagEnabled => GameMainDebugSettings.MirrorDiagLog;
 
     static void Diag(string msg, bool force = false)
     {
-        if (!s_diagEnabled) return;
+        if (!IsDiagEnabled) return;
         var now = EditorApplication.timeSinceStartup;
         var tagEnd = msg.IndexOf(' ');
         var tag = tagEnd > 0 ? msg.Substring(0, tagEnd) : "*";

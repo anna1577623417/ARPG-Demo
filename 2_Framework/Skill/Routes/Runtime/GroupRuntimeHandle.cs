@@ -11,26 +11,45 @@ public sealed class GroupRuntimeHandle : IRouteRuntimeHandle
     readonly SkillEntrySlot _slot;
     readonly string _keyLabel;
     readonly SkillEntryService _service;
+    readonly string _hudIdentity;
+    readonly PresentationContext _presentationCtx;
 
     public GroupRuntimeHandle(
         Player owner,
         SkillGroupDefinition group,
         SkillEntrySlot slot,
         string keyLabel,
-        SkillEntryService service)
+        SkillEntryService service,
+        string hudIdentity)
     {
         _owner = owner;
         _group = group;
         _slot = slot;
         _keyLabel = keyLabel ?? string.Empty;
         _service = service;
+        _hudIdentity = hudIdentity ?? string.Empty;
+        var entry = (service as IComboSessionHost)?.ResolveEntry(slot);
+        _presentationCtx = new PresentationContext(null, group, null, entry, slot, owner);
     }
 
     public SkillEntrySlot EntrySlot => _slot;
-    public Sprite Icon => _group != null ? _group.Icon : null;
-    public string DisplayName => _group != null ? _group.DisplayName : string.Empty;
+    public Sprite Icon => SkillPresentationResolver.ResolveIcon(in _presentationCtx);
+    public string DisplayName => SkillPresentationResolver.ResolveDisplayName(in _presentationCtx);
     public string KeyLabel => _keyLabel;
-    public bool ShowOnHud => _group != null && _group.ShowOnHud;
+    public bool ShowOnHud => _group != null && _group.IsHudVisible();
+    public string PresentationId => _group != null ? _group.PresentationId : string.Empty;
+    public string UnitId => _group != null ? _group.GetEffectiveUnitId() : string.Empty;
+    public string HudUnitKind => "Group";
+    public string AssetFolder => HudAssetDebug.GetFolder(_group);
+    public string AssetPath => HudAssetDebug.GetPath(_group);
+    public int PresentationRevision => 0;
+    public string HudIdentity => _hudIdentity;
+    public SkillPresentationState PresentationState =>
+        SkillPresentationResolver.ResolvePresentationState(in _presentationCtx);
+    public PresentationBadge PrimaryBadge =>
+        SkillPresentationResolver.ResolvePrimaryBadge(in _presentationCtx);
+    public PresentationBadge SecondaryBadge =>
+        SkillPresentationResolver.ResolveSecondaryBadge(in _presentationCtx);
 
     public float CdProgress01
     {

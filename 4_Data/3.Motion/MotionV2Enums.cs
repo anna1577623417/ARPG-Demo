@@ -13,17 +13,8 @@ public enum GravityWeightMode : byte
 
 public enum RotationMode : byte
 {
-    /// <summary>动作不参与 Yaw 旋转（默认）。</summary>
+    /// <summary>动作不参与 MotionExecutor Yaw（默认；210.5 表现 Yaw 走 ActionYaw）。</summary>
     None = 0,
-
-    /// <summary>按 YawOverTime 曲线驱动 Yaw（度，相对起手朝向）。</summary>
-    YawCurve = 1,
-
-    /// <summary>持续对齐位移方向（适用 DMC 冲刺斩）。</summary>
-    AlignToVelocity = 2,
-
-    /// <summary>持续对齐锁定目标。</summary>
-    AlignToTargetLock = 3,
 }
 
 public enum YStrategyV2 : byte
@@ -36,4 +27,17 @@ public enum YStrategyV2 : byte
 
     /// <summary>即时锚定 ApexHeight，曲线归一化映射。</summary>
     ApexSnap = 2,
+}
+
+/// <summary>210.5 — Action 期绕 Y 轴朝向策略（表现层；不影响 MP 位移）。</summary>
+public enum YawPolicyMode : byte
+{
+    /// <summary>不参与 Action Yaw（默认）。</summary>
+    None = 0,
+
+    /// <summary>恒定为 YawStartDegrees；End 与 Start 相同。</summary>
+    Constant = 1,
+
+    /// <summary>YawStartDegrees → YawEndDegrees，按 YawBlendOverTime 插值。</summary>
+    Curve = 2,
 }

@@ -2,6 +2,19 @@ using System;
 using UnityEngine;
 
 /// <summary>
+/// HUD 槽位分类 — Loadout.hudLayout 排序用（214）。
+/// </summary>
+public enum HudSlotCategory : byte
+{
+    Movement = 0,
+    Attack = 1,
+    Skill = 2,
+    Ultimate = 3,
+    Item = 4,
+    Debug = 5,
+}
+
+/// <summary>
 /// 角色技能装配（Loadout） — 槽位 → SkillEntryDefinition 的总线。
 ///
 /// ═══ 与 SkillLoadoutSO（旧）的区别 ═══
@@ -11,6 +24,31 @@ using UnityEngine;
 [CreateAssetMenu(menuName = "GameMain/SkillRoute/Entry/Skill Entry Loadout", fileName = "Loadout_")]
 public class SkillEntryLoadoutSO : ScriptableObject
 {
+    [Serializable]
+    public struct HudLayoutEntry
+    {
+        [SerializeField, Tooltip("物理入口槽位。")]
+        SkillEntrySlot slot;
+
+        [SerializeField, Tooltip("HUD 分区（排序第一键）。")]
+        HudSlotCategory category;
+
+        [SerializeField, Tooltip("分区内排序（第二键）。")]
+        int sortOrder;
+
+        [SerializeField, Tooltip("可选稳定 Widget 身份；空则运行时 slot_subIndex。")]
+        string hudIdentity;
+
+        [SerializeField, Tooltip("键位标签覆盖；空则用 EntryBinding.hudKeyLabel。")]
+        string keyLabelOverride;
+
+        public SkillEntrySlot Slot => slot;
+        public HudSlotCategory Category => category;
+        public int SortOrder => sortOrder;
+        public string HudIdentity => hudIdentity ?? string.Empty;
+        public string KeyLabelOverride => keyLabelOverride ?? string.Empty;
+    }
+
     [Serializable]
     public struct EntryBinding
     {
@@ -30,6 +68,10 @@ public class SkillEntryLoadoutSO : ScriptableObject
 
     [SerializeField, Tooltip("逐项绑定；同一槽位多次出现以第一项为准。")]
     private EntryBinding[] bindings;
+
+    [Header("HUD Layout (211.3 / 214)")]
+    [SerializeField, Tooltip("可选 HUD 槽位排序；空则回落 HudHandles 注册顺序。")]
+    HudLayoutEntry[] hudLayout;
 
     [Header("Combat Flow & Context (136.1)")]
     [SerializeField, Tooltip("启用后运行时装配 CombatGraph 并参与 Contextual 解析；关闭则退化为 Entry+Interrupt 单轨。")]
@@ -68,6 +110,7 @@ public class SkillEntryLoadoutSO : ScriptableObject
     public AirInterruptPolicy AirInterruptPolicy => airInterruptPolicy;
 
     public EntryBinding[] Bindings => bindings;
+    public HudLayoutEntry[] HudLayout => hudLayout;
     public bool CombatFlowEnabled => combatFlowEnabled;
     public CombatGraphAsset CombatFlow => combatFlow;
     public SkillContextGroupDefinition[] ContextGroups => contextGroups;

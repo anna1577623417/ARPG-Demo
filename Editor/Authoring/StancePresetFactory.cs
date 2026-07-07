@@ -4,16 +4,13 @@ using UnityEditor;
 using UnityEngine;
 
 /// <summary>
-/// 177.1 W0+W2 — Stance 资产工厂菜单。
-/// <para>一键产 StanceDefinition_Normal + StanceDefinition_Crouch + LocomotionProfile_Crouch 模板。</para>
-/// <para>LocomotionProfile_Crouch 的 Bindings 由策划在 Inspector 拖入 17 份 Crouch_* Action（资产已就绪）。</para>
+/// 177.1 W0+W2 — Stance 资产工厂（菜单已移除；保留 API 供脚本调用）。
 /// </summary>
 public static class StancePresetFactory
 {
     const string Folder = "Assets/GameMain/4_Data/Stance/Presets";
     const string CrouchActionFolder = "Assets/GameMain/4_Data/2.Actions/2.1CombatActionLibrary/2.GhostSamurai_Action/Crounch";
 
-    [MenuItem("GameMain/Stance/Create All P0 Assets")]
     public static void CreateAll()
     {
         EnsureFolder(Folder);
@@ -24,7 +21,6 @@ public static class StancePresetFactory
         Debug.Log($"[Stance] All P0 assets created under {Folder}");
     }
 
-    [MenuItem("GameMain/Stance/Create Stance · Normal")]
     public static void CreateNormalStance()
     {
         var path = $"{Folder}/StanceDefinition_Normal.asset";
@@ -40,7 +36,6 @@ public static class StancePresetFactory
         AssetDatabase.CreateAsset(s, path);
     }
 
-    [MenuItem("GameMain/Stance/Create Stance · Crouch")]
     public static void CreateCrouchStance()
     {
         EnsureFolder(Folder);
@@ -86,7 +81,6 @@ public static class StancePresetFactory
     }
 
     /// <summary>177.1 W2 — 列出策划需在 LocomotionProfile_Crouch 中绑定的 17 份 Crouch 资产。</summary>
-    [MenuItem("GameMain/Stance/Crouch · Print Asset Checklist")]
     public static void PrintCrouchAssetChecklist()
     {
         var paths = new[]

@@ -4,64 +4,52 @@ using UnityEditor;
 using UnityEngine;
 
 /// <summary>
-/// 174.2 — V2 Preset 工厂：菜单一键生成三大范本 MotionProfile 资产。
-/// 范本对应蓝图 §2.1 / §2.2 / §2.3。
+/// 174.2 — V2 Preset 工厂（菜单已移除；保留 API 供脚本调用）。
 /// </summary>
 public static class MotionV2PresetFactory
 {
     const string PresetsFolder = "Assets/GameMain/4_Data/3.Motion/Presets";
 
-    [MenuItem("GameMain/Motion V2/Create Preset · DMC Stinger")]
     public static void CreateStinger() => CreatePreset(
         "Preset_Stinger_DMC", ConfigureStinger,
         "DMC Stinger 冲刺斩：Z 0→4 / 中段锁朝向+锁移动 / 后段恢复输入");
 
-    [MenuItem("GameMain/Motion V2/Create Preset · ZZZ Risingoryu")]
     public static void CreateRisingoryu() => CreatePreset(
         "Preset_Risingoryu_ZZZ", ConfigureRisingoryu,
         "绝区零升龙：Y Apex Hold / Gravity 0→0→3 强制下坠 / Facing 0.3 弱跟随");
 
-    [MenuItem("GameMain/Motion V2/Create Preset · Elden SpinSlash")]
     public static void CreateSpinSlash() => CreatePreset(
         "Preset_SpinSlash_Elden", ConfigureSpinSlash,
         "法环回旋斩：Yaw 0→180° / 蓄力段锁移动 / Anim 节奏 S 形");
 
-    [MenuItem("GameMain/Motion V2/Create Preset · Sekiro Locked Dash")]
     public static void CreateLockedDash() => CreatePreset(
         "Preset_LockedDash_Sekiro", ConfigureLockedDash,
         "只狼锁敌追踪斩：Z 0→6 / Track 1→0.3 / Space=LockTarget");
 
-    [MenuItem("GameMain/Motion V2/Create Preset · Spartan Rage Finisher")]
     public static void CreateSpartanRage() => CreatePreset(
         "Preset_Spartan_Rage", ConfigureSpartanRage,
         "战神 Rage 终结技：Y 上挑 / GravW Bell / Hitstop Spike");
 
-    [MenuItem("GameMain/Motion V2/Create Preset · Roll Dodge")]
     public static void CreateRoll() => CreatePreset(
         "Preset_Roll_Dodge", ConfigureRoll,
         "通用翻滚：Z 0→4 / Gravity Suspend / 中段闪避无敌帧");
 
-    [MenuItem("GameMain/Motion V2/Create Preset · Backstep")]
     public static void CreateBackstep() => CreatePreset(
         "Preset_Backstep", ConfigureBackstep,
         "后撤步：Z 0→-2 / 全锁输入");
 
-    [MenuItem("GameMain/Motion V2/Create Preset · Air Combo Loop")]
     public static void CreateAirCombo() => CreatePreset(
         "Preset_AirCombo_Loop", ConfigureAirCombo,
         "空连段：Y 微升 / GravW 0.3 / FacingW 0.5 半跟随");
 
-    [MenuItem("GameMain/Motion V2/Create Preset · Ground Slam")]
     public static void CreateGroundSlam() => CreatePreset(
         "Preset_GroundSlam", ConfigureGroundSlam,
         "下劈：GroundTargeted + GravW 2 强制下坠");
 
-    [MenuItem("GameMain/Motion V2/Create Preset · Charge Hold")]
     public static void CreateChargeHold() => CreatePreset(
         "Preset_Charge_Hold", ConfigureChargeHold,
         "蓄力：原地 / AnimSpeed 0.5x / FacingW=1 允许调整朝向");
 
-    [MenuItem("GameMain/Motion V2/Create All Presets (P0 + P1)")]
     public static void CreateAll()
     {
         CreateStinger();
@@ -122,10 +110,12 @@ public static class MotionV2PresetFactory
         p.AxisCurves.YScale = 0f;
         p.AxisCurves.ZScale = 0f;
 
-        // Yaw 0→180 S 形
-        p.V2RotationMode = RotationMode.YawCurve;
-        p.V2YawOverTime = BuildPiecewise(
-            (0f, 0f), (0.30f, 0f), (0.70f, 180f), (1f, 180f));
+        // 210.5 Action Yaw：0→180 S 形
+        p.YawPolicy = YawPolicyMode.Curve;
+        p.YawStartDegrees = 0f;
+        p.YawEndDegrees = 180f;
+        p.YawBlendOverTime = BuildPiecewise(
+            (0f, 0f), (0.30f, 0f), (0.70f, 1f), (1f, 1f));
 
         // Anim Speed 节奏：0.5x 蓄力 / 1.2x 收尾
         p.AnimSpeedMode = AnimSpeedMode.Curve;

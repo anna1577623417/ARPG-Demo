@@ -10,38 +10,22 @@ using UnityEngine;
 /// 须在 <see cref="ActionTimelinePreviewController.SamplePose"/> 之后调用（传 poseSampled=true），
 /// 否则只输出 Profile 理论值。Post-Sample 会读 Hips 骨骼世界坐标（与 ClipMotionExtractor 采骨口径一致）。
 ///
-/// 启用：菜单 Tools → Action Timeline → Enable Preview Log（EditorPrefs 持久化）
+/// 启用：GameMain → Debug → Log Settings → Action Timeline Preview
 /// 节流：0.25s 一条
 /// </summary>
 internal static class ActionTimelinePreviewProbe
 {
     const string Prefix = "[ActTimelineDiag]";
-    const string LogPrefKey = "Core-Drive/ActionTimelinePreviewProbe/EnableLog";
     const double LogIntervalSec = 0.25;
 
-    static bool s_enabled;
     static double s_nextLogTime;
     static float s_lastNt = -1f;
 
     static ActionTimelinePreviewProbe()
     {
-        s_enabled = EditorPrefs.GetBool(LogPrefKey, false);
     }
 
-    [MenuItem("Tools/Action Timeline/Enable Preview Log", false, 200)]
-    static void ToggleLog()
-    {
-        s_enabled = !s_enabled;
-        EditorPrefs.SetBool(LogPrefKey, s_enabled);
-        Debug.Log($"{Prefix} log {(s_enabled ? "ENABLED" : "DISABLED")}");
-    }
-
-    [MenuItem("Tools/Action Timeline/Enable Preview Log", true)]
-    static bool ToggleLogValidate()
-    {
-        Menu.SetChecked("Tools/Action Timeline/Enable Preview Log", s_enabled);
-        return true;
-    }
+    internal static bool IsEnabled => GameMainDebugSettings.ActionTimelinePreviewLog;
 
     /// <summary>SamplePose 之后的状态；未采样时传 default。</summary>
     internal readonly struct PoseSampleState
@@ -59,7 +43,7 @@ internal static class ActionTimelinePreviewProbe
   /// <summary>由 OnSceneGUI（SamplePose 之后）或 SceneBridge 调用。</summary>
     internal static void Tick(in ActionTimelinePreviewContext ctx, in PoseSampleState pose = default)
     {
-        if (!s_enabled || ctx.Action == null) return;
+        if (!IsEnabled || ctx.Action == null) return;
 
         var now = EditorApplication.timeSinceStartup;
         var ntChanged = Mathf.Abs(ctx.NormalizedTime - s_lastNt) > 0.001f;
@@ -180,6 +164,9 @@ internal static class ActionTimelinePreviewProbe
             $"  captureOrigin=({captureOrigin.x:F2},{captureOrigin.y:F2},{captureOrigin.z:F2}) " +
             $"forward=({forward.x:F2},{forward.z:F2})\n" +
             $"  motionLocal=({ctx.MotionLocalPosition.x:F2},{ctx.MotionLocalPosition.y:F2},{ctx.MotionLocalPosition.z:F2})\n" +
+            (ctx.UsesActionYawPreview
+                ? $"  actionYaw=({ctx.ActionYawForward.x:F2},{ctx.ActionYawForward.z:F2}) deg={ctx.ActionYawDegrees:F0}\n"
+                : string.Empty) +
             $"  trajWorld=({trajWorld.x:F2},{trajWorld.y:F2},{trajWorld.z:F2}) " +
             $"displayPos=({ctx.Position.x:F2},{ctx.Position.y:F2},{ctx.Position.z:F2})\n" +
             $"  rootWorld(ref)=({rootWorld.x:F2},{rootWorld.y:F2},{rootWorld.z:F2}) motionVsRootDist={motionVsRootDist:F3}m\n" +

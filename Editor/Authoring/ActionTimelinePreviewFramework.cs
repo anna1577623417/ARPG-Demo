@@ -102,10 +102,11 @@ internal static class ActionTimelinePreviewFramework
             if (ActionTimelinePreviewVisibility.Has(previewMask, PreviewVisibilityMask.Composite))
             {
                 EnsureBuffer(ref s_motionPathBuffer, sampleCount);
+                var pathForward = ResolveMotionPathForward(ctx);
                 PreviewMotionDriver.BuildMotionProfilePath(
                     ctx.Action.MotionProfile,
                     ctx.AnchorOrigin,
-                    ctx.PlanarForward,
+                    pathForward,
                     sampleCount,
                     s_motionPathBuffer);
 
@@ -155,9 +156,7 @@ internal static class ActionTimelinePreviewFramework
         if (!hasX && !hasY && !hasZ) return;
 
         var origin = ctx.AnchorOrigin;
-        var heading = Quaternion.LookRotation(
-            ctx.PlanarForward.sqrMagnitude > 0.0001f ? ctx.PlanarForward : Vector3.forward,
-            Vector3.up);
+        var heading = Quaternion.LookRotation(ResolveMotionPathForward(ctx), Vector3.up);
 
         if (hasX && ActionTimelinePreviewVisibility.Has(previewMask, PreviewVisibilityMask.XAxis))
         {
@@ -215,7 +214,6 @@ internal static class ActionTimelinePreviewFramework
             return;
         }
 
-        var profile = ctx.Action.MotionProfile;
         var duration = ctx.LogicDurationSeconds;
         if (duration <= 0.001f)
         {
@@ -236,8 +234,7 @@ internal static class ActionTimelinePreviewFramework
                 break;
             }
 
-            s_ghostPathBuffer[i] = PreviewMotionDriver.EvaluateWorldPosition(
-                profile, futureT, ctx.AnchorOrigin, ctx.PlanarForward);
+            s_ghostPathBuffer[i] = EvaluateGhostWorldPosition(ctx, futureT);
             written++;
         }
 
@@ -266,7 +263,33 @@ internal static class ActionTimelinePreviewFramework
             Handles.color = new Color(1f, 0.15f, 0.15f, 0.45f);
             Handles.DrawDottedLine(ctx.AnchorOrigin + Vector3.up * 0.05f, ctx.Position, 4f);
         }
+
+        if (ctx.UsesActionYawPreview)
+        {
+            DrawActionYawArrow(ctx);
+        }
     }
+
+    static void DrawActionYawArrow(in ActionTimelinePreviewContext ctx)
+    {
+        var origin = ctx.Position + Vector3.up * 0.08f;
+        var yawFwd = ctx.ActionYawForward;
+        yawFwd.y = 0f;
+        if (yawFwd.sqrMagnitude < 0.0001f)
+        {
+            return;
+        }
+
+        yawFwd.Normalize();
+        Handles.color = new Color(0.55f, 0.35f, 1f, 0.95f);
+        var tip = origin + yawFwd * 0.75f;
+        Handles.DrawLine(origin, tip);
+        Handles.ConeHandleCap(0, tip, Quaternion.LookRotation(yawFwd, Vector3.up), 0.12f, EventType.Repaint);
+        Handles.Label(tip + Vector3.up * 0.05f, $"Yaw {ctx.ActionYawDegrees:F0}°");
+    }
+
+    static Vector3 ResolveMotionPathForward(in ActionTimelinePreviewContext ctx)
+        => ctx.PlanarForward.sqrMagnitude > 0.0001f ? ctx.PlanarForward : Vector3.forward;
 
     static void DrawCombatTrack(in ActionTimelinePreviewContext ctx, PreviewVisibilityMask previewMask)
     {
@@ -560,6 +583,19 @@ internal static class ActionTimelinePreviewFramework
         Handles.DrawWireDisc(center, Vector3.up, radius);
         Handles.DrawWireDisc(center, Vector3.right, radius);
         Handles.DrawWireDisc(center, Vector3.forward, radius);
+    }
+
+    static Vector3 EvaluateGhostWorldPosition(in ActionTimelinePreviewContext ctx, float normalizedTime)
+    {
+        var profile = ctx.Action.MotionProfile;
+        if (profile == null)
+        {
+            return ctx.AnchorOrigin;
+        }
+
+        var pathForward = ResolveMotionPathForward(ctx);
+        return PreviewMotionDriver.EvaluateWorldPosition(
+            profile, normalizedTime, ctx.AnchorOrigin, pathForward);
     }
 
     static void EnsureBuffer(ref Vector3[] buffer, int count)

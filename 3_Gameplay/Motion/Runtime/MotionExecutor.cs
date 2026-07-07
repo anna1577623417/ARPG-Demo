@@ -45,6 +45,9 @@ public sealed class MotionExecutor
 
     public MotionContribution LastContribution { get; private set; }
 
+    /// <summary>上一帧 Axis 曲线世界位移（Debug / Probe）。</summary>
+    public Vector3 LastWorldDelta { get; private set; }
+
     public void SetPlaybackContext(in MotionPlaybackContext ctx) => _playback = ctx;
 
     public void SetStopContext(in StopRuntimeContext ctx) => _stopContext = ctx;
@@ -76,6 +79,7 @@ public sealed class MotionExecutor
         _stopContext = stopContext;
         _motionScale = _active && _stats != null ? Mathf.Max(0f, _stats.GetMotionScale(profile.ScaleType)) : 1f;
         LastContribution = MotionContribution.Inactive;
+        LastWorldDelta = Vector3.zero;
 
         if (_active && profile.GetYAxisConfig().YMotion == YMotionMode.GroundTargeted)
         {
@@ -232,8 +236,7 @@ public sealed class MotionExecutor
         var hasGravW = _profile != null && _profile.V2GravityWeightMode == GravityWeightMode.Curve;
         var gravW = hasGravW ? _profile.SampleGravityWeight(currT) : 1f;
 
-        var rotMode = _profile != null ? _profile.V2RotationMode : RotationMode.None;
-        var yawDeg = _profile != null ? _profile.SampleYawOverride(currT) : 0f;
+        // 210.5 Phase B：210.2 V2 Rotation 已删；朝向仅走 Action Yaw（ActionMotionPlayback）。
 
         // FacingInputWeight / MoveInputWeight：仅当 Profile 配置了非默认曲线才视为 Override。
         var hasFacingW = _profile != null && _profile.V2FacingInputWeight != null && _profile.V2FacingInputWeight.length > 0;
@@ -252,8 +255,8 @@ public sealed class MotionExecutor
             IsActive = true,
             HasGravityWeightOverride = hasGravW,
             GravityWeightOverride = gravW,
-            RotationMode = rotMode,
-            YawOverrideDegrees = yawDeg,
+            RotationMode = RotationMode.None,
+            YawOverrideDegrees = 0f,
             HasFacingInputWeight = hasFacingW,
             FacingInputWeight = facingW,
             HasMoveInputWeight = hasMoveW,
@@ -264,6 +267,7 @@ public sealed class MotionExecutor
         };
 
         var worldDelta = LocalDeltaToWorld(localDelta);
+        LastWorldDelta = worldDelta;
         InputActionProbe.LogMotionBurst(_debugOwner, _action != null ? _action.name : "(noAction)", worldDelta, deltaTime);
         var desiredVelocity = worldDelta / deltaTime;
         _motor?.SetDesiredVelocity(desiredVelocity);
@@ -324,6 +328,7 @@ public sealed class MotionExecutor
         _playback = default;
         _active = false;
         LastContribution = MotionContribution.Inactive;
+        LastWorldDelta = Vector3.zero;
         _motor?.SetDesiredVelocity(Vector3.zero);
         _motor?.SetMotionComposeContext(MotionYAxisConfig.DefaultLocomotion);
         _animSpeed?.SetSpeed(1f);

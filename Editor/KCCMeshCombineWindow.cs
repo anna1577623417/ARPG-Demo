@@ -45,7 +45,7 @@ public sealed class KCCMeshCombineWindow : EditorWindow {
 
     const string PrefKeyFolder = "KCCMeshCombine.AssetFolder";
 
-    [MenuItem("Tools/KCC/Mesh Combine Tool")]
+    [MenuItem("GameMain/KCC/Mesh Combine Tool")]
     static void Open() {
         var w = GetWindow<KCCMeshCombineWindow>("KCC Mesh Combine");
         w.minSize = new Vector2(380f, 560f);

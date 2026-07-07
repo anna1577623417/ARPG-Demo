@@ -29,6 +29,8 @@ public sealed class SkillEntryService : IComboSessionHost, IGroupCooldownHost, I
     readonly List<IRouteRuntimeHandle> _hudHandles = new List<IRouteRuntimeHandle>(16);
     readonly HashSet<(SkillGroupDefinition group, SkillEntrySlot slot)> _hudGroupKeys
         = new HashSet<(SkillGroupDefinition, SkillEntrySlot)>();
+    readonly HashSet<(SkillRouteDefinition route, SkillEntrySlot slot)> _hudRouteSlotKeys
+        = new HashSet<(SkillRouteDefinition, SkillEntrySlot)>();
 
     SkillEntryLoadoutSO _loadout;
     SkillRouteRuntime _activeRouteRuntime;
@@ -86,6 +88,7 @@ public sealed class SkillEntryService : IComboSessionHost, IGroupCooldownHost, I
         _comboBySlot.Clear();
         _hudHandles.Clear();
         _hudGroupKeys.Clear();
+        _hudRouteSlotKeys.Clear();
         _activeRouteRuntime = null;
 
         if (loadout?.Bindings == null)
@@ -141,7 +144,8 @@ public sealed class SkillEntryService : IComboSessionHost, IGroupCooldownHost, I
 
         for (var i = 0; i < asset.RegisteredRoutes.Length; i++)
         {
-            TryAddRoute(asset.RegisteredRoutes[i], SkillEntrySlot.LM, string.Empty);
+            // Graph routePool 仅保证 Resolve 有 Runtime；HUD 只来自 Loadout Entry/Group 绑定。
+            EnsureRouteRuntime(asset.RegisteredRoutes[i]);
         }
     }
 
@@ -267,7 +271,7 @@ public sealed class SkillEntryService : IComboSessionHost, IGroupCooldownHost, I
 
     void TryAddGroupHudHandle(SkillGroupDefinition group, SkillEntrySlot slot, string keyLabel)
     {
-        if (group == null || !group.ShowOnHud)
+        if (group == null || !group.IsHudVisible())
         {
             return;
         }
@@ -279,7 +283,7 @@ public sealed class SkillEntryService : IComboSessionHost, IGroupCooldownHost, I
             return;
         }
 
-        _hudHandles.Add(new GroupRuntimeHandle(_owner, group, slot, keyLabel, this));
+        _hudHandles.Add(new GroupRuntimeHandle(_owner, group, slot, keyLabel, this, AllocateHudIdentity(slot)));
         SkillRouteDebug.Log(
             _owner,
             SkillRouteDebug.CatRebuild,
@@ -310,29 +314,66 @@ public sealed class SkillEntryService : IComboSessionHost, IGroupCooldownHost, I
         }
     }
 
+    bool EnsureRouteRuntime(SkillRouteDefinition def)
+    {
+        if (def == null)
+        {
+            return false;
+        }
+
+        if (_routeRuntimes.ContainsKey(def))
+        {
+            return true;
+        }
+
+        var rt = SkillRouteRuntimeFactory.Create(def);
+        if (rt == null)
+        {
+            return false;
+        }
+
+        _routeRuntimes[def] = rt;
+        return true;
+    }
+
     void TryAddRoute(SkillRouteDefinition def, SkillEntrySlot slot, string keyLabel)
     {
-        if (def == null) return;
-        if (_routeRuntimes.ContainsKey(def)) return;
-        var rt = SkillRouteRuntimeFactory.Create(def);
-        if (rt == null) return;
-        _routeRuntimes[def] = rt;
-        if (ShouldRegisterRouteHudHandle(def))
+        if (!EnsureRouteRuntime(def))
         {
-            _hudHandles.Add(new RouteRuntimeHandle(_owner, def, rt, slot, keyLabel, this));
-            SkillRouteDebug.Log(
-                _owner,
-                SkillRouteDebug.CatRebuild,
-                $"Hud + {def.name} slot={slot} kind={def.Kind}");
+            return;
         }
-        else
+
+        if (!ShouldRegisterRouteHudHandle(def))
         {
             SkillRouteDebug.Log(
                 _owner,
                 SkillRouteDebug.CatRebuild,
                 $"Hud 跳过 | {def.name} slot={slot} " +
                 $"{(def.OwnerGroup != null ? $"group={def.OwnerGroup.name} hud={def.OwnerGroup.ShowOnHud}" : "ShowOnHud=false")}");
+            return;
         }
+
+        TryAddRouteHudHandle(def, slot, keyLabel);
+    }
+
+    void TryAddRouteHudHandle(SkillRouteDefinition def, SkillEntrySlot slot, string keyLabel)
+    {
+        if (def == null || !_routeRuntimes.TryGetValue(def, out var rt))
+        {
+            return;
+        }
+
+        slot = CanonicalEntry(slot);
+        if (!_hudRouteSlotKeys.Add((def, slot)))
+        {
+            return;
+        }
+
+        _hudHandles.Add(new RouteRuntimeHandle(_owner, def, rt, slot, keyLabel, this, AllocateHudIdentity(slot)));
+        SkillRouteDebug.Log(
+            _owner,
+            SkillRouteDebug.CatRebuild,
+            $"Hud + {def.name} slot={slot} key={keyLabel} kind={def.Kind}");
     }
 
     static bool ShouldRegisterRouteHudHandle(SkillRouteDefinition def)
@@ -348,7 +389,28 @@ public sealed class SkillEntryService : IComboSessionHost, IGroupCooldownHost, I
             return false;
         }
 
-        return def.ShowOnHud;
+        return def.IsHudVisible();
+    }
+
+    string AllocateHudIdentity(SkillEntrySlot slot)
+    {
+        slot = CanonicalEntry(slot);
+        return $"{slot}_{CountHudHandlesForSlot(slot)}";
+    }
+
+    int CountHudHandlesForSlot(SkillEntrySlot slot)
+    {
+        slot = CanonicalEntry(slot);
+        var count = 0;
+        for (var i = 0; i < _hudHandles.Count; i++)
+        {
+            if (_hudHandles[i].EntrySlot == slot)
+            {
+                count++;
+            }
+        }
+
+        return count;
     }
 
     // ─── 仲裁入口（Ver4.3.7+ 单轨语义） ───

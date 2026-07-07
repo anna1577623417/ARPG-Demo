@@ -111,12 +111,26 @@ internal sealed partial class ActionTimelinePreviewController
 
         if (motionDriven && _drivenAnchorCaptured && ctx.Anchor != null && applyMotionDisplacement)
         {
-            // 用 cached origin + heading 重算 world offset，避免被运行时偏移污染
-            var fwd = _drivenAnchorOriginRot * Vector3.forward;
-            fwd.y = 0f;
-            if (fwd.sqrMagnitude < 0.0001f) fwd = Vector3.forward; else fwd.Normalize();
-            var headingRot = Quaternion.LookRotation(fwd, Vector3.up);
-            ctx.Anchor.position = _drivenAnchorOriginPos + headingRot * ctx.MotionLocalPosition;
+            ctx.Anchor.position = ctx.MotionWorldPosition;
+
+            if (ctx.UsesActionYawPreview)
+            {
+                var yawFwd = ctx.ActionYawForward;
+                yawFwd.y = 0f;
+                if (yawFwd.sqrMagnitude > 0.0001f)
+                {
+                    ctx.Anchor.rotation = Quaternion.LookRotation(yawFwd.normalized, Vector3.up);
+                }
+            }
+            else
+            {
+                // 用 cached origin + heading 重算 world offset，避免被运行时偏移污染
+                var fwd = _drivenAnchorOriginRot * Vector3.forward;
+                fwd.y = 0f;
+                if (fwd.sqrMagnitude < 0.0001f) fwd = Vector3.forward; else fwd.Normalize();
+                var headingRot = Quaternion.LookRotation(fwd, Vector3.up);
+                ctx.Anchor.position = _drivenAnchorOriginPos + headingRot * ctx.MotionLocalPosition;
+            }
         }
 
         if (motionDriven && ctx.Anchor != null)

@@ -60,7 +60,7 @@ public sealed class ClipActionMotionBatchWindow : EditorWindow
     Vector2 m_scroll;
     readonly List<ClipPreview> m_previews = new List<ClipPreview>(32);
 
-    [MenuItem("Tools/Action/Clip → Action + Motion Batch...", false, 4)]
+    [MenuItem("GameMain/Action/Clip → Action + Motion Batch...", false, 4)]
     public static void OpenWindow()
     {
         var w = GetWindow<ClipActionMotionBatchWindow>(true, "Clip → Action + Motion", true);
