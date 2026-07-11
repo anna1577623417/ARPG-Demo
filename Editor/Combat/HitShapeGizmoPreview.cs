@@ -47,10 +47,19 @@ public static class HitShapeGizmoPreview
             OriginWorld = Selection.activeTransform.position;
             RotationWorld = Selection.activeTransform.rotation;
         }
-        // DrawGizmo 使用 Gizmos API（仅在 OnDrawGizmos 回调中真实绘制）；这里用 Handles 等价模拟。
+        DrawShapeHandles(Shape, OriginWorld, RotationWorld, Color);
+    }
+
+    public static void DrawShapeHandles(HitShapeSO shape, Vector3 origin, Quaternion rotation, Color color)
+    {
+        if (shape == null)
+        {
+            return;
+        }
+
         var prevColor = Handles.color;
-        Handles.color = Color;
-        DrawWithHandles(Shape, OriginWorld, RotationWorld);
+        Handles.color = color;
+        DrawWithHandles(shape, origin, rotation);
         Handles.color = prevColor;
     }
 

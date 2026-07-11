@@ -80,6 +80,8 @@ MonoBehaviour:
   SlideMaxResidualSpeed: 0
   MotionProfile: {fileID: 11400000, guid: 6320d06340cf40b40ba540fc0528ecd9, type: 2}
   Windows: []
+  AttackClips: []
+  DefenseClips: []
   TeleportTriggers: []
   TimelineMarkers: []
   PreviewTimeMarkers:

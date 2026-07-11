@@ -10,6 +10,10 @@ public static class ActionTimelineRuntime
     static readonly List<TeleportTrigger> s_teleportScratch = new List<TeleportTrigger>(4);
     static readonly List<ActionWindowEvent> s_eventScratch = new List<ActionWindowEvent>(16);
 
+    // 216.3 M1 L2 — 攻击判定物理查询复用缓冲（无堆分配）。
+    static readonly Collider[] s_attackOverlap = new Collider[32];
+    static readonly RaycastHit[] s_attackSweep = new RaycastHit[32];
+
     public static void Tick(
         Player player,
         ActionDataSO action,
@@ -26,8 +30,134 @@ public static class ActionTimelineRuntime
         FireCrossingMarkers(player, action, prevNormalized, nextNormalized, state);
         FireCrossingWindowEvents(player, action, prevNormalized, nextNormalized, state);
         FireCrossingCombatEvents(player, action, prevNormalized, nextNormalized, state); // 188.3 W9
+        FireAttackClips(player, action, nextNormalized, state);                          // 216.3 M1 L2
+        FireDefenseClips(player, action, nextNormalized, state);                         // 216.3 M5 L1
         FireCrossingTeleports(player, action, prevNormalized, nextNormalized, planarForward, state);
         UpdateZones(action, nextNormalized, state);
+    }
+
+    /// <summary>
+    /// 216.3 M1 L2 — HitClip Active 区间驱动 AttackInstance：进入区间 Begin、区间内每帧 Sweep、离开区间 End。
+    /// <para>单一真相：Active 区间即判定窗口；不读旧 CombatTrack、不做 <c>if (legacy)</c> 兜底。</para>
+    /// </summary>
+    static void FireAttackClips(
+        Player player,
+        ActionDataSO action,
+        float nextNt,
+        ActionTimelinePlaybackState state)
+    {
+        var clips = action.AttackClips;
+        if (clips == null || clips.Count == 0)
+        {
+            return;
+        }
+
+        for (var i = 0; i < clips.Count; i++)
+        {
+            var clip = clips[i];
+            var hasProvider = clip.ShapeMode == HitShapeMode.WeaponTrace
+                ? clip.WeaponSockets != null && clip.WeaponSockets.Count > 0
+                : clip.Shape != null;
+            if (!hasProvider)
+            {
+                continue;
+            }
+
+            var s = Mathf.Min(clip.ActiveStart, clip.ActiveEnd);
+            var e = Mathf.Max(clip.ActiveStart, clip.ActiveEnd);
+            var inside = nextNt >= s && nextNt <= e;
+            var inst = state.GetOrCreateAttack(i);
+
+            if (inside)
+            {
+                HitClipOriginResolver.Resolve(player, in clip, out var pos, out var rot);
+                if (!inst.Active)
+                {
+                    inst.Begin(in clip, player, pos, rot);
+                }
+
+                inst.TickSweep(pos, rot, s_attackSweep, s_attackOverlap);
+            }
+            else if (inst.Active)
+            {
+                inst.End();
+            }
+        }
+    }
+
+    /// <summary>
+    /// 216.3 M5 — DefenseClip Active 驱动：
+    /// Guard → GuardVolumeProvider；Parry/Invincible → Registry 窗标志（供 Resolver）。
+    /// </summary>
+    static void FireDefenseClips(
+        Player player,
+        ActionDataSO action,
+        float nextNt,
+        ActionTimelinePlaybackState state)
+    {
+        var clips = action.DefenseClips;
+        if (clips == null || clips.Count == 0)
+        {
+            DefenseRuntimeRegistry.SetWindowFlags(player, false, false);
+            return;
+        }
+
+        var anyParry = false;
+        var anyInvincible = false;
+
+        for (var i = 0; i < clips.Count; i++)
+        {
+            var clip = clips[i];
+            var s = Mathf.Min(clip.ActiveStart, clip.ActiveEnd);
+            var e = Mathf.Max(clip.ActiveStart, clip.ActiveEnd);
+            var inside = nextNt >= s && nextNt <= e;
+
+            if (clip.Kind == DefenseKind.Guard)
+            {
+                var guard = state.GetOrCreateGuard(i);
+                if (inside)
+                {
+                    if (!guard.Active)
+                    {
+                        guard.Begin(in clip, player);
+                    }
+
+                    guard.Tick();
+                }
+                else if (guard.Active)
+                {
+                    guard.End();
+                }
+
+                continue;
+            }
+
+            if (!inside)
+            {
+                continue;
+            }
+
+            if (clip.Kind == DefenseKind.Parry)
+            {
+                anyParry = true;
+                if (GameMainDebugSettings.CombatHit && state.TryFireDefenseWindowOnce(i))
+                {
+                    Debug.Log(
+                        $"[Resolve] PARRY window on clip={clip.ResolvedName} active={s:F2}~{e:F2}");
+                }
+            }
+            else if (clip.Kind == DefenseKind.Invincible)
+            {
+                anyInvincible = true;
+                if (GameMainDebugSettings.CombatHit && state.TryFireDefenseWindowOnce(i))
+                {
+                    Debug.Log(
+                        $"[Resolve] INVINCIBLE window on clip={clip.ResolvedName} active={s:F2}~{e:F2}");
+                }
+            }
+        }
+
+        DefenseRuntimeRegistry.SetWindowFlags(player, anyParry, anyInvincible);
     }
 
     /// <summary>188.3 W9 — Combat Track 时间轴穿越触发 CombatObjectSpawner.Spawn。</summary>

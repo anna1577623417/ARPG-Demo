@@ -13,7 +13,7 @@ public struct CombatEvent
     [Tooltip("生成的 CombatObject 定义资产。空 = 跳过。")]
     public CombatObjectDefinitionSO Definition;
 
-    [Header("Spawn Override (可选)")]
+    // Spawn Override — 勿用 [Header]（嵌套在 ActionData Inspector Foldout 会触发 Unity 报错）
     [Tooltip("勾选后用本字段覆盖 Definition.SpawnSource/Offset；用于不同 Action 复用同一 Definition。")]
     public bool OverrideSpawn;
 

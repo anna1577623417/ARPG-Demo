@@ -22,6 +22,30 @@ public class BoxShapeSO : HitShapeSO
         return Physics.OverlapBoxNonAlloc(center, halfExtents, results, rotation, layerMask, queryTriggers);
     }
 
+    public override int Sweep(
+        Vector3 from,
+        Vector3 to,
+        Quaternion rotation,
+        RaycastHit[] results,
+        int layerMask,
+        QueryTriggerInteraction queryTriggers)
+    {
+        if (results == null || results.Length == 0)
+        {
+            return 0;
+        }
+
+        var delta = to - from;
+        var dist = delta.magnitude;
+        if (dist < 1e-4f)
+        {
+            return 0;
+        }
+
+        var center = from + rotation * offset;
+        return Physics.BoxCastNonAlloc(center, halfExtents, delta / dist, results, rotation, dist, layerMask, queryTriggers);
+    }
+
     public override void DrawGizmo(Vector3 origin, Quaternion rotation, Color color)
     {
         if (halfExtents.x <= 0f && halfExtents.y <= 0f && halfExtents.z <= 0f) return;

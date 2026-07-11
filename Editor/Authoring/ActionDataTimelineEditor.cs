@@ -12,10 +12,11 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
     {
         Interrupt,
         RotationInput,    // 198.3 — 玩家输入触发的转向/移动窗口
-        PhaseStartup,
-        PhaseActive,
-        PhaseRecovery,
+        PhaseRibbon,      // 216.3 M0 L2/L3：衍生只读带（前摇/判定/后摇），取代旧 3 条手工 Phase 轨
+        Attack,           // 216.3 M1：HitClip 判定轨（Active 区间 + Shape），运行时 AttackInstance 驱动
+        Guard,            // 216.3 M5：DefenseClip 防御轨（Guard/Parry/Invincible），运行时 GuardVolumeProvider
         Hitbox,
+        Combat,
         Hurtbox,
         Invincible,
         ComboInput,
@@ -38,33 +39,20 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
         MoveMarker,
     }
 
-    static readonly TrackId[] ActiveTracks =
-    {
-        TrackId.Interrupt,
-        TrackId.RotationInput,
-        TrackId.PhaseStartup,
-        TrackId.PhaseActive,
-        TrackId.PhaseRecovery,
-        TrackId.Hitbox,
-        TrackId.Hurtbox,
-        TrackId.Invincible,
-        TrackId.ComboInput,
-        TrackId.RootMotion,
-        TrackId.RuntimeEvent,
-        TrackId.Teleport,
-        TrackId.Fx,
-        TrackId.Audio,
-        TrackId.Camera,
-        TrackId.TimeScale,
-    };
+    // 216.3 M0 L1：ActiveTracks 已迁到 ActionDataTimelineEditor.TrackTaxonomy.cs（单点注册表）。
 
     const float LabelWidth = 124f;
     const float RowHeight = 20f;
     const float RulerHeight = 24f;
+    const float TierHeaderHeight = 16f;   // 216.3 M0 L1：Tier 分隔标题行高
     const float HandleWidth = 6f;
     const float MinClipDuration = 0.02f;
     const float SnapStep = 0.01f;
     const float DefaultCombatClipLength = 0.12f;
+
+    // 216.3 M0 L1：单一布局真相 —— 绘制时记录每条活动轨的 barRect，输入命中复用，
+    // 避免 Tier 分隔行插入后 floor 除法错位（§16 禁止兜底式偏移换算）。
+    Rect[] _trackBarRects;
 
     ActionDataSO _action;
     SerializedObject _so;
@@ -102,6 +90,8 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
 
     internal static ActionDataTimelineEditor ActiveInstance => s_activeEditor;
     internal bool HasBoundAction => _action != null && _so != null;
+    internal float PreviewNormalizedTime => _previewTime;
+    internal Transform GizmoAnchorOverride => _gizmoAnchorOverride;
 
     internal ActionTimelinePreviewContext BuildCurrentPreviewContext()
     {
@@ -184,6 +174,10 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
         _selectedWindow = -1;
         _selectedTeleport = -1;
         _selectedMarker = -1;
+        _selectedCombatEvent = -1;
+        _dragCombatEventIndex = -1;
+        ClearAttackSelection();
+        ClearGuardSelection();
         _dragMode = DragMode.None;
         ActionTimelineRootMotionSampler.InvalidateCache();
         SyncSceneBridge();
@@ -283,7 +277,19 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
         _markers = _so?.FindProperty(nameof(ActionDataSO.TimelineMarkers));
         _previewTimeMarkers = _so?.FindProperty(nameof(ActionDataSO.PreviewTimeMarkers));
         _timeBinding = ActionTimeAuthorityBinding.Create(_so);
+        RefreshCombatTrackProperties();
+        RefreshAttackTrackProperties();
+        RefreshGuardTrackProperties();
     }
+
+    partial void RefreshCombatTrackProperties();
+    partial void HandleCombatTrackInput(TrackId track, float norm, Event e, Rect barRect);
+    partial void ApplyCombatMarkerDragIfNeeded();
+    partial void RefreshAttackTrackProperties();
+    partial void HandleAttackTrackInput(TrackId track, float norm, Event e, Rect barRect);
+    partial void RefreshGuardTrackProperties();
+    partial void HandleGuardTrackInput(TrackId track, float norm, Event e, Rect barRect);
+    int _dragCombatEventIndex;
 
     void DrawSelectionInspector()
     {
@@ -302,6 +308,21 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
         if (_selectedMarker >= 0 && _markers != null && _selectedMarker < _markers.arraySize)
         {
             DrawMarkerInspector(_markers.GetArrayElementAtIndex(_selectedMarker));
+            return;
+        }
+
+        if (TryDrawSelectedCombatEventInspector())
+        {
+            return;
+        }
+
+        if (TryDrawAttackTrackInspector())
+        {
+            return;
+        }
+
+        if (TryDrawGuardTrackInspector())
+        {
             return;
         }
 
@@ -377,7 +398,9 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
             return true;
         }
 
-        return _selectedMarker >= 0 && _markers != null && _selectedMarker < _markers.arraySize;
+        return _selectedMarker >= 0 && _markers != null && _selectedMarker < _markers.arraySize
+               || HasSelectedCombatEvent()
+               || HasSelectedAttackClip();
     }
 
     bool TryDeleteSelection()
@@ -409,6 +432,21 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
             _selectedMarker = _markers.arraySize > 0
                 ? Mathf.Clamp(_selectedMarker, 0, _markers.arraySize - 1)
                 : -1;
+            return true;
+        }
+
+        if (TryDeleteSelectedCombatEvent())
+        {
+            return true;
+        }
+
+        if (TryDeleteSelectedAttackClip())
+        {
+            return true;
+        }
+
+        if (TryDeleteSelectedDefenseClip())
+        {
             return true;
         }
 
@@ -456,11 +494,28 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
         DrawRuler(_laneRect);
 
         _firstRowY = _laneRect.y + RulerHeight + 4f;
+        if (_trackBarRects == null || _trackBarRects.Length != ActiveTracks.Length)
+        {
+            _trackBarRects = new Rect[ActiveTracks.Length];
+        }
+
         var y = _firstRowY;
+        var hasPrevTier = false;
+        var prevTier = CombatTrackTier.CombatCore;
         for (var i = 0; i < ActiveTracks.Length; i++)
         {
             var track = ActiveTracks[i];
+            var tier = GetTrackTier(track);
+            if (!hasPrevTier || prevTier != tier)
+            {
+                DrawTierHeader(new Rect(trackArea.x, y, trackArea.width, TierHeaderHeight), tier);
+                y += TierHeaderHeight;
+                hasPrevTier = true;
+                prevTier = tier;
+            }
+
             var row = new Rect(trackArea.x, y, trackArea.width, RowHeight);
+            _trackBarRects[i] = new Rect(_laneRect.x, y, _laneRect.width, RowHeight);
             DrawTrackRow(row, _laneRect, track);
             y += RowHeight + 2f;
         }
@@ -468,6 +523,16 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
         DrawClipDoneMarker(_laneRect, _firstRowY, y - _firstRowY);
         DrawPlayhead(_laneRect, _firstRowY, y - _firstRowY);
         HandleTimelineInput();
+    }
+
+    /// <summary>216.3 M0 L1 — Tier 分隔标题行（分层可视化）。</summary>
+    void DrawTierHeader(Rect rect, CombatTrackTier tier)
+    {
+        EditorGUI.DrawRect(rect, new Color(0.08f, 0.08f, 0.1f, 1f));
+        var line = new Rect(rect.x, rect.yMax - 1f, rect.width, 1f);
+        EditorGUI.DrawRect(line, new Color(0.35f, 0.35f, 0.4f, 0.8f));
+        var labelRect = new Rect(rect.x + 4f, rect.y, rect.width - 8f, rect.height);
+        GUI.Label(labelRect, GetTierHeader(tier), EditorStyles.miniBoldLabel);
     }
 
     void DrawClipDoneMarker(Rect lane, float top, float height)
@@ -563,6 +628,30 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
             return;
         }
 
+        if (track == TrackId.Combat)
+        {
+            DrawCombatMarkers(barRect);
+            return;
+        }
+
+        if (track == TrackId.PhaseRibbon)
+        {
+            DrawPhaseRibbon(barRect);
+            return;
+        }
+
+        if (track == TrackId.Attack)
+        {
+            DrawAttackTrack(barRect);
+            return;
+        }
+
+        if (track == TrackId.Guard)
+        {
+            DrawGuardTrack(barRect);
+            return;
+        }
+
         if (IsPresentationTrack(track))
         {
             DrawPresentationMarkers(barRect, track);
@@ -652,7 +741,15 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
 
         if (e.type == EventType.MouseDrag && _dragMode == DragMode.MoveMarker)
         {
-            ApplyMarkerDrag();
+            if (_dragCombatEventIndex >= 0)
+            {
+                ApplyCombatMarkerDragIfNeeded();
+            }
+            else
+            {
+                ApplyMarkerDrag();
+            }
+
             e.Use();
             Repaint();
             return;
@@ -666,11 +763,30 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
             return;
         }
 
+        if (e.type == EventType.MouseDrag && _dragMode != DragMode.None && _dragAttackClipIndex >= 0)
+        {
+            ApplyAttackClipDrag(e);
+            e.Use();
+            Repaint();
+            return;
+        }
+
+        if (e.type == EventType.MouseDrag && _dragMode != DragMode.None && _dragDefenseClipIndex >= 0)
+        {
+            ApplyDefenseClipDrag(e);
+            e.Use();
+            Repaint();
+            return;
+        }
+
         if (e.type == EventType.MouseUp && e.button == 0)
         {
             _dragMode = DragMode.None;
             _dragWindowIndex = -1;
             _dragMarkerIndex = -1;
+            _dragCombatEventIndex = -1;
+            _dragAttackClipIndex = -1;
+            _dragDefenseClipIndex = -1;
             return;
         }
 
@@ -694,14 +810,46 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
             return;
         }
 
-        var rowIndex = Mathf.FloorToInt((mp.y - _firstRowY) / (RowHeight + 2f));
-        if (rowIndex < 0 || rowIndex >= ActiveTracks.Length)
+        var rowIndex = PickTrackRowIndex(mp.y);
+        if (rowIndex < 0)
         {
             return;
         }
 
         var track = ActiveTracks[rowIndex];
         _lastClickedTrack = track;
+        var barRect = _trackBarRects[rowIndex];
+
+        // 216.3 M0 L1：衍生轨（Phase）只读 —— 点击仅聚焦提示，不创建 / 不拖拽（§15.5 WIRE 2）。
+        if (IsDerivedTrack(track))
+        {
+            _selectedWindow = -1;
+            _selectedTeleport = -1;
+            _selectedMarker = -1;
+            ClearAttackSelection();
+            ClearGuardSelection();
+            e.Use();
+            Repaint();
+            return;
+        }
+
+        if (track == TrackId.Attack)
+        {
+            HandleAttackTrackInput(track, norm, e, barRect);
+            return;
+        }
+
+        if (track == TrackId.Guard)
+        {
+            HandleGuardTrackInput(track, norm, e, barRect);
+            return;
+        }
+
+        if (track == TrackId.Combat)
+        {
+            HandleCombatTrackInput(track, norm, e, barRect);
+            return;
+        }
 
         if (IsPresentationTrack(track))
         {
@@ -754,8 +902,30 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
 
         _selectedWindow = -1;
         _selectedTeleport = -1;
+        ClearAttackSelection();
+        ClearGuardSelection();
         e.Use();
         Repaint();
+    }
+
+    /// <summary>216.3 M0 L1 — 用记录的每轨 barRect 命中行索引（Tier 分隔行返回 -1）。</summary>
+    int PickTrackRowIndex(float mouseY)
+    {
+        if (_trackBarRects == null)
+        {
+            return -1;
+        }
+
+        for (var i = 0; i < _trackBarRects.Length; i++)
+        {
+            var r = _trackBarRects[i];
+            if (mouseY >= r.y && mouseY <= r.yMax)
+            {
+                return i;
+            }
+        }
+
+        return -1;
     }
 
     bool TryPickTeleport(float norm)
@@ -788,6 +958,12 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
             return false;
         }
 
+        // 216.3 M0 L1：衍生轨（Phase）只读，禁止拖拽/缩放。
+        if (!IsTrackEditable(track))
+        {
+            return false;
+        }
+
         for (var i = 0; i < _windows.arraySize; i++)
         {
             var elem = _windows.GetArrayElementAtIndex(i);
@@ -804,6 +980,9 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
 
             _selectedWindow = i;
             _selectedTeleport = -1;
+            _selectedMarker = -1;
+            ClearAttackSelection();
+            ClearGuardSelection();
             _dragWindowIndex = i;
             _dragAnchorNorm = norm;
             _dragOrigStart = w.NormalizedStart;
@@ -878,13 +1057,16 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
             return false;
         }
 
-        if (IsCombatCoreTrack(track) || IsPhaseTrack(track) || track == TrackId.Interrupt)
+        // 216.3 M0 L1：衍生轨（Phase）只读，禁止双击创建（阶段由 Attack/Cancel 衍生，§15.2）。
+        if (!IsTrackEditable(track))
         {
-            AddCombatClip(track, norm);
-            return true;
+            return false;
         }
 
-        if (track == TrackId.ComboInput || track == TrackId.RootMotion || track == TrackId.RotationInput)
+        if (IsCombatCoreTrack(track)
+            || track == TrackId.ComboInput
+            || track == TrackId.RootMotion
+            || track == TrackId.RotationInput)
         {
             AddCombatClip(track, norm);
             return true;
@@ -906,6 +1088,8 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
         _selectedWindow = _windows.arraySize - 1;
         _selectedTeleport = -1;
         _selectedMarker = -1;
+        ClearAttackSelection();
+        ClearGuardSelection();
     }
 
     void AddBlankWindow(float start, float end)
@@ -917,6 +1101,8 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
         _selectedWindow = _windows.arraySize - 1;
         _selectedTeleport = -1;
         _selectedMarker = -1;
+        ClearAttackSelection();
+        ClearGuardSelection();
     }
 
     static void ApplyTrackPreset(SerializedProperty windowElem, TrackId track)
@@ -924,23 +1110,14 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
         switch (track)
         {
             case TrackId.Hitbox:
+                // 216.3 M0 L3：不再手工写 PhaseActive —— Phase 由 PhaseDerivation 从 Hitbox 判定窗衍生。
                 ActionDataTimelineSlots.SetTag(windowElem, StateTag.HitboxActive_Window, true);
-                ActionDataTimelineSlots.SetTag(windowElem, StateTag.PhaseActive, true);
                 break;
             case TrackId.Hurtbox:
                 ActionDataTimelineSlots.SetTag(windowElem, StateTag.HurtboxActive_Window, true);
                 break;
             case TrackId.Invincible:
                 ActionDataTimelineSlots.SetTag(windowElem, StateTag.Invulnerable, true);
-                break;
-            case TrackId.PhaseStartup:
-                ActionDataTimelineSlots.SetTag(windowElem, StateTag.PhaseStartup, true);
-                break;
-            case TrackId.PhaseActive:
-                ActionDataTimelineSlots.SetTag(windowElem, StateTag.PhaseActive, true);
-                break;
-            case TrackId.PhaseRecovery:
-                ActionDataTimelineSlots.SetTag(windowElem, StateTag.PhaseRecovery, true);
                 break;
             case TrackId.ComboInput:
                 ActionDataTimelineSlots.SetTag(windowElem, StateTag.ComboInput_Window, true);
@@ -1003,12 +1180,7 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
                 return w.InterruptibleByCategories != ActionCategory.None;
             case TrackId.RotationInput:
                 return w.AllowFacingInput || w.AllowMoveInput;
-            case TrackId.PhaseStartup:
-                return (mask & (ulong)StateTag.PhaseStartup) != 0;
-            case TrackId.PhaseActive:
-                return (mask & (ulong)StateTag.PhaseActive) != 0;
-            case TrackId.PhaseRecovery:
-                return (mask & (ulong)StateTag.PhaseRecovery) != 0;
+            // 216.3 M0 L3：Phase 轨已折叠为 PhaseRibbon（衍生只读），不再由窗口手工贡献。
             case TrackId.Invincible:
                 return (mask & (ulong)StateTag.Invulnerable) != 0;
             case TrackId.Hitbox:
@@ -1024,48 +1196,8 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
         }
     }
 
-    static bool IsCombatCoreTrack(TrackId track) =>
-        track is TrackId.Hitbox or TrackId.Hurtbox or TrackId.Invincible;
-
-    static bool IsPhaseTrack(TrackId track) =>
-        track is TrackId.PhaseStartup or TrackId.PhaseActive or TrackId.PhaseRecovery;
-
-    static string GetTrackLabel(TrackId track) => track switch
-    {
-        TrackId.Interrupt => "Interrupt",
-        TrackId.RotationInput => "Rotation Input (198.3)",
-        TrackId.PhaseStartup => "Phase · Startup",
-        TrackId.PhaseActive => "Phase · Active",
-        TrackId.PhaseRecovery => "Phase · Recovery",
-        TrackId.Hitbox => "Hitbox ★",
-        TrackId.Hurtbox => "Hurtbox ★",
-        TrackId.Invincible => "Invincible ★",
-        TrackId.ComboInput => "Combo Input",
-        TrackId.RootMotion => "Root Motion",
-        TrackId.RuntimeEvent => "Runtime Events",
-        TrackId.Teleport => "Teleport ◆",
-        TrackId.Fx => "FX ◆",
-        TrackId.Audio => "Audio ◆",
-        TrackId.Camera => "Camera",
-        TrackId.TimeScale => "TimeScale",
-        _ => track.ToString(),
-    };
-
-    static Color GetTrackColor(TrackId track) => track switch
-    {
-        TrackId.Interrupt => new Color(0.95f, 0.45f, 0.2f, 0.88f),
-        TrackId.RotationInput => new Color(0.25f, 0.85f, 0.65f, 0.85f),  // 198.3 青绿色
-        TrackId.PhaseStartup => new Color(0.35f, 0.55f, 0.95f, 0.78f),
-        TrackId.PhaseActive => new Color(0.2f, 0.75f, 0.45f, 0.78f),
-        TrackId.PhaseRecovery => new Color(0.55f, 0.4f, 0.9f, 0.78f),
-        TrackId.Hitbox => new Color(0.95f, 0.22f, 0.22f, 0.9f),
-        TrackId.Hurtbox => new Color(0.85f, 0.35f, 0.95f, 0.88f),
-        TrackId.Invincible => new Color(0.95f, 0.88f, 0.15f, 0.88f),
-        TrackId.ComboInput => new Color(0.3f, 0.85f, 0.9f, 0.75f),
-        TrackId.RootMotion => new Color(0.7f, 0.7f, 0.7f, 0.72f),
-        TrackId.RuntimeEvent => new Color(0.85f, 0.65f, 0.15f, 0.68f),
-        _ => Color.gray,
-    };
+    // 216.3 M0 L1：IsCombatCoreTrack / IsPhaseTrack / GetTrackLabel / GetTrackColor
+    // 已迁到 ActionDataTimelineEditor.TrackTaxonomy.cs（单点注册表）。
 
     float TimeToX(Rect lane, float t) => lane.x + lane.width * Mathf.Clamp01(t);
 

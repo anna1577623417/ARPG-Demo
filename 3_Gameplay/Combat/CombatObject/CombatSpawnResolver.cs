@@ -2,7 +2,7 @@ using UnityEngine;
 
 /// <summary>
 /// 188.3 W9 — 把 SpawnSource enum 解析为世界空间 (pos, rot)。
-/// <para>Player / Entity 接入时调用。CombatObjectRuntime 不直接依赖此类，避免循环。</para>
+/// 214.4 — SelfHandR/L/Root 优先 Humanoid 骨骼，无 Rig 时回退根骨偏移。
 /// </summary>
 public static class CombatSpawnResolver
 {
@@ -14,7 +14,6 @@ public static class CombatSpawnResolver
         out Vector3 worldPos,
         out Quaternion worldRot)
     {
-        // Override 优先
         var src = ev.OverrideSpawn ? ev.SpawnSourceOverride : def.SpawnSource;
         var localOffset = ev.OverrideSpawn ? ev.LocalOffsetOverride : def.LocalOffset;
         var localEuler = ev.OverrideSpawn ? ev.LocalEulerOffsetOverride : def.LocalEulerOffset;
@@ -22,6 +21,11 @@ public static class CombatSpawnResolver
         var sourceTf = source != null ? source.transform : null;
         var sourcePos = sourceTf != null ? sourceTf.position : Vector3.zero;
         var sourceRot = sourceTf != null ? sourceTf.rotation : Quaternion.identity;
+
+        if (TryResolveFromBone(source, src, localOffset, localEuler, out worldPos, out worldRot))
+        {
+            return;
+        }
 
         switch (src)
         {
@@ -46,7 +50,6 @@ public static class CombatSpawnResolver
                 break;
 
             case SpawnSource.GroundUnderTarget:
-                // 暂用 source 前方 5m 作锁定占位；后续接入锁敌系统
                 worldPos = ProjectToGround(sourcePos + sourceRot * (Vector3.forward * 5f + localOffset));
                 worldRot = sourceRot * Quaternion.Euler(localEuler);
                 break;
@@ -81,13 +84,34 @@ public static class CombatSpawnResolver
         }
     }
 
+    static bool TryResolveFromBone(
+        Entity source,
+        SpawnSource src,
+        Vector3 localOffset,
+        Vector3 localEuler,
+        out Vector3 worldPos,
+        out Quaternion worldRot)
+    {
+        worldPos = Vector3.zero;
+        worldRot = Quaternion.identity;
+
+        if (!CombatSpawnBoneResolver.TryGetBoneTransform(source, src, out var boneTf))
+        {
+            return false;
+        }
+
+        worldPos = boneTf.position + boneTf.rotation * localOffset;
+        worldRot = boneTf.rotation * Quaternion.Euler(localEuler);
+        return true;
+    }
+
     static Vector3 ProjectToGround(Vector3 fromPos)
     {
-        // 向下 SphereCast 取地面；找不到时保持原 Y
         if (Physics.Raycast(fromPos + Vector3.up * 0.5f, Vector3.down, out var hit, 50f, ~0, QueryTriggerInteraction.Ignore))
         {
             return new Vector3(fromPos.x, hit.point.y, fromPos.z);
         }
+
         return fromPos;
     }
 }

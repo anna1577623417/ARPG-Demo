@@ -249,7 +249,7 @@ public sealed partial class ActionDataTimelineEditor
                     GUILayout.MaxWidth(innerW));
                 var timelineRect = GUILayoutUtility.GetRect(
                     innerW,
-                    ActiveTracks.Length * (RowHeight + 2f) + RulerHeight + 8f);
+                    ActiveTracks.Length * (RowHeight + 2f) + TierCount() * TierHeaderHeight + RulerHeight + 8f);
                 DrawTimeline(timelineRect);
                 ActionTimelineEditorUI.EndScrollView();
                 _timelineScroll.x = 0f;
@@ -261,13 +261,29 @@ public sealed partial class ActionDataTimelineEditor
 
     void DrawPreviewAnchorField()
     {
-        EditorGUI.BeginChangeCheck();
-        _gizmoAnchorOverride = (Transform)EditorGUILayout.ObjectField(
-            new GUIContent("预览对象", "Scene Gizmo 锚点；为空时使用 Hierarchy 选中 Transform"),
-            _gizmoAnchorOverride,
-            typeof(Transform),
-            true);
-        if (EditorGUI.EndChangeCheck())
+        var changed = false;
+        using (new EditorGUILayout.HorizontalScope())
+        {
+            EditorGUI.BeginChangeCheck();
+            _gizmoAnchorOverride = (Transform)EditorGUILayout.ObjectField(
+                new GUIContent("预览对象", "Scene 预览锚点；为空时用 Hierarchy 选中或启用 PlayerController 的角色"),
+                _gizmoAnchorOverride,
+                typeof(Transform),
+                true);
+            changed = EditorGUI.EndChangeCheck();
+
+            if (GUILayout.Button("用选中", GUILayout.Width(52f)))
+            {
+                var picked = ActionTimelineEditorUI.PickPreviewAnchorFromSelection();
+                if (picked != null)
+                {
+                    _gizmoAnchorOverride = picked;
+                    changed = true;
+                }
+            }
+        }
+
+        if (changed)
         {
             PersistGizmoAnchorReference();
             SyncSceneBridge();
@@ -370,6 +386,7 @@ public sealed partial class ActionDataTimelineEditor
                 if (GUILayout.Button("Hitbox", EditorStyles.miniButton)) AddCombatClip(TrackId.Hitbox, _previewTime);
                 if (GUILayout.Button("Hurt", EditorStyles.miniButton)) AddCombatClip(TrackId.Hurtbox, _previewTime);
                 if (GUILayout.Button("Invuln", EditorStyles.miniButton)) AddCombatClip(TrackId.Invincible, _previewTime);
+                if (GUILayout.Button("Attack", EditorStyles.miniButton)) AddAttackClipAt(_previewTime);
             }
 
             DrawCameraTrackQuickAdd();
@@ -428,6 +445,33 @@ public sealed partial class ActionDataTimelineEditor
         if (_selectedWindow >= 0)
         {
             DrawSegment($"Window #{_selectedWindow}", 72f);
+        }
+
+        if (_selectedAttackClip >= 0)
+        {
+            DrawSegment($"HitClip #{_selectedAttackClip}", 80f);
+        }
+
+        if (_attackClips != null && _attackClips.arraySize > 0)
+        {
+            var activeCount = 0;
+            for (var i = 0; i < _attackClips.arraySize; i++)
+            {
+                var elem = _attackClips.GetArrayElementAtIndex(i);
+                var s = elem.FindPropertyRelative(nameof(HitClip.ActiveStart)).floatValue;
+                var e = elem.FindPropertyRelative(nameof(HitClip.ActiveEnd)).floatValue;
+                var lo = Mathf.Min(s, e);
+                var hi = Mathf.Max(s, e);
+                if (_previewTime >= lo && _previewTime <= hi)
+                {
+                    activeCount++;
+                }
+            }
+
+            if (activeCount > 0)
+            {
+                DrawSegment($"Active×{activeCount}", 64f);
+            }
         }
         else if (_selectedMarker >= 0)
         {

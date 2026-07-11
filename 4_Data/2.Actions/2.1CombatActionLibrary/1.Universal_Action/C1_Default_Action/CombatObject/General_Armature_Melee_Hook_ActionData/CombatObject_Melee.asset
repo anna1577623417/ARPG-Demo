@@ -51,15 +51,17 @@ MonoBehaviour:
     TurnRateDegPerSec: 0
   Damage: {fileID: 11400000, guid: d8454ea643119a6428c4ce3abf6be32a, type: 2}
   Lifecycle:
-    Duration: 0
+    Duration: 0.12
     TickInterval: 0
-    MaxHitsPerTarget: 0
-    MaxTargets: 0
+    MaxHitsPerTarget: 1
+    MaxTargets: 8
     OnExpireSpawn: {fileID: 0}
-  TargetFilter: {fileID: 0}
+  TargetFilter:
+    Kind: 0
+    IncludeDead: 0
   SpawnSource: 1
-  LocalOffset: {x: 0, y: 0, z: 0}
-  LocalEulerOffset: {x: 0, y: 0, z: 0}
+  LocalOffset: {x: 2.2295284, y: 1.0747381, z: 2.0009909}
+  LocalEulerOffset: {x: 58.138306, y: 266.73914, z: 327.36008}
   QueryLayerMask:
     serializedVersion: 2
-    m_Bits: 4294967295
+    m_Bits: 320

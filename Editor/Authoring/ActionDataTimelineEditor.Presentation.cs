@@ -23,6 +23,7 @@ public sealed partial class ActionDataTimelineEditor
         _selectedMarker = _markers.arraySize - 1;
         _selectedWindow = -1;
         _selectedTeleport = -1;
+        ClearAttackSelection();
     }
 
     static ActionTimelineMarkerKind ReadMarkerKind(SerializedProperty elem) =>
@@ -113,6 +114,7 @@ public sealed partial class ActionDataTimelineEditor
                 _selectedMarker = i;
                 _selectedWindow = -1;
                 _selectedTeleport = -1;
+                ClearAttackSelection();
                 return true;
             }
         }
@@ -149,6 +151,7 @@ public sealed partial class ActionDataTimelineEditor
                 _dragOrigMarkerTime = t;
                 _dragAnchorNorm = norm;
                 _dragMode = DragMode.MoveMarker;
+                ClearAttackSelection();
                 Undo.RecordObject(_action, "Move Timeline Marker");
                 return true;
             }

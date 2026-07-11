@@ -101,6 +101,7 @@ public sealed partial class ActionDataInspector : Editor
             DrawGrammarSection(action);
             DrawStopAuthoringSection(action);
             DrawTimelineSection(action);
+            DrawCombatTrackSection(action);
         }
 
         if (!isContinuous)
@@ -252,9 +253,14 @@ public sealed partial class ActionDataInspector : Editor
             ActionDataTimelineEditor.Open(action);
         }
 
-        CombatTrackEditor.DrawInspector(serializedObject, action);
-
         EditorGUILayout.EndFoldoutHeaderGroup();
+    }
+
+    /// <summary>214.3 — CombatTrack 独立于 Timeline Foldout，避免嵌套 Foldout Header 报错。</summary>
+    void DrawCombatTrackSection(ActionDataSO action)
+    {
+        EditorGUILayout.Space(4f);
+        CombatTrackEditor.DrawInspector(serializedObject, action);
     }
 
     void DrawMotionPassSection(ActionDataSO action)

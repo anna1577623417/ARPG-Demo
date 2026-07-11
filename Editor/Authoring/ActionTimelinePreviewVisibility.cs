@@ -23,6 +23,15 @@ internal enum PreviewVisibilityMask : int
     GhostTrail = 1 << 13,
     Teleport = 1 << 14,
     Presentation = 1 << 15,
+    CombatVolume = 1 << 16,
+    /// <summary>216.3 M1 L3 — HitClip Active 期 Shape 几何。</summary>
+    AttackHitClip = 1 << 17,
+    /// <summary>216.3 M6 L1 — Active 多帧攻击云 Coverage。</summary>
+    AttackCoverage = 1 << 18,
+    /// <summary>216.3 M6 L1 — Trace/Volume Ghost 插值帧。</summary>
+    AttackGhost = 1 << 19,
+    /// <summary>216.3 M6 L2 — HitPreviewDummy 命中变色。</summary>
+    AttackHitPreview = 1 << 20,
     All = ~0,
 }
 
@@ -88,7 +97,7 @@ internal static class ActionTimelinePreviewVisibility
         }
 
         var count = 0;
-        for (var i = 0; i < 16; i++)
+        for (var i = 0; i < 32; i++)
         {
             if (((int)mask & (1 << i)) != 0)
             {

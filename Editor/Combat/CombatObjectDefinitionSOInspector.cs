@@ -71,15 +71,26 @@ public sealed class CombatObjectDefinitionSOInspector : Editor
         EditorGUILayout.LabelField("Lifecycle", EditorStyles.boldLabel);
         EditorGUILayout.PropertyField(m_Lifecycle);
         DrawLifecycleHint();
+        DrawLifecycleActions();
 
         EditorGUILayout.Space();
         EditorGUILayout.LabelField("Target Filter", EditorStyles.boldLabel);
-        EditorGUILayout.PropertyField(m_TargetFilter);
-        if (m_TargetFilter.objectReferenceValue == null)
+        EditorGUILayout.PropertyField(m_TargetFilter, includeChildren: true);
+        var kind = (TargetFilterKind)m_TargetFilter.FindPropertyRelative(nameof(TargetFilterParams.Kind)).enumValueIndex;
+        switch (kind)
         {
-            EditorGUILayout.HelpBox(
-                "TargetFilter 为空 → 任何 Collider 都判（除 Source 自己）。建议至少配 AnyTargetFilterSO。",
-                MessageType.Info);
+            case TargetFilterKind.AnyExceptSelf:
+                EditorGUILayout.HelpBox("命中任意 Entity（除施法者）。静态 Player 互殴靶适用。", MessageType.None);
+                break;
+            case TargetFilterKind.HostileOnly:
+                EditorGUILayout.HelpBox("仅命中阵营敌对（Faction 轨或 TeamId 不同）。", MessageType.None);
+                break;
+            case TargetFilterKind.FriendlyOnly:
+                EditorGUILayout.HelpBox("仅命中友方（治疗/增益）。", MessageType.None);
+                break;
+            case TargetFilterKind.SelfOnly:
+                EditorGUILayout.HelpBox("仅命中施法者自己。", MessageType.None);
+                break;
         }
 
         EditorGUILayout.Space();
@@ -143,6 +154,14 @@ public sealed class CombatObjectDefinitionSOInspector : Editor
         var duration = lifeProp.FindPropertyRelative("Duration").floatValue;
         var tick = lifeProp.FindPropertyRelative("TickInterval").floatValue;
         var maxHits = lifeProp.FindPropertyRelative("MaxHitsPerTarget").intValue;
+        var maxTargets = lifeProp.FindPropertyRelative("MaxTargets").intValue;
+
+        if (maxHits < 1 || maxTargets < 1)
+        {
+            EditorGUILayout.HelpBox(
+                "MaxHitsPerTarget / MaxTargets 不能为 0 → Spawn 将被拒绝。",
+                MessageType.Error);
+        }
 
         string mode;
         if (duration <= 0f) mode = "单帧瞬时";
@@ -151,6 +170,20 @@ public sealed class CombatObjectDefinitionSOInspector : Editor
         else mode = $"多段命中（{duration:F1}s 内最多 {maxHits} 次/目标）";
 
         EditorGUILayout.HelpBox(mode, MessageType.None);
+    }
+
+    void DrawLifecycleActions()
+    {
+        using (new EditorGUILayout.HorizontalScope())
+        {
+            if (GUILayout.Button("填充 DefaultMeleeOneShot"))
+            {
+                Undo.RecordObject(target, "Fill DefaultMeleeOneShot");
+                var def = (CombatObjectDefinitionSO)target;
+                def.Lifecycle = LifecycleParams.DefaultMeleeOneShot;
+                EditorUtility.SetDirty(def);
+            }
+        }
     }
 
     void DrawValidationStatus()

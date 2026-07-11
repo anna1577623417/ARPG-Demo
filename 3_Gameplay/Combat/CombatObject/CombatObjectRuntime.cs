@@ -206,12 +206,10 @@ public sealed class CombatObjectRuntime
             if (target == null) continue;
             if (target == Source) continue; // 不打自己
 
-            // TargetFilter
-            if (Definition.TargetFilter != null
-                && !Definition.TargetFilter.Passes(Source, target)) continue;
-
-            // 死亡过滤（默认不打死亡目标）
-            if (target.IsDead) continue;
+            if (!TargetFilterEvaluator.Passes(Definition.TargetFilter, Source, target))
+            {
+                continue;
+            }
 
             // MaxHitsPerTarget 去重
             var id = target.GetInstanceID();
@@ -219,6 +217,7 @@ public sealed class CombatObjectRuntime
             if (hits >= Definition.Lifecycle.MaxHitsPerTarget) continue;
             HitsPerTarget[id] = hits + 1;
 
+            CombatHitDiagProbe.LogOverlap(target, hits + 1, col);
             ApplyDamage(target);
             HitCountTotal++;
         }
@@ -281,15 +280,15 @@ public sealed class CombatObjectRuntime
                 var pool = target.Resources;
                 var cur = pool.GetCurrent(ResourceType.HP);
                 pool.SetCurrent(ResourceType.HP, Mathf.Max(0f, cur - result.FinalDamage));
+                CombatHitDiagProbe.LogDamage(target, result.FinalDamage, def.Kind);
                 break;
             }
         }
 
-        // OnHitEffect（180.1）
-        if (def.OnHitEffect != null)
+        // OnHitEffect（216.3 M3 L3 — 与 HitReaction 共用 EffectSystem 单点）
+        if (def.OnHitEffect != null && target is IEffectReceiver receiver)
         {
-            // 项目里 EffectStack 接入需 Entity 暴露 EffectStack 字段；当前仅日志
-            Debug.Log($"[CombatObject] OnHit Apply Effect={def.OnHitEffect.name} → {target.name}（EffectStack 接入留待 W14+）");
+            EffectSystem.ApplyEffect(Source, receiver, def.OnHitEffect);
         }
     }
 }

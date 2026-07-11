@@ -67,7 +67,7 @@ public sealed class PlayerActionState : PlayerState
         m_actionEnterElapsed = 0f;
         m_isLocomotionOnlyAction = player.SkillEntries?.ActiveRoute == null
             && m_action.IntentCategory != ActionIntentCategory.Combat;
-        m_timelineState.Reset();
+        m_timelineState.Reset(player);
         m_stopCtx = default;
         m_stopActive = false;
         m_logicForwardLockedForStop = false;
@@ -89,7 +89,16 @@ public sealed class PlayerActionState : PlayerState
             ResolveActiveOwnerGroup(player));
         m_motionPlayback.SetBurstFaceDir(m_burstFaceDir);
 
-        player.Tags.Add(TagCategory.State, (ulong)StateTag.PhaseStartup);
+        // 216.3 M0 L3：Phase 单一真相 —— 不再手工 Add PhaseStartup；由 EvaluatePhaseTags 衍生。
+        //             进入时以 normalizedStart 先算一次，保证首帧起 Phase 位就位。
+        m_action.EvaluatePhaseTags(normalizedStart, ref player.GameplayTags);
+        if (GameMainDebugSettings.CombatHit)
+        {
+            var sp = PhaseDerivation.Compute(m_action);
+            Debug.Log(sp.HasActive
+                ? $"[Phase] derive action={m_action.name} Startup=0~{sp.StartupEnd:F2} Active={sp.ActiveStart:F2}~{sp.ActiveEnd:F2} Recover={sp.RecoveryStart:F2}~{sp.RecoveryEnd:F2}"
+                : $"[Phase] derive action={m_action.name} (no active) Startup=0~{sp.StartupEnd:F2} Recover={sp.RecoveryStart:F2}~{sp.RecoveryEnd:F2}");
+        }
 
         m_motionPlayback.BeginSession(
             player,
@@ -247,7 +256,7 @@ public sealed class PlayerActionState : PlayerState
         m_action = action;
         m_elapsed = 0f;
         m_prevNormalizedTime = 0f;
-        m_timelineState.Reset();
+        m_timelineState.Reset(player);
         EnsureMotionPlumbing(player);
         m_baseDuration = m_motionPlayback.ResolveActionDuration(player, action, m_kind);
         m_motionPlayback.ApplyDriverPolicy(player, action);
@@ -463,7 +472,8 @@ public sealed class PlayerActionState : PlayerState
         {
             player.ClearGraphContextAction("locomotion-action-exit");
         }
-        player.Tags.Remove(TagCategory.State, (ulong)StateTag.PhaseStartup);
+        // 216.3 M0 L3：清除全部 Phase 位（衍生可能已置 Active/Recovery），不再只移除 PhaseStartup。
+        player.Tags.Remove(TagCategory.State, ActionWindowPhaseMask.Bits);
         player.ForceEndAttackIfActive();
         player.ClearDirectionalInputContext();
 
@@ -489,6 +499,9 @@ public sealed class PlayerActionState : PlayerState
                 ? GameModeManager.Instance.ActiveCameraController as ActionCameraController
                 : null,
             ActionTimeScaleDriver.Instance);
+
+        // 216.3 M5 L2：退出 Action 时关 Guard/Parry 窗，避免 Locomotion 期仍 Blocked。
+        m_timelineState.Reset(player);
 
         m_action = null;
         ResetActionMotionExitState();

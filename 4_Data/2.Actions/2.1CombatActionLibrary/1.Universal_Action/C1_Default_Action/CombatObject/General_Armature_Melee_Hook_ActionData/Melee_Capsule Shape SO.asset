@@ -12,6 +12,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f41d970f1a8120244905c7b80fba94a7, type: 3}
   m_Name: Melee_Capsule Shape SO
   m_EditorClassIdentifier: 
-  radius: 0.35
-  height: 1.6
+  radius: 566.2606
+  height: 566.2606
   offset: {x: 0, y: 0, z: 0}

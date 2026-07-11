@@ -106,6 +106,8 @@ public sealed class GameMainDebugSettingsWindow : EditorWindow
                 "Interrupt Flow", "[Interrupt]");
             Toggle(() => GameMainDebugSettings.ComboAirGate, v => GameMainDebugSettings.ComboAirGate = v,
                 "Combo Air Gate", "[ComboAirGate]");
+            Toggle(() => GameMainDebugSettings.CombatHit, v => GameMainDebugSettings.CombatHit = v,
+                "Combat Hit (214.3)", "[CombatHit] SPAWN/OVERLAP/DAMAGE");
             Toggle(() => GameMainDebugSettings.IntentArbitration, v => GameMainDebugSettings.IntentArbitration = v,
                 "Intent Arbitration", "StateManager 意图仲裁");
         });

@@ -3,6 +3,7 @@ using UnityEngine;
 /// <summary>
 /// 训练假人：无 AI，但完整实现战斗受体接口，专用于管线验证。
 /// </summary>
+[System.Obsolete("CombatObject 请使用 Enemy_Training（Entity 子类）。本组件保留仅供旧场景过渡。")]
 public sealed class TestDummy : MonoBehaviour, IEntity, IDamageable, IEffectReceiver
 {
     [SerializeField] TestDummyConfigSO config;

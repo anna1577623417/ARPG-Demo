@@ -116,6 +116,70 @@ internal static class ActionTimelineEditorUI
         return serializedFallback;
     }
 
+    /// <summary>TL / Combat 预览锚点：显式 override → Hierarchy 选中 → 启发式 Player。</summary>
+    public static Transform ResolvePreviewAnchor(Transform anchorOverride)
+    {
+        if (anchorOverride != null)
+        {
+            return anchorOverride;
+        }
+
+        var fromSelection = PickPreviewAnchorFromSelection();
+        if (fromSelection != null)
+        {
+            return fromSelection;
+        }
+
+        return FindPreferredPlayerTransform();
+    }
+
+    public static Transform PickPreviewAnchorFromSelection()
+    {
+        if (Selection.activeTransform == null)
+        {
+            return null;
+        }
+
+        var player = Selection.activeTransform.GetComponentInParent<Player>();
+        return player != null ? player.transform : Selection.activeTransform;
+    }
+
+    public static Transform FindPreferredPlayerTransform()
+    {
+        var players = UnityEngine.Object.FindObjectsByType<Player>(FindObjectsSortMode.None);
+        if (players == null || players.Length == 0)
+        {
+            return null;
+        }
+
+        if (players.Length == 1)
+        {
+            return players[0].transform;
+        }
+
+        for (var i = 0; i < players.Length; i++)
+        {
+            var pc = players[i].GetComponent<PlayerController>();
+            if (pc != null && pc.enabled)
+            {
+                return players[i].transform;
+            }
+        }
+
+        for (var i = 0; i < players.Length; i++)
+        {
+            var name = players[i].name;
+            if (name.IndexOf("Training", System.StringComparison.OrdinalIgnoreCase) < 0
+                && name.IndexOf("Dummy", System.StringComparison.OrdinalIgnoreCase) < 0
+                && name.IndexOf("Target", System.StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                return players[i].transform;
+            }
+        }
+
+        return players[0].transform;
+    }
+
     /// <summary>属性栏绘制中为 true；PropertyDrawer 可省略 HelpBox、缩短行高。</summary>
     public static bool CompactPropertyContext { get; set; }
 

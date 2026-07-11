@@ -53,6 +53,8 @@ public class PlayerStateManager : EntityStateManager<Player>
     {
         if (Entity == null || Current == null) return;
 
+        ClashSession.Tick(Time.time);
+
         Entity.SkillEntries?.TickCooldowns(deltaTime);
         Entity.IntentBuffer.FlushExpired(Time.time);
 

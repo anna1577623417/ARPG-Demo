@@ -26,6 +26,9 @@ public enum StatusTag : ulong
     /// <summary>Status.Debuff.CC.Root</summary>
     Root = 1UL << 4,
 
+    /// <summary>216.3 M5 L3 — Status.Combat.Clash：拼刀会话中（短时，双方互锁）。</summary>
+    Clash = 1UL << 5,
+
     // ═══ Phase 3（元素 / 持续伤害，原神 / ZZZ 向扩展位）═══
     /// <summary>Status.Debuff.DOT.Burn</summary>
     Burn = 1UL << 8,

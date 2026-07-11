@@ -302,6 +302,60 @@ public sealed class CombatObjectTests
         finally { Object.DestroyImmediate(beam); }
     }
 
+    // ─── TargetFilter (214.4) ─────────────────────────────
+
+    sealed class CombatTestEntity : Entity
+    {
+        public void SetTeamForTest(int id) => teamId = id;
+    }
+
+    [Test]
+    public void TargetFilter_AnyExceptSelf_ExcludesCaster()
+    {
+        var filter = TargetFilterParams.Default;
+        var goA = new GameObject("Caster");
+        var goB = new GameObject("Target");
+        try
+        {
+            var caster = goA.AddComponent<CombatTestEntity>();
+            var target = goB.AddComponent<CombatTestEntity>();
+            Assert.IsFalse(TargetFilterEvaluator.Passes(in filter, caster, caster));
+            Assert.IsTrue(TargetFilterEvaluator.Passes(in filter, caster, target));
+        }
+        finally
+        {
+            Object.DestroyImmediate(goA);
+            Object.DestroyImmediate(goB);
+        }
+    }
+
+    [Test]
+    public void TargetFilter_HostileOnly_UsesTeamId()
+    {
+        var filter = TargetFilterParams.Hostile;
+        var goA = new GameObject("Caster");
+        var goB = new GameObject("Ally");
+        var goC = new GameObject("Enemy");
+        try
+        {
+            var caster = goA.AddComponent<CombatTestEntity>();
+            caster.SetTeamForTest(0);
+            var ally = goB.AddComponent<CombatTestEntity>();
+            ally.SetTeamForTest(0);
+            var enemy = goC.AddComponent<CombatTestEntity>();
+            enemy.SetTeamForTest(1);
+
+            Assert.IsFalse(TargetFilterEvaluator.Passes(in filter, caster, ally));
+            Assert.IsTrue(TargetFilterEvaluator.Passes(in filter, caster, enemy));
+        }
+        finally
+        {
+            Object.DestroyImmediate(goA);
+            Object.DestroyImmediate(goB);
+            Object.DestroyImmediate(goC);
+        }
+    }
+
     // ─── Utility ──────────────────────────────────────────
 
     static (CombatObjectDefinitionSO, SphereShapeSO, DamageDefinitionSO) MakeBasicDefinition()

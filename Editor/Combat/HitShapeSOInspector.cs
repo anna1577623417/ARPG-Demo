@@ -14,8 +14,8 @@ public sealed class HitShapeSOInspector : Editor
         EditorGUILayout.Space();
         EditorGUILayout.LabelField("Scene Preview (188.3)", EditorStyles.boldLabel);
         EditorGUILayout.HelpBox(
-            "选择场景中一个 Transform → 点击 Preview → 在 Scene 中查看 Shape Gizmo。\n" +
-            "Follow Selection 勾选后，切换 Selection 时 Gizmo 跟随移动。",
+            "选中 CombatObjectDefinitionSO 可在 Scene 用 Move/Rotate/Scale 编辑攻击盒。\n" +
+            "或：选择 Transform → Preview → 只读查看 Shape。",
             MessageType.Info);
 
         HitShapeGizmoPreview.FollowSelection = EditorGUILayout.Toggle(

@@ -31,6 +31,9 @@ public static class GameMainDebugSettings
     public static bool InterruptFlow { get; set; }
     public static bool ComboAirGate { get; set; }
 
+    /// <summary>214.3 — CombatObject Spawn / Overlap / Damage 诊断。</summary>
+    public static bool CombatHit { get; set; }
+
     // ─── Intent / Simulation ───
     public static bool IntentArbitration { get; set; }
     public static bool SimulateLockOnLocomotion { get; set; }
@@ -65,6 +68,7 @@ public static class GameMainDebugSettings
                        || UnityEditor.EditorPrefs.GetBool("Core-Drive/ActionYawProbe/EnableLog", false);
         InterruptFlow = EditorPrefsGetBool(nameof(InterruptFlow));
         ComboAirGate = EditorPrefsGetBool(nameof(ComboAirGate));
+        CombatHit = EditorPrefsGetBool(nameof(CombatHit));
         IntentArbitration = EditorPrefsGetBool(nameof(IntentArbitration));
         SimulateLockOnLocomotion = EditorPrefsGetBool(nameof(SimulateLockOnLocomotion));
         HudBugLog = EditorPrefsGetBool(nameof(HudBugLog));
@@ -91,6 +95,7 @@ public static class GameMainDebugSettings
         EditorPrefsSetBool(nameof(ActionYawLog), ActionYawLog);
         EditorPrefsSetBool(nameof(InterruptFlow), InterruptFlow);
         EditorPrefsSetBool(nameof(ComboAirGate), ComboAirGate);
+        EditorPrefsSetBool(nameof(CombatHit), CombatHit);
         EditorPrefsSetBool(nameof(IntentArbitration), IntentArbitration);
         EditorPrefsSetBool(nameof(SimulateLockOnLocomotion), SimulateLockOnLocomotion);
         EditorPrefsSetBool(nameof(HudBugLog), HudBugLog);
@@ -115,6 +120,7 @@ public static class GameMainDebugSettings
         ActionYawLog = true;
         InterruptFlow = true;
         ComboAirGate = true;
+        CombatHit = true;
         IntentArbitration = true;
         HudBugLog = true;
         ActionTimelinePreviewLog = true;
@@ -140,6 +146,7 @@ public static class GameMainDebugSettings
         ActionYawLog = false;
         InterruptFlow = false;
         ComboAirGate = false;
+        CombatHit = false;
         SimulateLockOnLocomotion = false;
         IntentArbitration = false;
         HudBugLog = false;
@@ -174,6 +181,7 @@ public static class GameMainDebugSettings
         ActionYawLog = false;
         InterruptFlow = false;
         ComboAirGate = false;
+        CombatHit = false;
         SimulateLockOnLocomotion = false;
         IntentArbitration = false;
         HudBugLog = false;

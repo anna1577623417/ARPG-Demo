@@ -27,6 +27,34 @@ public class CapsuleShapeSO : HitShapeSO
         return Physics.OverlapCapsuleNonAlloc(p0, p1, radius, results, layerMask, queryTriggers);
     }
 
+    public override int Sweep(
+        Vector3 from,
+        Vector3 to,
+        Quaternion rotation,
+        RaycastHit[] results,
+        int layerMask,
+        QueryTriggerInteraction queryTriggers)
+    {
+        if (results == null || results.Length == 0 || height <= 0f || radius <= 0f)
+        {
+            return 0;
+        }
+
+        var delta = to - from;
+        var dist = delta.magnitude;
+        if (dist < 1e-4f)
+        {
+            return 0;
+        }
+
+        var axis = rotation * Vector3.up;
+        var half = Mathf.Max(height * 0.5f - radius, 0f);
+        var center = from + rotation * offset;
+        var p0 = center + axis * half;
+        var p1 = center - axis * half;
+        return Physics.CapsuleCastNonAlloc(p0, p1, radius, delta / dist, results, dist, layerMask, queryTriggers);
+    }
+
     public override void DrawGizmo(Vector3 origin, Quaternion rotation, Color color)
     {
         if (radius <= 0f || height <= 0f) return;

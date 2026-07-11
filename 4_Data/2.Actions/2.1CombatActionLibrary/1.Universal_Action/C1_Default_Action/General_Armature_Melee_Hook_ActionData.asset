@@ -17,14 +17,7 @@ MonoBehaviour:
   LockMoveDuringPlay: 1
   LockRotateDuringPlay: 1
   AuthorityPriorityOverride: -1
-  CombatTrack:
-  - NormalizedTime: 0
-    Definition: {fileID: 0}
-    OverrideSpawn: 0
-    SpawnSourceOverride: 0
-    LocalOffsetOverride: {x: 0, y: 0, z: 0}
-    LocalEulerOffsetOverride: {x: 0, y: 0, z: 0}
-    DebugLabel: 
+  CombatTrack: []
   MainClip: {fileID: -8061687084165900903, guid: 30e0c6f0ba714704faaf6b4df5acca56,
     type: 3}
   CrossfadeTime: 0.08
@@ -110,6 +103,40 @@ MonoBehaviour:
     AllowMoveInput: 0
     incomingAbilityGate: 0
     _legacyDirectStateTagMask: 0
+  AttackClips:
+  - DebugName: Hook
+    ActiveStart: 0.47
+    ActiveEnd: 0.71000004
+    ShapeMode: 0
+    Shape: {fileID: 11400000, guid: 5496af1eb2568dd4d9a80f27f2cc4e12, type: 2}
+    WeaponSockets: {fileID: 0}
+    Origin: 1
+    OriginOffset: {x: 1.0769621, y: 1.8666631, z: 1.1999193}
+    OriginEuler: {x: 55.66044, y: 269.51624, z: 329.68716}
+    Reach: 1.5
+    Filter:
+      Kind: 0
+      IncludeDead: 0
+    QueryLayerMask:
+      serializedVersion: 2
+      m_Bits: 320
+    Policy:
+      Kind: 0
+      IntervalSeconds: 0.2
+      MaxHitsPerTarget: 1
+      MaxTargets: 999
+    Reaction:
+      BaseDamage: 10
+      ImpulseLocalDir: {x: 0, y: 0, z: 1}
+      ImpulseForce: 8
+      LaunchUpSpeed: 12
+      HitStopSeconds: 0.06
+      CameraShakeIntensity: 0
+      CameraShakeDuration: 0.12
+      VfxPayload: 
+      SfxPayload: 
+      OnHitEffect: {fileID: 11400000, guid: d96175cd7934fac4bbfabab1c7390d44, type: 2}
+  DefenseClips: []
   TeleportTriggers: []
   TimelineMarkers: []
   PreviewTimeMarkers:

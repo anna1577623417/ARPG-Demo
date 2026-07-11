@@ -29,11 +29,14 @@ public sealed class CombatObjectSpawner
         if (def == null) return null;
         if (!def.IsValid(out var reason))
         {
+            CombatHitDiagProbe.LogReject(reason, def);
             Debug.LogWarning($"[CombatObject] Spawn rejected: {def.name} invalid ({reason})");
             return null;
         }
         if (onExpireDepth > MaxOnExpireDepth)
         {
+            var depthReason = $"OnExpire depth>{MaxOnExpireDepth}";
+            CombatHitDiagProbe.LogReject(depthReason, def);
             Debug.LogWarning($"[CombatObject] OnExpire 链深超过 {MaxOnExpireDepth}；终止递归（def={def.name}）");
             return null;
         }
@@ -41,6 +44,7 @@ public sealed class CombatObjectSpawner
         var co = _pool.Count > 0 ? _pool.Pop() : new CombatObjectRuntime();
         co.Initialize(def, source, spawnPos, spawnRot);
         _active.Add(co);
+        CombatHitDiagProbe.LogSpawn(def, source, spawnPos);
         return co;
     }
 

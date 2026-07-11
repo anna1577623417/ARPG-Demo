@@ -50,6 +50,18 @@ internal static class ActionTimelinePreviewFramework
         if (visibility.Combat)
         {
             DrawCombatTrack(ctx, previewMask);
+            if (ActionTimelinePreviewVisibility.Has(previewMask, PreviewVisibilityMask.CombatVolume))
+            {
+                DrawCombatVolumeTrack(ctx);
+            }
+
+            if (ActionTimelinePreviewVisibility.Has(previewMask, PreviewVisibilityMask.AttackHitClip)
+                || ActionTimelinePreviewVisibility.Has(previewMask, PreviewVisibilityMask.AttackCoverage)
+                || ActionTimelinePreviewVisibility.Has(previewMask, PreviewVisibilityMask.AttackGhost)
+                || ActionTimelinePreviewVisibility.Has(previewMask, PreviewVisibilityMask.AttackHitPreview))
+            {
+                DrawAttackHitClipTrack(ctx, previewMask);
+            }
         }
 
         if (visibility.Teleport && ActionTimelinePreviewVisibility.Has(previewMask, PreviewVisibilityMask.Teleport))
@@ -347,6 +359,61 @@ internal static class ActionTimelinePreviewFramework
             var ringCenter = pos + Vector3.up * 0.05f;
             Handles.color = new Color(0.3f, 0.85f, 1f, 0.35f);
             Handles.DrawWireDisc(ringCenter, Vector3.up, 0.65f + i * 0.04f);
+        }
+    }
+
+    static void DrawCombatVolumeTrack(in ActionTimelinePreviewContext ctx)
+    {
+        if (!ctx.HasAnchor || ctx.Anchor == null || ctx.Action?.CombatTrack == null)
+        {
+            return;
+        }
+
+        CombatHitPreviewResolver.DrawAllForAction(
+            ctx.Action,
+            ctx.NormalizedTime,
+            ctx.Anchor,
+            drawTrajectory: true,
+            drawExpandRings: true);
+    }
+
+    /// <summary>216.3 M1/M6 — HitClip Active Shape + Coverage 攻击云 + Ghost 轨迹。</summary>
+    static void DrawAttackHitClipTrack(in ActionTimelinePreviewContext ctx, PreviewVisibilityMask previewMask)
+    {
+        if (!ctx.HasAnchor || ctx.Anchor == null || ctx.Action?.AttackClips == null)
+        {
+            return;
+        }
+
+        if (ActionTimelinePreviewVisibility.Has(previewMask, PreviewVisibilityMask.AttackCoverage))
+        {
+            CoverageDrawer.Draw(ctx.Action, ctx.Anchor, ctx.PlanarForward, ctx.AnchorOrigin);
+        }
+
+        if (ActionTimelinePreviewVisibility.Has(previewMask, PreviewVisibilityMask.AttackGhost))
+        {
+            GhostTraceDrawer.Draw(
+                ctx.Action, ctx.Anchor, ctx.PlanarForward, ctx.AnchorOrigin, ctx.NormalizedTime);
+        }
+
+        if (ActionTimelinePreviewVisibility.Has(previewMask, PreviewVisibilityMask.AttackHitClip))
+        {
+            CombatHitPreviewResolver.DrawAttackClipsForAction(
+                ctx.Action,
+                ctx.NormalizedTime,
+                ctx.Anchor,
+                ctx.AnchorOrigin,
+                ctx.PlanarForward);
+        }
+
+        if (ActionTimelinePreviewVisibility.Has(previewMask, PreviewVisibilityMask.AttackHitPreview))
+        {
+            HitPreviewDummy.EvaluateAndDraw(
+                ctx.Action,
+                ctx.Anchor,
+                ctx.PlanarForward,
+                ctx.AnchorOrigin,
+                ctx.NormalizedTime);
         }
     }
 

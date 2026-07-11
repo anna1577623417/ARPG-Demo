@@ -536,29 +536,7 @@ internal readonly struct ActionTimelinePreviewContext
 
     {
 
-        if (anchorOverride != null)
-
-        {
-
-            return anchorOverride;
-
-        }
-
-
-
-        if (Selection.activeTransform != null)
-
-        {
-
-            return Selection.activeTransform;
-
-        }
-
-
-
-        var player = Object.FindFirstObjectByType<Player>();
-
-        return player != null ? player.transform : null;
+        return ActionTimelineEditorUI.ResolvePreviewAnchor(anchorOverride);
 
     }
 

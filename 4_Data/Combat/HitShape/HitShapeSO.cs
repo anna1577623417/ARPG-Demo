@@ -12,6 +12,23 @@ public abstract class HitShapeSO : ScriptableObject
         QueryTriggerInteraction queryTriggers = QueryTriggerInteraction.UseGlobal);
 
     /// <summary>
+    /// 216.3 M1 — 扫掠判定：形状从 <paramref name="from"/> 扫到 <paramref name="to"/>（防高速穿透），
+    /// 命中写入 <paramref name="results"/>（含命中点/法线），返回命中数。
+    /// <para>默认无原生扫掠 → 返回 0；由 Sphere/Capsule/Box 等 Override 为 <c>*CastNonAlloc</c>。</para>
+    /// <para>注：零位移（from≈to）时原生 Cast 可能漏初始重叠，交由调用方在 Active 首帧配合 Overlap 处理（M1 L2 / M4）。</para>
+    /// </summary>
+    public virtual int Sweep(
+        Vector3 from,
+        Vector3 to,
+        Quaternion rotation,
+        RaycastHit[] results,
+        int layerMask,
+        QueryTriggerInteraction queryTriggers = QueryTriggerInteraction.UseGlobal)
+    {
+        return 0;
+    }
+
+    /// <summary>
     /// 188.3 W0 — 编辑期/调试期画 Wire Gizmo 显示形状几何。
     /// <para>子类各自 Override；基类默认画一个小标记球，便于子类漏实现时仍可看到位置。</para>
     /// <para>调用方负责 <c>Gizmos.color</c> 复位；本方法可重写 color 但不修复。</para>

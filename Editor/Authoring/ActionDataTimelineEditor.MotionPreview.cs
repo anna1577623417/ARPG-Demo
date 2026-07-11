@@ -249,6 +249,11 @@ public sealed partial class ActionDataTimelineEditor
             menu.AddSeparator(string.Empty);
             AddMaskToggle(menu, "Window / Phase Bar", PreviewVisibilityMask.Windows);
             AddMaskToggle(menu, "Hitbox", PreviewVisibilityMask.Hitbox);
+            AddMaskToggle(menu, "Combat 攻击盒 (B+C)", PreviewVisibilityMask.CombatVolume);
+            AddMaskToggle(menu, "Attack HitClip (Active Shape)", PreviewVisibilityMask.AttackHitClip);
+            AddMaskToggle(menu, "Attack Coverage (攻击云)", PreviewVisibilityMask.AttackCoverage);
+            AddMaskToggle(menu, "Attack Ghost (Trace 插值)", PreviewVisibilityMask.AttackGhost);
+            AddMaskToggle(menu, "Attack Hit Preview (Dummy 变色)", PreviewVisibilityMask.AttackHitPreview);
             AddMaskToggle(menu, "Hurtbox", PreviewVisibilityMask.Hurtbox);
             AddMaskToggle(menu, "Invincible / Interrupt", PreviewVisibilityMask.InvuInter);
             menu.AddSeparator(string.Empty);

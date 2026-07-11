@@ -321,6 +321,7 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
     protected override void Awake()
     {
         base.Awake();
+        m_gameplayTags.Faction.Set((ulong)FactionTag.Player);
         if (statsBlueprint is PlayerStatsSO ps)
         {
             ps.ApplyLegacyStandaloneMaxStaminaToStats(Stats);

@@ -237,6 +237,16 @@ public partial class ActionDataSO : ScriptableObject
     [Tooltip("归一化时间轴上的标签切片。")]
     public List<ActionWindow> Windows = new List<ActionWindow>();
 
+    [Header("Attack Clips (216.3 M1 — 判定生命周期)")]
+    [Tooltip("216.3 M1：攻击判定片段（Active 区间 + Shape + Reach）。运行时由 AttackInstance 在 Active 区间内 Sweep 判定。\n" +
+             "新增设施：既有资产默认空列表，不影响旧 Hitbox/CombatObject 轨。")]
+    public List<HitClip> AttackClips = new List<HitClip>();
+
+    [Header("Defense Clips (216.3 M5 — Guard/Parry/Invincible)")]
+    [Tooltip("216.3 M5 L1：防御片段（Active 区间 + Kind + Guard 角度/距离）。运行时由 GuardVolumeProvider 在 Guard 窗内开前向 Volume。\n" +
+             "新增设施：既有资产默认空列表。")]
+    public List<DefenseClip> DefenseClips = new List<DefenseClip>();
+
     [Header("Teleport (discrete events)")]
     [Tooltip("离散瞬移触发点；仅在归一化时间跨过触发点时执行一次。")]
     public List<TeleportTrigger> TeleportTriggers = new List<TeleportTrigger>();
@@ -309,7 +319,7 @@ public partial class ActionDataSO : ScriptableObject
     /// <summary>按归一化进度更新 Phase 位并叠加各 <see cref="ActionWindow"/>；窗口侧贡献 <see cref="ActionWindowTimelineMask"/>（打断 + invulnerable / combo_input_Window）。</summary>
     public void EvaluatePhaseTags(float normalizedTime, ref GameplayTagMask mask)
     {
-        var phaseMask = (ulong)(StateTag.PhaseStartup | StateTag.PhaseActive | StateTag.PhaseRecovery);
+        var phaseMask = ActionWindowPhaseMask.Bits;
         mask.Remove(phaseMask);
 
         if (Windows == null || Windows.Count == 0)
@@ -323,9 +333,18 @@ public partial class ActionDataSO : ScriptableObject
             var w = Windows[i];
             if (t >= w.NormalizedStart && t <= w.NormalizedEnd)
             {
-                var slice = w.ToInternalTagMask() & ActionWindowTimelineMask.AllContributableBits;
+                // 216.3 M0 L3：手工 Phase 位不再生效（剔除 phaseMask）；Phase 改由 PhaseDerivation 单一衍生。
+                var slice = w.ToInternalTagMask() & ActionWindowTimelineMask.AllContributableBits & ~phaseMask;
                 mask.Add(slice);
             }
+        }
+
+        // 216.3 M0 L3：Phase【单一真相】—— 由 判定(Hitbox) + 打断(Interrupt) 衍生（§15.2 / §15.8）。
+        var spans = PhaseDerivation.Compute(this);
+        var phaseBit = PhaseDerivation.ToStateBit(spans.PhaseAt(t));
+        if (phaseBit != 0UL)
+        {
+            mask.Add(phaseBit);
         }
 
         mask.Remove(ActionWindowMergePolicy.StripLegacyCapabilityStateBits);

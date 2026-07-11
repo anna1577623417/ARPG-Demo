@@ -32,6 +32,70 @@ public static class EffectSystem
         }
     }
 
+    /// <summary>
+    /// 216.3 M3 L3 — 命中后挂 <see cref="EffectDefinitionSO"/> 的单点入口。
+    /// <para>经 <see cref="IEffectReceiver.BuffStack"/> 落地（Entity 现役栈）；HitReaction / CombatObject 共用，禁止旁路 Direct Apply。</para>
+    /// </summary>
+    public static bool ApplyEffect(object source, IEffectReceiver target, EffectDefinitionSO def)
+    {
+        if (target == null || def == null || target.BuffStack == null)
+        {
+            return false;
+        }
+
+        var buffDef = CreateBuffProxyFromEffect(def);
+        target.BuffStack.Apply(buffDef, source ?? def);
+        return true;
+    }
+
+    /// <summary>EffectDefinitionSO → BuffDefinitionSO 运行时代理（不写资产）。</summary>
+    static BuffDefinitionSO CreateBuffProxyFromEffect(EffectDefinitionSO def)
+    {
+        var buff = ScriptableObject.CreateInstance<BuffDefinitionSO>();
+        buff.name = string.IsNullOrEmpty(def.DisplayName) ? def.name : def.DisplayName;
+        buff.Icon = def.Icon;
+        buff.Duration = ResolveBuffDuration(def);
+        buff.PeriodSeconds = Mathf.Max(0f, def.PeriodSeconds);
+        buff.ApplyPeriodicResourceDelta = def.ApplyPeriodicResourceDelta;
+        buff.PeriodicResource = ResourceType.HP;
+        // BuffStack：PeriodicAmount 正=Drain；EffectDefinition：正=回复 / 负=DOT → 取反对齐 Drain 语义。
+        buff.PeriodicAmount = def.ApplyPeriodicResourceDelta
+            ? -def.PeriodicAmount
+            : 0f;
+
+        if (def.Modifiers != null && def.Modifiers.Length > 0)
+        {
+            buff.Effects = new BuffEffectEntry[def.Modifiers.Length];
+            for (var i = 0; i < def.Modifiers.Length; i++)
+            {
+                var m = def.Modifiers[i];
+                buff.Effects[i] = new BuffEffectEntry
+                {
+                    StatType = m.Stat,
+                    Stage = m.Stage,
+                    Value = m.Value,
+                };
+            }
+        }
+
+        return buff;
+    }
+
+    static float ResolveBuffDuration(EffectDefinitionSO def)
+    {
+        switch (def.Duration)
+        {
+            case DurationPolicy.Timed:
+                return Mathf.Max(0f, def.DurationSeconds);
+            case DurationPolicy.Infinite:
+                return 1e6f;
+            case DurationPolicy.Instant:
+                return 0f;
+            default:
+                return Mathf.Max(0f, def.DurationSeconds);
+        }
+    }
+
     static void ApplyInstantDamage(GameObject source, IEffectReceiver target, EffectDataSO data)
     {
         if (!(target is IDamageable damageable))

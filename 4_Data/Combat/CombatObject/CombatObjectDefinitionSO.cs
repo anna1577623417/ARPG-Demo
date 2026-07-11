@@ -25,9 +25,9 @@ public sealed class CombatObjectDefinitionSO : ScriptableObject
     [Header("Lifecycle (188.3 W5)")]
     public LifecycleParams Lifecycle;
 
-    [Header("Target Filter (复用)")]
-    [Tooltip("空=所有 Collider 都判（最不安全），建议至少配 AnyTargetFilterSO。")]
-    public TargetFilterSO TargetFilter;
+    [Header("Target Filter (214.4)")]
+    [Tooltip("内嵌枚举过滤；Layer 物理查询见 QueryLayerMask。")]
+    public TargetFilterParams TargetFilter;
 
     [Header("Spawn (188.3 §3.2)")]
     public SpawnSource SpawnSource = SpawnSource.SelfRootBone;
