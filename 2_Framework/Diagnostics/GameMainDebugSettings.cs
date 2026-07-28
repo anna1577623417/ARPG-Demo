@@ -34,6 +34,15 @@ public static class GameMainDebugSettings
     /// <summary>214.3 — CombatObject Spawn / Overlap / Damage 诊断。</summary>
     public static bool CombatHit { get; set; }
 
+    /// <summary>220.6 — ReactionSet 方向解析、HitReact 路线与表现链诊断。</summary>
+    public static bool ReactionDirection2206Log { get; set; }
+
+    /// <summary>220.7 — AIController、Blackboard 与行为树运行链诊断。</summary>
+    public static bool AIBrain2207Log { get; set; }
+
+    /// <summary>220.8 — EnemyPerception 写入 Blackboard 的感知链诊断。</summary>
+    public static bool EnemyPerception2208Log { get; set; }
+
     // ─── Intent / Simulation ───
     public static bool IntentArbitration { get; set; }
     public static bool SimulateLockOnLocomotion { get; set; }
@@ -69,6 +78,9 @@ public static class GameMainDebugSettings
         InterruptFlow = EditorPrefsGetBool(nameof(InterruptFlow));
         ComboAirGate = EditorPrefsGetBool(nameof(ComboAirGate));
         CombatHit = EditorPrefsGetBool(nameof(CombatHit));
+        ReactionDirection2206Log = EditorPrefsGetBool(nameof(ReactionDirection2206Log));
+        AIBrain2207Log = EditorPrefsGetBool(nameof(AIBrain2207Log));
+        EnemyPerception2208Log = EditorPrefsGetBool(nameof(EnemyPerception2208Log));
         IntentArbitration = EditorPrefsGetBool(nameof(IntentArbitration));
         SimulateLockOnLocomotion = EditorPrefsGetBool(nameof(SimulateLockOnLocomotion));
         HudBugLog = EditorPrefsGetBool(nameof(HudBugLog));
@@ -96,6 +108,9 @@ public static class GameMainDebugSettings
         EditorPrefsSetBool(nameof(InterruptFlow), InterruptFlow);
         EditorPrefsSetBool(nameof(ComboAirGate), ComboAirGate);
         EditorPrefsSetBool(nameof(CombatHit), CombatHit);
+        EditorPrefsSetBool(nameof(ReactionDirection2206Log), ReactionDirection2206Log);
+        EditorPrefsSetBool(nameof(AIBrain2207Log), AIBrain2207Log);
+        EditorPrefsSetBool(nameof(EnemyPerception2208Log), EnemyPerception2208Log);
         EditorPrefsSetBool(nameof(IntentArbitration), IntentArbitration);
         EditorPrefsSetBool(nameof(SimulateLockOnLocomotion), SimulateLockOnLocomotion);
         EditorPrefsSetBool(nameof(HudBugLog), HudBugLog);
@@ -121,6 +136,9 @@ public static class GameMainDebugSettings
         InterruptFlow = true;
         ComboAirGate = true;
         CombatHit = true;
+        ReactionDirection2206Log = true;
+        AIBrain2207Log = true;
+        EnemyPerception2208Log = true;
         IntentArbitration = true;
         HudBugLog = true;
         ActionTimelinePreviewLog = true;
@@ -147,6 +165,9 @@ public static class GameMainDebugSettings
         InterruptFlow = false;
         ComboAirGate = false;
         CombatHit = false;
+        ReactionDirection2206Log = false;
+        AIBrain2207Log = false;
+        EnemyPerception2208Log = false;
         SimulateLockOnLocomotion = false;
         IntentArbitration = false;
         HudBugLog = false;
@@ -182,6 +203,9 @@ public static class GameMainDebugSettings
         InterruptFlow = false;
         ComboAirGate = false;
         CombatHit = false;
+        ReactionDirection2206Log = false;
+        AIBrain2207Log = false;
+        EnemyPerception2208Log = false;
         SimulateLockOnLocomotion = false;
         IntentArbitration = false;
         HudBugLog = false;

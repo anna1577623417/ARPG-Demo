@@ -1,7 +1,7 @@
 using UnityEngine;
 
 /// <summary>
-/// 订阅 <see cref="ActionTimelinePresentationEvent"/>，将时间轴 FX/SFX/HitFrame 接到表现层（139.2 P2/P3）。
+/// 订阅 <see cref="EntityActionPresentationEvent"/>，将时间轴 FX/SFX/HitFrame 接到表现层（139.2 P2/P3）。
 /// 挂 Player 根节点；后续可替换为 Addressables / VFX Graph / Wwise。
 /// </summary>
 [AddComponentMenu("GameMain/Presentation/Action Timeline Presentation Player")]
@@ -24,7 +24,7 @@ public sealed class ActionTimelinePresentationPlayer : MonoBehaviour
             return;
         }
 
-        _player.EventBus.Subscribe<ActionTimelinePresentationEvent>(OnTimelineEvent);
+        _player.EventBus.Subscribe<EntityActionPresentationEvent>(OnTimelineEvent);
     }
 
     void OnDisable()
@@ -34,12 +34,12 @@ public sealed class ActionTimelinePresentationPlayer : MonoBehaviour
             return;
         }
 
-        _player.EventBus.Unsubscribe<ActionTimelinePresentationEvent>(OnTimelineEvent);
+        _player.EventBus.Unsubscribe<EntityActionPresentationEvent>(OnTimelineEvent);
     }
 
-    void OnTimelineEvent(ActionTimelinePresentationEvent evt)
+    void OnTimelineEvent(EntityActionPresentationEvent evt)
     {
-        if (_player == null || evt.PlayerInstanceId != _player.GetInstanceID())
+        if (_player == null || evt.EntityInstanceId != _player.GetInstanceID())
         {
             return;
         }

@@ -93,7 +93,7 @@ public sealed class ChargeRouteRuntime : SkillRouteRuntime
         }
 
         SkillRouteDebug.Log(
-            ctx.Self as Player, SkillRouteDebug.CatCharge,
+            ctx.Host != null ? ctx.Host.Entity : ctx.Self, SkillRouteDebug.CatCharge,
             $"OnEnter route={def.name} mode={def.PresentationMode} fullTime={def.ChargeFullTime:F2}s " +
             $"maxHold={def.MaxHoldTime:F2}s freezeAt={def.SingleClipFreezeAtNormalized:F2}");
     }
@@ -123,7 +123,7 @@ public sealed class ChargeRouteRuntime : SkillRouteRuntime
             {
                 _reachedFull = true;
                 SkillRouteDebug.Log(
-                    ctx.Self as Player, SkillRouteDebug.CatCharge,
+                    ctx.Host != null ? ctx.Host.Entity : ctx.Self, SkillRouteDebug.CatCharge,
                     $"REACHED FULL frozenElapsed={_frozenElapsed:F2}s ≥ fullTime={def.ChargeFullTime:F2}");
             }
 
@@ -219,7 +219,7 @@ public sealed class ChargeRouteRuntime : SkillRouteRuntime
         }
 
         SkillRouteDebug.Log(
-            ctx.Self as Player, SkillRouteDebug.CatCharge,
+                ctx.Host != null ? ctx.Host.Entity : ctx.Self, SkillRouteDebug.CatCharge,
             $"FREEZE @ stage.nt={Stage?.NormalizedTime:F2} ≥ {def.SingleClipFreezeAtNormalized:F2} mode={def.PresentationMode}");
     }
 
@@ -238,7 +238,7 @@ public sealed class ChargeRouteRuntime : SkillRouteRuntime
         }
 
         SkillRouteDebug.Log(
-            ctx.Self as Player, SkillRouteDebug.CatCharge,
+                ctx.Host != null ? ctx.Host.Entity : ctx.Self, SkillRouteDebug.CatCharge,
             $"RELEASE frozenElapsed={_frozenElapsed:F2}s reachedFull={_reachedFull} → stage={Stage?.Definition?.name}");
     }
 
@@ -252,7 +252,7 @@ public sealed class ChargeRouteRuntime : SkillRouteRuntime
             {
                 EnterMultiClipStage(def.ReleaseStage, 2);
             }
-            SkillRouteDebug.Log(ctx.Self as Player, SkillRouteDebug.CatCharge, $"MAX HOLD → ForceRelease @ {_frozenElapsed:F2}s");
+            SkillRouteDebug.Log(ctx.Host != null ? ctx.Host.Entity : ctx.Self, SkillRouteDebug.CatCharge, $"MAX HOLD → ForceRelease @ {_frozenElapsed:F2}s");
         }
         else
         {
@@ -261,7 +261,7 @@ public sealed class ChargeRouteRuntime : SkillRouteRuntime
             {
                 EnterMultiClipStage(def.CancelStage, 3);
             }
-            SkillRouteDebug.Log(ctx.Self as Player, SkillRouteDebug.CatCharge, $"MAX HOLD → Cancel @ {_frozenElapsed:F2}s");
+            SkillRouteDebug.Log(ctx.Host != null ? ctx.Host.Entity : ctx.Self, SkillRouteDebug.CatCharge, $"MAX HOLD → Cancel @ {_frozenElapsed:F2}s");
         }
 
         _playback.HasLoopWindow = false;

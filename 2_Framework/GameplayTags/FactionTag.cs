@@ -4,16 +4,16 @@ using System;
 /// Faction.* — 阵营（伤害过滤、AI 选敌）。
 /// </summary>
 [Flags]
-public enum FactionTag : ulong
+public enum FactionTag : int
 {
-    None = 0UL,
+    None = 0,
 
     /// <summary>Faction.Player</summary>
-    Player = 1UL << 0,
+    Player = 1 << 0,
 
     /// <summary>Faction.Enemy</summary>
-    Enemy = 1UL << 1,
+    Enemy = 1 << 1,
 
     /// <summary>Faction.Enemy.Boss</summary>
-    EnemyBoss = 1UL << 2,
+    EnemyBoss = 1 << 2,
 }

@@ -1,0 +1,62 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a5097a87b43049a08fa6ee156ec03184, type: 3}
+  m_Name: ReactionProfile_EnemyTraining
+  m_EditorClassIdentifier: 
+  ReactionSet: {fileID: 11400000, guid: 9fd2b6e1f36a4b3cb7a7d4e61a7a1f31, type: 2}
+  Entries:
+  - ImpulseKind: 3
+    MinimumForce: 0
+    ReactionRouteId: Hit_F
+    HitDirection: 1
+    ApplyImpulseMotor: 0
+    EnqueueHitReact: 1
+    CanInterruptAction: 1
+    SuperArmorDisposition: 2
+    Priority: 10
+  - ImpulseKind: 3
+    MinimumForce: 0
+    ReactionRouteId: Hit_B
+    HitDirection: 2
+    ApplyImpulseMotor: 0
+    EnqueueHitReact: 1
+    CanInterruptAction: 1
+    SuperArmorDisposition: 2
+    Priority: 10
+  - ImpulseKind: 3
+    MinimumForce: 0
+    ReactionRouteId: Hit_L
+    HitDirection: 3
+    ApplyImpulseMotor: 0
+    EnqueueHitReact: 1
+    CanInterruptAction: 1
+    SuperArmorDisposition: 2
+    Priority: 10
+  - ImpulseKind: 3
+    MinimumForce: 0
+    ReactionRouteId: Hit_R
+    HitDirection: 4
+    ApplyImpulseMotor: 0
+    EnqueueHitReact: 1
+    CanInterruptAction: 1
+    SuperArmorDisposition: 2
+    Priority: 10
+  - ImpulseKind: 2
+    MinimumForce: 0
+    ReactionRouteId: Hit_Up
+    HitDirection: 5
+    ApplyImpulseMotor: 0
+    EnqueueHitReact: 1
+    CanInterruptAction: 1
+    SuperArmorDisposition: 2
+    Priority: 20
+  HitReactIntentBufferSeconds: 0.25

@@ -371,16 +371,13 @@ public static class CombatHitPreviewResolver
             var color = new Color(0.98f, 0.35f, 0.28f, 1f);
             if (clip.ShapeMode == HitShapeMode.WeaponTrace && clip.WeaponSockets != null && clip.WeaponSockets.Count > 0)
             {
-                if (CoverageDrawer.TrySampleSockets(
-                        action, in clip, anchor, planarForward, anchorOrigin, normalizedTime,
-                        out var tip, out var radius))
-                {
-                    Handles.color = color;
-                    DrawWireSphere(tip, radius);
-                    Handles.DrawDottedLine(pos, tip, 3f);
-                }
+                var label = string.IsNullOrEmpty(clip.DebugName) ? $"HitClip#{i}" : clip.DebugName;
+                WeaponTracePreviewDrawer.DrawActiveTrace(
+                    action, in clip, anchor, planarForward, anchorOrigin, normalizedTime, label);
+                continue;
             }
-            else if (clip.Shape != null)
+
+            if (clip.Shape != null)
             {
                 HitShapeGizmoPreview.DrawShapeHandles(clip.Shape, pos, rot, color);
             }
@@ -389,9 +386,9 @@ public static class CombatHitPreviewResolver
                 continue;
             }
 
-            var label = string.IsNullOrEmpty(clip.DebugName) ? $"HitClip#{i}" : clip.DebugName;
+            var volumeLabel = string.IsNullOrEmpty(clip.DebugName) ? $"HitClip#{i}" : clip.DebugName;
             Handles.color = color;
-            Handles.Label(pos + Vector3.up * 0.15f, label);
+            Handles.Label(pos + Vector3.up * 0.15f, volumeLabel);
 
             if (clip.Reach > 0.01f)
             {

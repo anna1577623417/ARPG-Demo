@@ -190,7 +190,7 @@ internal sealed class SkillEntryResolver
                     }
                     else
                     {
-                        _host.Owner?.InputSemantic?.NotifyComboEnded(slot);
+                        _host.Host?.InputSemantic?.NotifyComboEnded(slot);
                     }
 
                     discardIntent = true;
@@ -210,7 +210,7 @@ internal sealed class SkillEntryResolver
                     }
                     else
                     {
-                        _host.Owner?.InputSemantic?.NotifyComboEnded(slot);
+                        _host.Host?.InputSemantic?.NotifyComboEnded(slot);
                     }
 
                     discardIntent = true;
@@ -229,7 +229,7 @@ internal sealed class SkillEntryResolver
                     }
                     else
                     {
-                        _host.Owner?.InputSemantic?.NotifyComboEnded(slot);
+                        _host.Host?.InputSemantic?.NotifyComboEnded(slot);
                     }
 
                     discardIntent = true;
@@ -352,7 +352,7 @@ internal sealed class SkillEntryResolver
         {
             if (_host.GraphEnabled && _host.CombatGraph != null && _host.CombatGraph.IsEnabled)
             {
-                CombatGraphComboChainDiagnostics.LogEntryFallback(_host.Owner, _host.CombatGraph, entry.NormalRoute, slot);
+                CombatGraphComboChainDiagnostics.LogEntryFallback(_host.LegacyPlayer, _host.CombatGraph, entry.NormalRoute, slot);
             }
 
             SkillRouteDebug.Log(_host.Owner, SkillRouteDebug.CatResolve, $"PICK Normal route={entry.NormalRoute.name}");
@@ -378,7 +378,7 @@ internal sealed class SkillEntryResolver
             SkillRouteDebug.Log(
                 _host.Owner, SkillRouteDebug.CatResolve,
                 $"REJECT Combo advance during container CD | semantic={semantic} comboIdx={comboIdx}");
-            _host.Owner?.InputSemantic?.NotifyComboEnded(slot);
+            _host.Host?.InputSemantic?.NotifyComboEnded(slot);
             discardIntent = true;
             return null;
         }
@@ -599,7 +599,7 @@ internal sealed class SkillEntryResolver
         resolvedDir = DirectionalRouteType.Forward;
         SkillRouteDefinition picked = null;
         var hadDirectionalPick = false;
-        var owner = _host.Owner;
+        var owner = _host.LegacyPlayer;
         var isMotionModeForDiag = false;
         var pulseAxisForDiag = Vector2.zero;
 
@@ -754,7 +754,9 @@ internal sealed class SkillEntryResolver
 /// <summary>SkillEntryResolver 向 SkillEntryService 索取的宿主能力。</summary>
 internal interface ISkillEntryResolveHost
 {
-    Player Owner { get; }
+    Entity Owner { get; }
+    ISkillHost Host { get; }
+    Player LegacyPlayer { get; }
     SkillEntryLoadoutSO Loadout { get; }
     bool GraphEnabled { get; }
     CombatGraphRunner CombatGraph { get; }

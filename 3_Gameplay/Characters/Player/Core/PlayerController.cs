@@ -12,6 +12,7 @@ public class PlayerController : EntityController
     [Header("References")]
     [SerializeField] private Player player;
     [SerializeField] private InputReader inputReader;
+    private IIntentHost intentHost;
 
     [Header("Continuous locomotion — Run")]
     [Tooltip("仅手柄：左摇杆幅度超过该阈值视为 Run（键盘 Run 走 Sprint 键 Hold/Toggle）。")]
@@ -83,6 +84,8 @@ public class PlayerController : EntityController
         {
             inputReader = player.InputReader;
         }
+
+        intentHost = player;
 
 
     }
@@ -219,7 +222,7 @@ public class PlayerController : EntityController
     {
         if (inputReader.ConsumeJumpPressed())
         {
-            player.EnqueueGameplayIntent(SkillEntryIntentFactory.ForJump(Time.time));
+            intentHost.TryEnqueue(SkillEntryIntentFactory.ForJump(Time.time));
             if (GameMainDebugSettings.InterruptFlow)
             {
                 Debug.Log($"[Input] JumpPressed → Jump intent enqueued | currentState={player.States?.Current?.StateId}", this);
@@ -361,7 +364,7 @@ public class PlayerController : EntityController
             // Resolver 缺失（启动时序问题）→ 兜底 Tap 直连入队，避免输入丢失。
             var intent = SkillEntryIntentFactory.ForEntryTapFallback(
                 slot, Time.time, holdSeconds, moveBuf, moveBufValid);
-            player.EnqueueGameplayIntent(intent);
+            intentHost.TryEnqueue(intent);
         }
 
         if (GameMainDebugSettings.InterruptFlow)
@@ -419,7 +422,7 @@ public class PlayerController : EntityController
         var moveBuf = rawInput;
         var moveBufValid = moveBuf.sqrMagnitude > releaseSq;
         var forbidden = (ulong)StateTag.Dead;
-        player.EnqueueGameplayIntent(SkillEntryIntentFactory.ForMove(
+        intentHost.TryEnqueue(SkillEntryIntentFactory.ForMove(
             Time.time, moveBuf, moveBufValid, forbidden));
         _moveInterruptQueuedForWindow = true;
 

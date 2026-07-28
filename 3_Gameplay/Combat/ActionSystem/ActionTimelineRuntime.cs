@@ -15,24 +15,24 @@ public static class ActionTimelineRuntime
     static readonly RaycastHit[] s_attackSweep = new RaycastHit[32];
 
     public static void Tick(
-        Player player,
+        IActionContext context,
         ActionDataSO action,
         float prevNormalized,
         float nextNormalized,
         Vector3 planarForward,
         ActionTimelinePlaybackState state)
     {
-        if (player == null || action == null || state == null)
+        if (context == null || context.Entity == null || action == null || state == null)
         {
             return;
         }
 
-        FireCrossingMarkers(player, action, prevNormalized, nextNormalized, state);
-        FireCrossingWindowEvents(player, action, prevNormalized, nextNormalized, state);
-        FireCrossingCombatEvents(player, action, prevNormalized, nextNormalized, state); // 188.3 W9
-        FireAttackClips(player, action, nextNormalized, state);                          // 216.3 M1 L2
-        FireDefenseClips(player, action, nextNormalized, state);                         // 216.3 M5 L1
-        FireCrossingTeleports(player, action, prevNormalized, nextNormalized, planarForward, state);
+        FireCrossingMarkers(context, action, prevNormalized, nextNormalized, state);
+        FireCrossingWindowEvents(context, action, prevNormalized, nextNormalized, state);
+        FireCrossingCombatEvents(context, action, prevNormalized, nextNormalized, state); // 188.3 W9
+        FireAttackClips(context, action, nextNormalized, state);                          // 216.3 M1 L2
+        FireDefenseClips(context, action, nextNormalized, state);                         // 216.3 M5 L1
+        FireCrossingTeleports(context, action, prevNormalized, nextNormalized, planarForward, state);
         UpdateZones(action, nextNormalized, state);
     }
 
@@ -41,7 +41,7 @@ public static class ActionTimelineRuntime
     /// <para>单一真相：Active 区间即判定窗口；不读旧 CombatTrack、不做 <c>if (legacy)</c> 兜底。</para>
     /// </summary>
     static void FireAttackClips(
-        Player player,
+        IActionContext context,
         ActionDataSO action,
         float nextNt,
         ActionTimelinePlaybackState state)
@@ -70,10 +70,10 @@ public static class ActionTimelineRuntime
 
             if (inside)
             {
-                HitClipOriginResolver.Resolve(player, in clip, out var pos, out var rot);
+                HitClipOriginResolver.Resolve(context.Entity, in clip, out var pos, out var rot);
                 if (!inst.Active)
                 {
-                    inst.Begin(in clip, player, pos, rot);
+                    inst.Begin(in clip, context.Entity, pos, rot);
                 }
 
                 inst.TickSweep(pos, rot, s_attackSweep, s_attackOverlap);
@@ -90,7 +90,7 @@ public static class ActionTimelineRuntime
     /// Guard → GuardVolumeProvider；Parry/Invincible → Registry 窗标志（供 Resolver）。
     /// </summary>
     static void FireDefenseClips(
-        Player player,
+        IActionContext context,
         ActionDataSO action,
         float nextNt,
         ActionTimelinePlaybackState state)
@@ -98,7 +98,7 @@ public static class ActionTimelineRuntime
         var clips = action.DefenseClips;
         if (clips == null || clips.Count == 0)
         {
-            DefenseRuntimeRegistry.SetWindowFlags(player, false, false);
+            DefenseRuntimeRegistry.SetWindowFlags(context.Entity, false, false);
             return;
         }
 
@@ -119,7 +119,7 @@ public static class ActionTimelineRuntime
                 {
                     if (!guard.Active)
                     {
-                        guard.Begin(in clip, player);
+                        guard.Begin(in clip, context.Entity);
                     }
 
                     guard.Tick();
@@ -157,19 +157,19 @@ public static class ActionTimelineRuntime
             }
         }
 
-        DefenseRuntimeRegistry.SetWindowFlags(player, anyParry, anyInvincible);
+        DefenseRuntimeRegistry.SetWindowFlags(context.Entity, anyParry, anyInvincible);
     }
 
     /// <summary>188.3 W9 — Combat Track 时间轴穿越触发 CombatObjectSpawner.Spawn。</summary>
     static void FireCrossingCombatEvents(
-        Player player,
+        IActionContext context,
         ActionDataSO action,
         float prevNt,
         float nextNt,
         ActionTimelinePlaybackState state)
     {
         if (action.CombatTrack == null || action.CombatTrack.Length == 0) return;
-        var spawner = player != null ? player.CombatObjectSpawner : null;
+        var spawner = context.CombatObjectSpawner;
         if (spawner == null) return; // Player 还未注入 Spawner（W9 接入前）
 
         for (var i = 0; i < action.CombatTrack.Length; i++)
@@ -179,13 +179,13 @@ public static class ActionTimelineRuntime
             if (!ActionTimelineSampler.Crossed(prevNt, nextNt, ev.NormalizedTime)) continue;
             if (!state.TryFireCombatEventOnce(i)) continue;
 
-            CombatSpawnResolver.Resolve(player, ev.Definition, in ev, out var pos, out var rot);
-            spawner.Spawn(ev.Definition, player, pos, rot);
+            CombatSpawnResolver.Resolve(context.Entity, ev.Definition, in ev, out var pos, out var rot);
+            spawner.Spawn(ev.Definition, context.Entity, pos, rot);
         }
     }
 
     static void FireCrossingMarkers(
-        Player player,
+        IActionContext context,
         ActionDataSO action,
         float prevNt,
         float nextNt,
@@ -218,12 +218,12 @@ public static class ActionTimelineRuntime
                 continue;
             }
 
-            DispatchMarker(player, in m);
+            DispatchMarker(context, in m);
         }
     }
 
     static void FireCrossingWindowEvents(
-        Player player,
+        IActionContext context,
         ActionDataSO action,
         float prevNt,
         float nextNt,
@@ -259,13 +259,13 @@ public static class ActionTimelineRuntime
                     continue;
                 }
 
-                DispatchWindowEvent(player, in ev);
+                DispatchWindowEvent(context, in ev);
             }
         }
     }
 
     static void FireCrossingTeleports(
-        Player player,
+        IActionContext context,
         ActionDataSO action,
         float prevNt,
         float nextNt,
@@ -298,12 +298,9 @@ public static class ActionTimelineRuntime
             }
 
             var dist = action.TeleportTriggers[i].Distance;
-            var fwd = planarForward.sqrMagnitude > 0.0001f ? planarForward.normalized : player.transform.forward;
-            player.transform.position += fwd * dist;
-            player.PublishEvent(new PlayerTeleportedEvent(
-                player.GetInstanceID(),
-                player.name,
-                player.transform.position));
+            var fwd = planarForward.sqrMagnitude > 0.0001f ? planarForward.normalized : context.Transform.forward;
+            context.Transform.position += fwd * dist;
+            context.PublishTeleported(context.Transform.position);
         }
     }
 
@@ -365,17 +362,14 @@ public static class ActionTimelineRuntime
         }
     }
 
-    static void DispatchMarker(Player player, in ActionTimelineMarker marker)
+    static void DispatchMarker(IActionContext context, in ActionTimelineMarker marker)
     {
         switch (marker.Kind)
         {
             case ActionTimelineMarkerKind.PlaySfx:
             case ActionTimelineMarkerKind.SpawnVfx:
             case ActionTimelineMarkerKind.HitFrame:
-                player.PublishEvent(new ActionTimelinePresentationEvent(
-                    player.GetInstanceID(),
-                    marker.Kind,
-                    marker.Payload));
+                context.PublishActionPresentation(marker.Kind, marker.Payload);
                 break;
             case ActionTimelineMarkerKind.CameraShake:
                 ResolveCamera()?.AddImpulseShake(
@@ -394,17 +388,14 @@ public static class ActionTimelineRuntime
         }
     }
 
-    static void DispatchWindowEvent(Player player, in ActionWindowEvent ev)
+    static void DispatchWindowEvent(IActionContext context, in ActionWindowEvent ev)
     {
         switch (ev.Kind)
         {
             case ActionWindowRuntimeEventKind.PlaySfx:
             case ActionWindowRuntimeEventKind.SpawnVfx:
             case ActionWindowRuntimeEventKind.HitFrame:
-                player.PublishEvent(new ActionTimelinePresentationEvent(
-                    player.GetInstanceID(),
-                    (ActionTimelineMarkerKind)ev.Kind,
-                    ev.Payload));
+                context.PublishActionPresentation((ActionTimelineMarkerKind)ev.Kind, ev.Payload);
                 break;
         }
     }

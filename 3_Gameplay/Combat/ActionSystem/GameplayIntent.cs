@@ -13,6 +13,8 @@ public enum GameplayIntentKind : byte
     Jump = 1,
     /// <summary>WASD 走/跑 — Locomotion 车道；仅在 Action 后摇窗口放行时入队（157.2）。</summary>
     Move = 2,
+    /// <summary>220.6.1：由 FeedbackRouter 生成的受击动作语义。</summary>
+    HitReact = 3,
 
     Skill_Entry_01 = 10,
     Skill_Entry_02 = 11,
@@ -100,6 +102,18 @@ public struct GameplayIntent
     /// </summary>
     public SkillEntrySlot ModifierSlot;
 
+    /// <summary>220.6.1：ReactionSet 的稳定路线键，仅 HitReact 使用。</summary>
+    public string ReactionRouteId;
+
+    /// <summary>220.6.1：产生本次受击计划的 CombatResolvedEvent id。</summary>
+    public ulong ReactionSourceEventId;
+
+    /// <summary>220.6.1 C4：Resolver 快照的受击打断策略。</summary>
+    public ReactionInterruptDisposition ReactionInterruptDisposition;
+
+    /// <summary>220.6.1 C4：本次计划解析时目标是否带 SuperArmor。</summary>
+    public bool ReactionSuperArmor;
+
     public static GameplayIntent ForEntry(
         SkillEntrySlot slot,
         float time,
@@ -166,6 +180,27 @@ public struct GameplayIntent
             EntrySlot = default,
             MoveBuffered = moveBuffered,
             MoveBufferValid = moveBufferValid,
+        };
+    }
+
+    public static GameplayIntent ForHitReact(
+        string reactionRouteId,
+        ulong sourceEventId,
+        float time,
+        float bufferSeconds,
+        ReactionInterruptDisposition interruptDisposition,
+        bool superArmor)
+    {
+        return new GameplayIntent
+        {
+            Kind = GameplayIntentKind.HitReact,
+            TimeStamp = time,
+            ExpireTime = time + UnityEngine.Mathf.Max(0.01f, bufferSeconds),
+            EntrySlot = default,
+            ReactionRouteId = reactionRouteId,
+            ReactionSourceEventId = sourceEventId,
+            ReactionInterruptDisposition = interruptDisposition,
+            ReactionSuperArmor = superArmor,
         };
     }
 

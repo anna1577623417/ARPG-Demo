@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 68aa9736e2d13184ba7ad069dc7e0d8d, type: 3}
+  m_Name: Entry_Space_Dodge__Enemy
+  m_EditorClassIdentifier: 
+  slot: 7
+  displayName: Space
+  fallbackIcon: {fileID: 0}
+  chargeRoute: {fileID: 0}
+  comboRoute: {fileID: 0}
+  extendedComboRoute: {fileID: 0}
+  airComboRoute: {fileID: 0}
+  multiStageRoute: {fileID: 0}
+  normalRoute: {fileID: 0}
+  extendedHandoffWindowSeconds: 0
+  extendedHandoffMinGap: 0
+  extendedHandoffMaxGap: 0
+  derivativeRoutes: []
+  primaryUnit: {fileID: 11400000, guid: 2535ec7a6cbfc244c8d8c171bb8e1940, type: 2}

@@ -14,7 +14,7 @@ using UnityEngine;
 ///   7. LogicUpdate（当前支柱推进 — Action.Tick 内会 SkillEntries.TickActive）
 /// </summary>
 [AddComponentMenu("GameMain/Player/Player State Manager")]
-public class PlayerStateManager : EntityStateManager<Player>
+public class PlayerStateManager : EntityStateManager<Player>, IEntityIntentArbitrationPort<Player>
 {
     [SerializeField] int maxIntentConsumptionsPerFrame = 1;
 
@@ -36,6 +36,12 @@ public class PlayerStateManager : EntityStateManager<Player>
 
     public TurnSettings LocomotionTurnSettings => turnSettings;
 
+    public IIntentHost IntentHost => Entity;
+    public ISkillHost SkillHost => Entity;
+    public SkillEntryService SkillEntries => Entity?.SkillEntries;
+    public IActionIntentCommitter ActionCommitter => Entity;
+    public int MaxIntentConsumptionsPerFrame => maxIntentConsumptionsPerFrame;
+
     protected override List<EntityState<Player>> BuildStateList()
     {
         // 168.3 修订：PlayerStateManager 不再持有空中 allowed mask，仅传硬下限。
@@ -54,118 +60,89 @@ public class PlayerStateManager : EntityStateManager<Player>
         if (Entity == null || Current == null) return;
 
         ClashSession.Tick(Time.time);
-
-        Entity.SkillEntries?.TickCooldowns(deltaTime);
-        Entity.IntentBuffer.FlushExpired(Time.time);
-
-        for (var i = 0; i < maxIntentConsumptionsPerFrame; i++)
-        {
-            if (!Entity.IntentBuffer.TryPeek(out var intent)) break;
-
-            // ─── 1) 资格闸门：TransitionResolver 标签 + 过期 ───
-            var ctx = Entity.BuildFrameContext(deltaTime);
-            if (!TransitionResolver.CanOfferIntent(in ctx, in intent, out var reason))
-            {
-                if (GameMainDebugSettings.IntentArbitration || GameMainDebugSettings.InterruptFlow)
-                {
-                    Debug.Log($"[IntentArb] BLOCK by TransitionResolver | state={Current.StateId} | intent={intent.Kind} | reason={reason}", this);
-                }
-                InputActionProbe.LogIntentDropped(Entity, intent.Kind.ToString(), "TransitionResolver", reason ?? "(no-reason)");
-                break;
-            }
-
-            // ─── 2) Skill 解析：仅 Combat 车道走 SkillEntryService（157.2 L3）───
-            SkillRouteRuntime resolvedRoute = null;
-            var lane = ActionIntentRouting.ResolveLane(in intent, pendingAction: null);
-            if (lane == ActionIntentCategory.Combat)
-            {
-                var inputSnap = BuildInputSnapshot(in intent);
-                var discardIntent = false;
-                resolvedRoute = Entity.SkillEntries?.TryResolveForIntent(
-                    in intent, in inputSnap, Time.time, out discardIntent);
-
-                if (resolvedRoute == null)
-                {
-                    Entity.ClearPendingAction();
-                    if (discardIntent)
-                    {
-                        InputActionProbe.LogIntentDropped(Entity, intent.Kind.ToString(), "SkillEntry.Resolve", $"no-route-discard sem={intent.Semantic}");
-                        Entity.IntentBuffer.Pop();
-                        continue;
-                    }
-
-                    if (GameMainDebugSettings.IntentArbitration || GameMainDebugSettings.InterruptFlow)
-                    {
-                        Debug.Log($"[IntentArb] BLOCK by SkillEntry resolve | intent={intent.Kind}", this);
-                    }
-                    InputActionProbe.LogIntentDropped(Entity, intent.Kind.ToString(), "SkillEntry.Resolve", $"no-route-queued sem={intent.Semantic}");
-                    break;
-                }
-
-                // 把首段 Action 注入 PendingAction（MultiStage 跨次直进 Stage1 等）
-                var firstStage = Entity.SkillEntries.ResolveStartStage(resolvedRoute, Time.time);
-                if (firstStage?.Action != null)
-                {
-                    Entity.ArmPendingAction(intent.Kind, firstStage.Action);
-                }
-
-                if (SkillRouteDebug.IsDodge4TraceIntent(in intent))
-                {
-                    SkillRouteDebug.LogDodge4(
-                        Entity,
-                        "Arbiter",
-                        $"RESOLVED intent={intent.Kind} semantic={intent.Semantic} axis={intent.DirectionAxis} " +
-                        $"→ route={resolvedRoute?.Definition?.name} stage={firstStage?.name}");
-                }
-
-                if (GameMainDebugSettings.IntentArbitration)
-                {
-                    Debug.Log($"[Lane] Combat→Graph intent={intent.Kind} route={resolvedRoute?.Definition?.name}", this);
-                }
-            }
-            else if (GameMainDebugSettings.IntentArbitration || GameMainDebugSettings.InterruptFlow)
-            {
-                Debug.Log($"[Lane] {lane}→Global intent={intent.Kind}", this);
-            }
-
-            // ─── 3) 当前支柱本地闸门 ───
-            if (!Current.TryConsumeGameplayIntent(Entity, in ctx, in intent))
-            {
-                Entity.ClearPendingAction();
-                if (GameMainDebugSettings.IntentArbitration || GameMainDebugSettings.InterruptFlow)
-                {
-                    Debug.Log($"[IntentArb] BLOCK by State gate | state={Current.StateId} | intent={intent.Kind} hold={intent.HoldDurationSeconds:F3} (intent stays queued)", this);
-                }
-                InputActionProbe.LogIntentDropped(Entity, intent.Kind.ToString(), "State.TryConsume", $"state={Current.StateId} sem={intent.Semantic} hold={intent.HoldDurationSeconds:F3}");
-                break;
-            }
-
-            // ─── 4) 提交：SkillEntries 进入 RouteRuntime ───
-            if (resolvedRoute != null && Entity.SkillEntries != null
-                && GameplayIntent.TryIntentKindToSlot(intent.Kind, out var slot))
-            {
-                Entity.SkillEntries.NotifyRouteEntered(resolvedRoute, slot);
-            }
-
-            if (SkillRouteDebug.IsDodge4TraceIntent(in intent) && resolvedRoute == null)
-            {
-                SkillRouteDebug.LogDodge4Warn(
-                    Entity,
-                    "Arbiter",
-                    $"NO_ROUTE intent={intent.Kind} semantic={intent.Semantic} axis={intent.DirectionAxis}");
-            }
-
-            if (GameMainDebugSettings.IntentArbitration || GameMainDebugSettings.InterruptFlow)
-            {
-                var consumedNote = intent.Kind == GameplayIntentKind.Move ? " → Locomotion" : string.Empty;
-                Debug.Log($"[IntentArb] CONSUMED intent={intent.Kind}{consumedNote} | state={Current.StateId}", this);
-            }
-
-            Entity.IntentBuffer.Pop();
-        }
+        EntityIntentArbitrationPipeline.Tick(this, deltaTime, Time.time);
 
         // ─── 158.2 L2：ControlOwner 可观测写入（不参与裁决；仅供 Debug / Profiler）───
         WriteControlOwnerObservable();
+    }
+
+    public FrameContext BuildFrameContext(float deltaTime) => Entity.BuildFrameContext(deltaTime);
+
+    public InputSnapshot BuildInputSnapshot(in GameplayIntent intent) => BuildPlayerInputSnapshot(in intent);
+
+    public bool IsRouteAllowed(SkillRouteRuntime route, out string reason)
+    {
+        reason = null;
+        return route != null;
+    }
+
+    public void LogTransitionBlocked(in GameplayIntent intent, string reason)
+    {
+        if (GameMainDebugSettings.IntentArbitration || GameMainDebugSettings.InterruptFlow)
+        {
+            Debug.Log($"[IntentArb] BLOCK by TransitionResolver | state={Current.StateId} | intent={intent.Kind} | reason={reason}", this);
+        }
+        InputActionProbe.LogIntentDropped(Entity, intent.Kind.ToString(), "TransitionResolver", reason ?? "(no-reason)");
+    }
+
+    public void LogResolveBlocked(in GameplayIntent intent, in ArbitrationDecision decision)
+    {
+        if (decision.DiscardIntent)
+        {
+            InputActionProbe.LogIntentDropped(Entity, intent.Kind.ToString(), "SkillEntry.Resolve", $"no-route-discard sem={intent.Semantic}");
+            return;
+        }
+
+        if (GameMainDebugSettings.IntentArbitration || GameMainDebugSettings.InterruptFlow)
+        {
+            Debug.Log($"[IntentArb] BLOCK by SkillEntry resolve | intent={intent.Kind}", this);
+        }
+        InputActionProbe.LogIntentDropped(Entity, intent.Kind.ToString(), "SkillEntry.Resolve", $"no-route-queued sem={intent.Semantic}");
+    }
+
+    public void LogRouteRejected(in GameplayIntent intent, SkillRouteRuntime route, string reason)
+    {
+        InputActionProbe.LogIntentDropped(Entity, intent.Kind.ToString(), "Route.Policy", reason);
+    }
+
+    public void LogCommitBlocked(in GameplayIntent intent, SkillRouteRuntime route, string reason)
+    {
+        InputActionProbe.LogIntentDropped(Entity, intent.Kind.ToString(), "Action.Commit", reason);
+    }
+
+    public void LogStateGateBlocked(in GameplayIntent intent, SkillRouteRuntime route, string reason)
+    {
+        if (GameMainDebugSettings.IntentArbitration || GameMainDebugSettings.InterruptFlow)
+        {
+            Debug.Log($"[IntentArb] BLOCK by State gate | state={Current.StateId} | intent={intent.Kind} hold={intent.HoldDurationSeconds:F3} (intent stays queued)", this);
+        }
+        InputActionProbe.LogIntentDropped(Entity, intent.Kind.ToString(), "State.TryConsume", $"state={reason} sem={intent.Semantic} hold={intent.HoldDurationSeconds:F3}");
+    }
+
+    public void LogResolved(in GameplayIntent intent, in ArbitrationDecision decision)
+    {
+        if (SkillRouteDebug.IsDodge4TraceIntent(in intent))
+        {
+            SkillRouteDebug.LogDodge4(
+                Entity,
+                "Arbiter",
+                $"RESOLVED intent={intent.Kind} semantic={intent.Semantic} axis={intent.DirectionAxis} " +
+                $"→ route={decision.Route?.Definition?.name} action={decision.FirstAction?.name ?? "-"}");
+        }
+
+        if (GameMainDebugSettings.IntentArbitration)
+        {
+            Debug.Log($"[Lane] Combat→Graph intent={intent.Kind} route={decision.Route?.Definition?.name}", this);
+        }
+    }
+
+    public void LogConsumed(in GameplayIntent intent, SkillRouteRuntime route, string reason)
+    {
+        if (GameMainDebugSettings.IntentArbitration || GameMainDebugSettings.InterruptFlow)
+        {
+            var consumedNote = intent.Kind == GameplayIntentKind.Move ? " → Locomotion" : string.Empty;
+            Debug.Log($"[IntentArb] CONSUMED intent={intent.Kind}{consumedNote} | state={Current.StateId}", this);
+        }
     }
 
     /// <summary>
@@ -192,7 +169,7 @@ public class PlayerStateManager : EntityStateManager<Player>
         }
     }
 
-    InputSnapshot BuildInputSnapshot(in GameplayIntent intent)
+    InputSnapshot BuildPlayerInputSnapshot(in GameplayIntent intent)
     {
         var reader = Entity?.InputReader;
         InputSnapshot snap = default;

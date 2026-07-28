@@ -95,7 +95,9 @@ public static class CoverageDrawer
             return;
         }
 
+        var scratch = new WeaponTracePreviewSampler.SocketWorldSample[16];
         Vector3? prevTip = null;
+
         for (var s = 0; s < SampleCount; s++)
         {
             var t = SampleCount <= 1 ? 0f : s / (float)(SampleCount - 1);
@@ -103,22 +105,25 @@ public static class CoverageDrawer
             var a = Mathf.Lerp(0.15f, 0.4f, t);
             var color = new Color(CloudTrace.r, CloudTrace.g, CloudTrace.b, a);
 
-            if (!TrySampleSockets(
-                    action, in clip, anchor, planarForward, anchorOrigin, nt,
-                    out var tip, out var tipRadius))
+            var count = WeaponTracePreviewSampler.SampleChain(
+                action, in clip, anchor, planarForward, anchorOrigin, nt, scratch);
+            if (count <= 0)
             {
                 continue;
             }
 
-            Handles.color = color;
-            DrawWireSphere(tip, tipRadius);
+            WeaponTracePreviewDrawer.DrawSocketChain(scratch, count, color, labelSockets: false);
 
-            if (prevTip.HasValue)
+            if (TryGetTip(scratch, count, out var tip))
             {
-                Handles.DrawDottedLine(prevTip.Value, tip, 2.5f);
-            }
+                if (prevTip.HasValue)
+                {
+                    Handles.color = color;
+                    Handles.DrawDottedLine(prevTip.Value, tip, 2.5f);
+                }
 
-            prevTip = tip;
+                prevTip = tip;
+            }
         }
     }
 
@@ -132,32 +137,28 @@ public static class CoverageDrawer
         out Vector3 tipPos,
         out float tipRadius)
     {
-        tipPos = default;
-        tipRadius = 0.05f;
-        var set = clip.WeaponSockets;
-        if (set == null || set.Sockets == null || set.Sockets.Length == 0)
-        {
-            return false;
-        }
-
-        if (!CombatHitPreviewResolver.TryResolveHitClipWorldPose(
-                action, in clip, anchor, planarForward, anchorOrigin, nt, out var origin, out var rot))
-        {
-            return false;
-        }
-
-        // Editor 无逐帧 Animator：用 Origin 位姿 + Socket LocalOffset 近似刀尖云。
-        var last = set.Sockets[set.Sockets.Length - 1];
-        tipRadius = last.Radius > 0.01f ? last.Radius : 0.05f;
-        tipPos = origin + rot * last.LocalOffset;
-        return true;
+        return WeaponTracePreviewSampler.TrySampleTip(
+            action, in clip, anchor, planarForward, anchorOrigin, nt, out tipPos, out tipRadius);
     }
 
-    static void DrawWireSphere(Vector3 center, float radius)
+    static bool TryGetTip(
+        WeaponTracePreviewSampler.SocketWorldSample[] samples,
+        int count,
+        out Vector3 tip)
     {
-        Handles.DrawWireDisc(center, Vector3.up, radius);
-        Handles.DrawWireDisc(center, Vector3.right, radius);
-        Handles.DrawWireDisc(center, Vector3.forward, radius);
+        tip = default;
+        for (var i = count - 1; i >= 0; i--)
+        {
+            if (!samples[i].Valid)
+            {
+                continue;
+            }
+
+            tip = samples[i].Position;
+            return true;
+        }
+
+        return false;
     }
 }
 #endif

@@ -86,7 +86,7 @@ public static class CombatGraphFinisherDiagnostics
     }
 
     public static void LogStageComplete(
-        Player owner,
+        Entity owner,
         SkillRouteRuntime route,
         SkillStageRuntime stage,
         bool routeStillActive)
@@ -307,6 +307,8 @@ public static class CombatGraphFinisherDiagnostics
 
     static bool IsOwnerEnabled(Player owner) => owner != null && GameMainDebugSettings.SkillRouteGraph;
 
+    static bool IsOwnerEnabled(Entity owner) => owner != null && GameMainDebugSettings.SkillRouteGraph;
+
     static bool ShouldEmit(
         Player owner,
         SkillRouteDefinition route,
@@ -331,6 +333,25 @@ public static class CombatGraphFinisherDiagnostics
         return true;
     }
 
+    static bool ShouldEmit(
+        Entity owner,
+        SkillRouteDefinition route,
+        ActionDataSO action,
+        string graphCursor)
+    {
+        if (!IsOwnerEnabled(owner))
+        {
+            return false;
+        }
+
+        if (!s_traceArmed && !IsFinisherRelevant(action, route, graphCursor))
+        {
+            return false;
+        }
+
+        return s_eventSeq < MaxEventsPerTrace;
+    }
+
     static void ClearDedupKeys()
     {
         s_lastStageCompleteKey = null;
@@ -344,6 +365,12 @@ public static class CombatGraphFinisherDiagnostics
     }
 
     static void Emit(Player owner, string message)
+    {
+        s_eventSeq++;
+        SkillRouteDebug.LogFinisher(owner, message);
+    }
+
+    static void Emit(Entity owner, string message)
     {
         s_eventSeq++;
         SkillRouteDebug.LogFinisher(owner, message);

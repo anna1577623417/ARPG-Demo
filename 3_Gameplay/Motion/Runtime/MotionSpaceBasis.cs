@@ -57,8 +57,7 @@ public static class MotionSpaceBasis
             return false;
         }
 
-        // OPEN(slice-lock-on): 锁敌系统接入后改为「玩家→目标」平面单位向量。
-        return false;
+        return player.TryGetLockTargetPlanarForward(out forward);
     }
 
     static Vector3 Planarize(Vector3 v)

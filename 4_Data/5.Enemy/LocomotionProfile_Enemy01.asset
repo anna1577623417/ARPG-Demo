@@ -1,0 +1,229 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d2ca83463726645449ccc847acaf5510, type: 3}
+  m_Name: LocomotionProfile_Enemy01
+  m_EditorClassIdentifier: 
+  enabledStates: 778639
+  features: -1
+  bindings:
+  - State: 1
+    FallbackState: 1
+    LocomotionAction: {fileID: 11400000, guid: 71c8131a994a9b54e9825572d7603f53, type: 2}
+    DiscreteAction: {fileID: 0}
+    ContinuousClip: {fileID: 0}
+    TransitionDuration: 0.08
+    Speed: 1
+    UseRootMotion: 0
+    CanRotateDuring: 0
+    CanMoveDuring: 0
+    ReferenceLocomotionSpeed: 0
+    StrafeDirection: 0
+    TurnDirection: 0
+    RunRequirement: 0
+  - State: 4
+    FallbackState: 1
+    LocomotionAction: {fileID: 11400000, guid: d6f39c4ebc1d9e548a4724ffae7a3973, type: 2}
+    DiscreteAction: {fileID: 0}
+    ContinuousClip: {fileID: 0}
+    TransitionDuration: 0.08
+    Speed: 1
+    UseRootMotion: 0
+    CanRotateDuring: 0
+    CanMoveDuring: 0
+    ReferenceLocomotionSpeed: 0
+    StrafeDirection: 0
+    TurnDirection: 0
+    RunRequirement: 0
+  - State: 2
+    FallbackState: 1
+    LocomotionAction: {fileID: 11400000, guid: a0621f7ea3593d74289de723ac25b8a8, type: 2}
+    DiscreteAction: {fileID: 0}
+    ContinuousClip: {fileID: 0}
+    TransitionDuration: 0.08
+    Speed: 1
+    UseRootMotion: 0
+    CanRotateDuring: 0
+    CanMoveDuring: 0
+    ReferenceLocomotionSpeed: 0
+    StrafeDirection: 0
+    TurnDirection: 0
+    RunRequirement: 0
+  - State: 17
+    FallbackState: 2
+    LocomotionAction: {fileID: 11400000, guid: 9f115909264b68c43823adc514b49580, type: 2}
+    DiscreteAction: {fileID: 0}
+    ContinuousClip: {fileID: 0}
+    TransitionDuration: 0.08
+    Speed: 1.5
+    UseRootMotion: 0
+    CanRotateDuring: 0
+    CanMoveDuring: 0
+    ReferenceLocomotionSpeed: 0
+    StrafeDirection: 0
+    TurnDirection: 0
+    RunRequirement: 0
+  - State: 15
+    FallbackState: 1
+    LocomotionAction: {fileID: 11400000, guid: d7b20cf33da85be46978b8006c605510, type: 2}
+    DiscreteAction: {fileID: 0}
+    ContinuousClip: {fileID: 0}
+    TransitionDuration: 0.08
+    Speed: 1.5
+    UseRootMotion: 0
+    CanRotateDuring: 0
+    CanMoveDuring: 0
+    ReferenceLocomotionSpeed: 0
+    StrafeDirection: 0
+    TurnDirection: 0
+    RunRequirement: 0
+  - State: 14
+    FallbackState: 1
+    LocomotionAction: {fileID: 11400000, guid: 5dd9421ee904c764da713928f868e65b, type: 2}
+    DiscreteAction: {fileID: 0}
+    ContinuousClip: {fileID: 0}
+    TransitionDuration: 0.08
+    Speed: 1.8
+    UseRootMotion: 0
+    CanRotateDuring: 0
+    CanMoveDuring: 0
+    ReferenceLocomotionSpeed: 0
+    StrafeDirection: 0
+    TurnDirection: 0
+    RunRequirement: 0
+  - State: 18
+    FallbackState: 14
+    LocomotionAction: {fileID: 11400000, guid: 7e47b19846d8da84ea58f50717485477, type: 2}
+    DiscreteAction: {fileID: 0}
+    ContinuousClip: {fileID: 0}
+    TransitionDuration: 0.08
+    Speed: 1.5
+    UseRootMotion: 0
+    CanRotateDuring: 0
+    CanMoveDuring: 0
+    ReferenceLocomotionSpeed: 0
+    StrafeDirection: 0
+    TurnDirection: 0
+    RunRequirement: 0
+  - State: 16
+    FallbackState: 1
+    LocomotionAction: {fileID: 11400000, guid: faebbfd1a59017b418d4684b4463d80b, type: 2}
+    DiscreteAction: {fileID: 0}
+    ContinuousClip: {fileID: 0}
+    TransitionDuration: 0.08
+    Speed: 1.5
+    UseRootMotion: 0
+    CanRotateDuring: 0
+    CanMoveDuring: 0
+    ReferenceLocomotionSpeed: 0
+    StrafeDirection: 0
+    TurnDirection: 0
+    RunRequirement: 0
+  - State: 3
+    FallbackState: 1
+    LocomotionAction: {fileID: 11400000, guid: f3a8b2c1d4e5f6789012345678abcd02, type: 2}
+    DiscreteAction: {fileID: 0}
+    ContinuousClip: {fileID: 0}
+    TransitionDuration: 0.08
+    Speed: 1
+    UseRootMotion: 0
+    CanRotateDuring: 0
+    CanMoveDuring: 0
+    ReferenceLocomotionSpeed: 0
+    StrafeDirection: 0
+    TurnDirection: 0
+    RunRequirement: 0
+  - State: 8
+    FallbackState: 3
+    LocomotionAction: {fileID: 11400000, guid: f3a8b2c1d4e5f6789012345678abcd01, type: 2}
+    DiscreteAction: {fileID: 0}
+    ContinuousClip: {fileID: 0}
+    TransitionDuration: 0.08
+    Speed: 1
+    UseRootMotion: 0
+    CanRotateDuring: 0
+    CanMoveDuring: 0
+    ReferenceLocomotionSpeed: 0
+    StrafeDirection: 0
+    TurnDirection: 0
+    RunRequirement: 0
+  - State: 9
+    FallbackState: 1
+    LocomotionAction: {fileID: 11400000, guid: f3a8b2c1d4e5f6789012345678abcd03, type: 2}
+    DiscreteAction: {fileID: 0}
+    ContinuousClip: {fileID: 0}
+    TransitionDuration: 0.08
+    Speed: 1
+    UseRootMotion: 0
+    CanRotateDuring: 0
+    CanMoveDuring: 0
+    ReferenceLocomotionSpeed: 0
+    StrafeDirection: 0
+    TurnDirection: 0
+    RunRequirement: 0
+  - State: 20
+    FallbackState: 1
+    LocomotionAction: {fileID: 11400000, guid: 711e5d70acf578e48ab096d6c03d7a6c, type: 2}
+    DiscreteAction: {fileID: 0}
+    ContinuousClip: {fileID: 0}
+    TransitionDuration: 0.2
+    Speed: 1
+    UseRootMotion: 0
+    CanRotateDuring: 1
+    CanMoveDuring: 0
+    ReferenceLocomotionSpeed: 0
+    StrafeDirection: 0
+    TurnDirection: 1
+    RunRequirement: 0
+  - State: 20
+    FallbackState: 1
+    LocomotionAction: {fileID: 11400000, guid: 662971c2a2b406e47b3debac541a922d, type: 2}
+    DiscreteAction: {fileID: 0}
+    ContinuousClip: {fileID: 0}
+    TransitionDuration: 0.2
+    Speed: 1
+    UseRootMotion: 0
+    CanRotateDuring: 1
+    CanMoveDuring: 0
+    ReferenceLocomotionSpeed: 0
+    StrafeDirection: 0
+    TurnDirection: 2
+    RunRequirement: 0
+  - State: 20
+    FallbackState: 1
+    LocomotionAction: {fileID: 11400000, guid: c0e1884f05bbb1f4f885b56fed8c38bb, type: 2}
+    DiscreteAction: {fileID: 0}
+    ContinuousClip: {fileID: 0}
+    TransitionDuration: 0.2
+    Speed: 1
+    UseRootMotion: 0
+    CanRotateDuring: 1
+    CanMoveDuring: 0
+    ReferenceLocomotionSpeed: 0
+    StrafeDirection: 0
+    TurnDirection: 3
+    RunRequirement: 0
+  - State: 20
+    FallbackState: 1
+    LocomotionAction: {fileID: 11400000, guid: 92dd53c189441ce48a9cedbbd7776b38, type: 2}
+    DiscreteAction: {fileID: 0}
+    ContinuousClip: {fileID: 0}
+    TransitionDuration: 0.2
+    Speed: 1
+    UseRootMotion: 0
+    CanRotateDuring: 1
+    CanMoveDuring: 0
+    ReferenceLocomotionSpeed: 0
+    StrafeDirection: 0
+    TurnDirection: 4
+    RunRequirement: 0
+  tuning: {fileID: 11400000, guid: daf93e51bd7178142889801e6c45cfae, type: 2}
+  validationSummary: "OK \u2014 Authority \u4E0E Bindings \u4E00\u81F4\u3002"

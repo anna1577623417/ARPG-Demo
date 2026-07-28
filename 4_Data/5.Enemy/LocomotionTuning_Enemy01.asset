@@ -1,0 +1,41 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4a4b5f6ca2fa3404abe8d24f33a96296, type: 3}
+  m_Name: LocomotionTuning_Enemy01
+  m_EditorClassIdentifier: 
+  WalkMultiplier: 1
+  RunMultiplier: 1.25
+  BackwardMultiplier: 0.7
+  StrafeMultiplier: 0.85
+  AirMoveMultiplier: 0.6
+  GroundAcceleration: 12
+  GroundDeceleration: 22
+  RotationMode: 1
+  RotationSpeedDegPerSec: 720
+  SnapSpeedThreshold: 0.2
+  UseTuningRotationSpeed: 1
+  SkipTurnPresentationWhenWantsRun: 1
+  TapMaxDuration: 0.15
+  HoldEnterDelay: 0.08
+  VisualMaxAngularSpeedDeg: 540
+  Turn180ThresholdDeg: 135
+  Turn90ThresholdDeg: 60
+  JumpForce: 12
+  FallGravityScale: 1.3
+  AttackMoveMultiplier: 0
+  ExternalSpeedMultiplier: 1
+  StartActionDurationScale: 1
+  EnableFootPhasedStopVariants: 0
+  EnableTieredLanding: 0
+  LandingMediumThreshold: 2
+  LandingHeavyThreshold: 5
+  RunInputMode: 1

@@ -10,6 +10,7 @@ public sealed class CombatObjectSpawner
 {
     public const int MaxOnExpireDepth = 3;
     const int OverlapBufferSize = 32;
+    static int s_nextRuntimeId;
 
     readonly List<CombatObjectRuntime> _active = new(16);
     readonly Stack<CombatObjectRuntime> _pool = new(16);
@@ -17,6 +18,12 @@ public sealed class CombatObjectSpawner
 
     public int ActiveCount => _active.Count;
     public IReadOnlyList<CombatObjectRuntime> Active => _active;
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    static void ResetRuntimeIds()
+    {
+        s_nextRuntimeId = 0;
+    }
 
     /// <summary>生成 CombatObject。返回 null 表示拒绝（无效定义 / 递归过深）。</summary>
     public CombatObjectRuntime Spawn(
@@ -42,9 +49,10 @@ public sealed class CombatObjectSpawner
         }
 
         var co = _pool.Count > 0 ? _pool.Pop() : new CombatObjectRuntime();
+        co.RuntimeId = ++s_nextRuntimeId;
         co.Initialize(def, source, spawnPos, spawnRot);
         _active.Add(co);
-        CombatHitDiagProbe.LogSpawn(def, source, spawnPos);
+        CombatHitDiagProbe.LogSpawn(def, source, spawnPos, objectId: co.RuntimeId);
         return co;
     }
 

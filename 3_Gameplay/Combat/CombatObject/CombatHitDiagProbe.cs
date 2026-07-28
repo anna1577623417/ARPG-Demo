@@ -14,7 +14,8 @@ public static class CombatHitDiagProbe
         CombatObjectDefinitionSO def,
         Entity source,
         Vector3 pos,
-        string debugLabel = null)
+        string debugLabel = null,
+        int objectId = 0)
     {
         if (!IsEnabled || def == null)
         {
@@ -24,11 +25,11 @@ public static class CombatHitDiagProbe
         var shape = def.Shape != null ? def.Shape.GetType().Name : "null";
         var label = string.IsNullOrEmpty(debugLabel) ? def.name : debugLabel;
         Debug.Log(
-            $"{Prefix} SPAWN def={def.name} shape={shape} src={FormatEntity(source)} " +
+            $"{Prefix} SPAWN objectId={objectId} def={def.name} shape={shape} src={FormatEntity(source)} " +
             $"pos={pos} mov={def.Movement.Kind} label={label}");
     }
 
-    public static void LogOverlap(Entity target, int hitIndexOnTarget, Collider col)
+    public static void LogOverlap(Entity target, int hitIndexOnTarget, Collider col, int objectId = 0)
     {
         if (!IsEnabled || target == null)
         {
@@ -37,17 +38,20 @@ public static class CombatHitDiagProbe
 
         var colName = col != null ? col.name : "?";
         Debug.Log(
-            $"{Prefix} OVERLAP target={FormatEntity(target)} hitIdx={hitIndexOnTarget} col={colName}");
+            $"{Prefix} OVERLAP objectId={objectId} target={FormatEntity(target)} " +
+            $"hitIdx={hitIndexOnTarget} col={colName}");
     }
 
-    public static void LogDamage(Entity target, float amount, DamageKind kind)
+    public static void LogDamage(Entity target, float amount, DamageKind kind, int objectId = 0)
     {
         if (!IsEnabled || target == null)
         {
             return;
         }
 
-        Debug.Log($"{Prefix} DAMAGE target={FormatEntity(target)} amount={amount:F1} kind={kind}");
+        Debug.Log(
+            $"{Prefix} DAMAGE objectId={objectId} target={FormatEntity(target)} " +
+            $"amount={amount:F1} kind={kind}");
     }
 
     public static void LogReject(string reason, CombatObjectDefinitionSO def = null)

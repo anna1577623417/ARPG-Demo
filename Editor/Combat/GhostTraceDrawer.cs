@@ -123,38 +123,57 @@ public static class GhostTraceDrawer
             return;
         }
 
-        Vector3? prev = null;
+        var scratch = new WeaponTracePreviewSampler.SocketWorldSample[16];
+        Vector3? prevTip = null;
         for (var g = 0; g < GhostCount; g++)
         {
             var t = GhostCount <= 1 ? 1f : g / (float)(GhostCount - 1);
             var nt = Mathf.Lerp(start, ghostEnd, t);
-            if (!CoverageDrawer.TrySampleSockets(
-                    action, in clip, anchor, planarForward, anchorOrigin, nt,
-                    out var tip, out var radius))
+            var count = WeaponTracePreviewSampler.SampleChain(
+                action, in clip, anchor, planarForward, anchorOrigin, nt, scratch);
+            if (count <= 0)
             {
                 continue;
             }
 
             var a = Mathf.Lerp(0.3f, 0.75f, t);
-            Handles.color = new Color(GhostColor.r, GhostColor.g, GhostColor.b, a);
-            DrawWireSphere(tip, radius);
-            Handles.Label(tip + Vector3.up * 0.1f, $"Ghost{g + 1}");
+            var color = new Color(GhostColor.r, GhostColor.g, GhostColor.b, a);
+            WeaponTracePreviewDrawer.DrawSocketChain(scratch, count, color, labelSockets: g == GhostCount - 1);
 
-            if (prev.HasValue)
+            if (TryGetChainTip(scratch, count, out var tip))
             {
-                Handles.color = GhostTrail;
-                Handles.DrawLine(prev.Value, tip);
-            }
+                Handles.color = color;
+                Handles.Label(tip + Vector3.up * 0.1f, $"Ghost{g + 1}");
 
-            prev = tip;
+                if (prevTip.HasValue)
+                {
+                    Handles.color = GhostTrail;
+                    Handles.DrawLine(prevTip.Value, tip);
+                }
+
+                prevTip = tip;
+            }
         }
     }
 
-    static void DrawWireSphere(Vector3 center, float radius)
+    static bool TryGetChainTip(
+        WeaponTracePreviewSampler.SocketWorldSample[] samples,
+        int count,
+        out Vector3 tip)
     {
-        Handles.DrawWireDisc(center, Vector3.up, radius);
-        Handles.DrawWireDisc(center, Vector3.right, radius);
-        Handles.DrawWireDisc(center, Vector3.forward, radius);
+        tip = default;
+        for (var i = count - 1; i >= 0; i--)
+        {
+            if (!samples[i].Valid)
+            {
+                continue;
+            }
+
+            tip = samples[i].Position;
+            return true;
+        }
+
+        return false;
     }
 }
 #endif

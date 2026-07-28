@@ -6,25 +6,68 @@ using UnityEngine;
 /// </summary>
 [DisallowMultipleComponent]
 [RequireComponent(typeof(CapsuleCollider))]
-public sealed class Enemy_Training : Entity, ITagOwner, IDamageable, IEffectReceiver
+public sealed class Enemy_Training : Entity, IEntity, IImpulseReceiver, ITagOwner, IDamageable, IEffectReceiver
 {
     [SerializeField] TestDummyConfigSO config;
     [SerializeField] bool logDamageToConsole = true;
+    [SerializeField, Min(0f)] float impulseDamping = 18f;
 
     GameplayTagContainer _tags;
     float _lastDamageTime = -999f;
     float _totalDamageReceived;
+    Vector3 _impulseVelocity;
+    Vector3 _impulseStartPosition;
+    int _impulseRevision;
+    bool _impulseMoveLogged;
 
     public ref GameplayTagContainer Tags => ref _tags;
     GameplayTagContainer ITagOwner.Tags => _tags;
     public bool IsAlive => !IsDead;
 
+    Transform IEntity.Transform => transform;
+    IReadOnlyStatSet IEntity.Stats => Stats;
+    IResourcePool IEntity.Resources => Resources;
+
     IBuffStack IEffectReceiver.BuffStack => Buffs;
     IReadOnlyStatSet IEffectReceiver.Stats => Stats;
     IResourcePool IEffectReceiver.Resources => Resources;
 
+    public ImpulseApplyResult TryApplyImpulse(in ImpulseRequest request)
+    {
+        if (IsDead)
+        {
+            return ImpulseApplyResult.RejectedDead;
+        }
+
+        var planarDirection = request.Direction;
+        planarDirection.y = 0f;
+        if (request.Force > 0.01f && planarDirection.sqrMagnitude > 0.0001f)
+        {
+            _impulseVelocity = planarDirection.normalized * request.Force;
+            _impulseStartPosition = transform.position;
+            _impulseRevision++;
+            _impulseMoveLogged = false;
+            if (GameMainDebugSettings.CombatHit)
+            {
+                Debug.Log(
+                    $"[Enemy_Training] channel=Impulse result=Accepted revision={_impulseRevision} " +
+                    $"pos={transform.position} velocity={_impulseVelocity}");
+            }
+            return ImpulseApplyResult.Applied;
+        }
+
+        if (request.LaunchUpSpeed > 0.01f)
+        {
+            return ImpulseApplyResult.RejectedNoMotor;
+        }
+
+        return ImpulseApplyResult.IgnoredByProfile;
+    }
+
     protected override void Awake()
     {
+        unitKind = UnitKind.Monster;
+
         if (teamId == 0)
         {
             teamId = 1;
@@ -51,6 +94,28 @@ public sealed class Enemy_Training : Entity, ITagOwner, IDamageable, IEffectRece
     protected override void LateUpdate()
     {
         base.LateUpdate();
+
+        if (IsDead)
+        {
+            _impulseVelocity = Vector3.zero;
+        }
+        else if (_impulseVelocity.sqrMagnitude > 0.0001f)
+        {
+            transform.position += _impulseVelocity * Time.deltaTime;
+            if (!_impulseMoveLogged
+                && (transform.position - _impulseStartPosition).sqrMagnitude > 0.0001f
+                && GameMainDebugSettings.CombatHit)
+            {
+                _impulseMoveLogged = true;
+                Debug.Log(
+                    $"[Enemy_Training] channel=ImpulseMove result=Applied revision={_impulseRevision} " +
+                    $"delta={transform.position - _impulseStartPosition} pos={transform.position}");
+            }
+            _impulseVelocity = Vector3.MoveTowards(
+                _impulseVelocity,
+                Vector3.zero,
+                impulseDamping * Time.deltaTime);
+        }
 
         if (config != null
             && config.autoRegenerate
@@ -111,6 +176,9 @@ public sealed class Enemy_Training : Entity, ITagOwner, IDamageable, IEffectRece
         RestoreHealthToFull();
         _totalDamageReceived = 0f;
         _lastDamageTime = -999f;
+        _impulseVelocity = Vector3.zero;
+        _impulseStartPosition = transform.position;
+        _impulseMoveLogged = true;
         Debug.Log("[Enemy_Training] reset");
     }
 }

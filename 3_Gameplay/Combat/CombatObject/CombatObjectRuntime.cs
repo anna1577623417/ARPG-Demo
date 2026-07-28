@@ -7,6 +7,7 @@ using UnityEngine;
 /// </summary>
 public sealed class CombatObjectRuntime
 {
+    public int RuntimeId { get; internal set; }
     public CombatObjectDefinitionSO Definition;
     public Entity Source;                  // 施法者
     public Vector3 SpawnWorldPos;
@@ -217,7 +218,7 @@ public sealed class CombatObjectRuntime
             if (hits >= Definition.Lifecycle.MaxHitsPerTarget) continue;
             HitsPerTarget[id] = hits + 1;
 
-            CombatHitDiagProbe.LogOverlap(target, hits + 1, col);
+            CombatHitDiagProbe.LogOverlap(target, hits + 1, col, RuntimeId);
             ApplyDamage(target);
             HitCountTotal++;
         }
@@ -240,22 +241,24 @@ public sealed class CombatObjectRuntime
             }
             case DamageKind.Knockback:
             {
-                // 188.3 W14 — 接 Player.SetPlanarVelocity（Player 是 Entity 子类时）
-                var worldDir = SpawnWorldRot * def.KnockbackLocalDir.normalized;
-                if (target is Player p)
-                {
-                    p.SetPlanarVelocity(worldDir * def.KnockbackForce);
-                }
+                var request = new ImpulseRequest(
+                    SpawnWorldRot * def.KnockbackLocalDir,
+                    def.KnockbackForce,
+                    0f,
+                    ImpulseKind.Large,
+                    Source as IEntity);
+                CombatFeedbackRouter.DispatchImpulse(target, in request, objectId: RuntimeId);
                 break;
             }
             case DamageKind.Launch:
             {
-                // 188.3 W14 — 向上推力（接 175.2 Jump Variant 后可走 LaunchUpSpeed）
-                if (target is Player p)
-                {
-                    var current = p.PlanarVelocity;
-                    p.SetPlanarVelocity(current + Vector3.up * def.LaunchUpSpeed);
-                }
+                var request = new ImpulseRequest(
+                    SpawnWorldRot * Vector3.forward,
+                    0f,
+                    def.LaunchUpSpeed,
+                    ImpulseKind.Launch,
+                    Source as IEntity);
+                CombatFeedbackRouter.DispatchImpulse(target, in request, objectId: RuntimeId);
                 break;
             }
 
@@ -280,7 +283,7 @@ public sealed class CombatObjectRuntime
                 var pool = target.Resources;
                 var cur = pool.GetCurrent(ResourceType.HP);
                 pool.SetCurrent(ResourceType.HP, Mathf.Max(0f, cur - result.FinalDamage));
-                CombatHitDiagProbe.LogDamage(target, result.FinalDamage, def.Kind);
+                CombatHitDiagProbe.LogDamage(target, result.FinalDamage, def.Kind, RuntimeId);
                 break;
             }
         }

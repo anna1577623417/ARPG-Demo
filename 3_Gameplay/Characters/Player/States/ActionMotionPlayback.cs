@@ -428,6 +428,14 @@ public sealed class ActionMotionPlayback
 
             _executor.SetStopContext(in stopCtx);
 
+            var lockTargetForward = Vector3.forward;
+
+            var hasLockTargetForward = action?.MotionProfile != null
+
+                                       && action.MotionProfile.MotionSpace == MotionSpace.LockTarget
+
+                                       && player.TryGetLockTargetPlanarForward(out lockTargetForward);
+
             _executor.Tick(
 
                 Time.deltaTime,
@@ -438,7 +446,11 @@ public sealed class ActionMotionPlayback
 
                 prevNormalizedTime,
 
-                normalizedTime);
+                normalizedTime,
+
+                lockTargetForward,
+
+                hasLockTargetForward);
 
             _motorAdapter.ApplyToPlayer();
 
@@ -597,5 +609,3 @@ public sealed class ActionMotionPlayback
     }
 
 }
-
-

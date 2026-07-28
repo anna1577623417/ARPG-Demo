@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3f8b2d6c1a4e4970b5d9c7e2f6108a43, type: 3}
+  m_Name: EnemyDefinition_Enemy01
+  m_EditorClassIdentifier: 
+  id: enemy_01
+  displayName: Enemy_01
+  unitKind: 4
+  teamId: 1
+  runtimePrefab: {fileID: 1105044261828714454, guid: 558f5658859bf7743b00df99d9bf3262,
+    type: 3}
+  stats: {fileID: 11400000, guid: 4f131738d6abca44d8feb5f5583eca92, type: 2}
+  skillLoadout: {fileID: 11400000, guid: f097f013b149a6d43a33d99d43341dbc, type: 2}
+  reactionProfile: {fileID: 11400000, guid: b7de8dba2c884cd79be531e3f29f0840, type: 2}
+  personality: {fileID: 11400000, guid: ad895e45960ca3041b22c65972a1e640, type: 2}
+  locomotionProfile: {fileID: 11400000, guid: 8da599684e7a67f48b6f61805ada6334, type: 2}
+  behaviorTreeId: ApproachOrReleaseSkill
+  perceptionConfig: {fileID: 11400000, guid: 751cb149d6499b744bccf4bd3ee32296, type: 2}

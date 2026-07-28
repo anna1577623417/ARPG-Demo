@@ -17,7 +17,7 @@ public sealed class NormalRouteRuntime : SkillRouteRuntime
         TryEndRouteWhenLastStageComplete(in ctx);
         if (Stage != null && Stage.Completed && wasActive != IsActive)
         {
-            CombatGraphFinisherDiagnostics.LogStageComplete(ctx.Self as Player, this, Stage, IsActive);
+            CombatGraphFinisherDiagnostics.LogStageComplete(ctx.Host != null ? ctx.Host.Entity : ctx.Self, this, Stage, IsActive);
         }
     }
 }

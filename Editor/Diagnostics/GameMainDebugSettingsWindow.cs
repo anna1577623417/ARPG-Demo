@@ -108,8 +108,17 @@ public sealed class GameMainDebugSettingsWindow : EditorWindow
                 "Combo Air Gate", "[ComboAirGate]");
             Toggle(() => GameMainDebugSettings.CombatHit, v => GameMainDebugSettings.CombatHit = v,
                 "Combat Hit (214.3)", "[CombatHit] SPAWN/OVERLAP/DAMAGE");
+            Toggle(() => GameMainDebugSettings.ReactionDirection2206Log,
+                v => GameMainDebugSettings.ReactionDirection2206Log = v,
+                "Reaction Direction (220.6)", "[220.6] 四向/Up Reaction resolve → HitReact → Playback → Present");
+            Toggle(() => GameMainDebugSettings.AIBrain2207Log,
+                v => GameMainDebugSettings.AIBrain2207Log = v,
+                "AI Brain (220.7)", "[220.7] AIController / Blackboard / BT / SkillSelector");
+            Toggle(() => GameMainDebugSettings.EnemyPerception2208Log,
+                v => GameMainDebugSettings.EnemyPerception2208Log = v,
+                "Enemy Perception (220.8)", "[220.8] 感知扫描 / 目标获取 / Blackboard 写入");
             Toggle(() => GameMainDebugSettings.IntentArbitration, v => GameMainDebugSettings.IntentArbitration = v,
-                "Intent Arbitration", "StateManager 意图仲裁");
+                "Intent Arbitration (220.5)", "[220.5] StateManager / Enemy Runtime 意图仲裁");
         });
 
         DrawSection("HUD", () =>

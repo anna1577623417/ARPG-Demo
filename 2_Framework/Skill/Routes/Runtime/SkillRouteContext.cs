@@ -5,11 +5,13 @@ using UnityEngine;
 ///
 /// ═══ 设计意图 ═══
 ///   · 把 RouteRuntime 需要的所有外部参考折叠到一个 struct，避免运行时把 Player 透传到底层。
-///   · 包含 Stats / Resources / Tags / Input / HitTally 五个面。
+///   · 包含 Host / Stats / Resources / Tags / Input / HitTally 六个面。
 ///   · HitTally 为 class（容器引用语义），即便 ctx 以 in 传也可写入。
 /// </summary>
 public struct SkillRouteContext
 {
+    /// <summary>B3.2：Skill 宿主能力入口；后续 RouteRuntime 迁移不再从 Self 反查 Player。</summary>
+    public ISkillHost Host;
     public Entity Self;
     public Transform SelfTransform;
     public IStatSet Stats;

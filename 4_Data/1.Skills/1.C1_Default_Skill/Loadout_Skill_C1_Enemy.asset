@@ -1,0 +1,59 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a5e2c9f7187b34d44878a29155931d92, type: 3}
+  m_Name: Loadout_Skill_C1_Enemy
+  m_EditorClassIdentifier: 
+  bindings:
+  - slot: 0
+    entry: {fileID: 11400000, guid: 94c6824cbdfbeb7479bbe77b3c197860, type: 2}
+    hudKeyLabel: LM
+  - slot: 3
+    entry: {fileID: 11400000, guid: a3549dfe9ad160841a3dda94510b8dac, type: 2}
+    hudKeyLabel: RM
+  - slot: 5
+    entry: {fileID: 11400000, guid: e3fe721e2eee5c44084e44195f383899, type: 2}
+    hudKeyLabel: Q
+  - slot: 4
+    entry: {fileID: 11400000, guid: 1763db113549efd4e8093be25f1068a1, type: 2}
+    hudKeyLabel: R
+  - slot: 8
+    entry: {fileID: 11400000, guid: 3c96d4742a31b634684424f5614638fd, type: 2}
+    hudKeyLabel: Key 1
+  - slot: 9
+    entry: {fileID: 11400000, guid: b6c58b50e7a4b2a4ebdcaa243d00e936, type: 2}
+    hudKeyLabel: Key 2
+  - slot: 7
+    entry: {fileID: 11400000, guid: 96229d4c4051d954caa5979b04042076, type: 2}
+    hudKeyLabel: Space
+  - slot: 6
+    entry: {fileID: 11400000, guid: 6b8eef6920e2a9e4da1df215d72c0d36, type: 2}
+    hudKeyLabel: Shift
+  hudLayout: []
+  combatFlowEnabled: 1
+  combatFlow: {fileID: 11400000, guid: 25708567479bfd74da47966592ad45b3, type: 2}
+  contextGroups:
+  - {fileID: 11400000, guid: fd0a3264f599331479de69f28c575635, type: 2}
+  - {fileID: 11400000, guid: 45ba4497c8035cb40a099bf7e743f140, type: 2}
+  locomotionGraphContext:
+    JumpStart: {fileID: 11400000, guid: 05d0c0b53bf8cfc41a6317827d08769a, type: 2}
+    JumpLoop: {fileID: 11400000, guid: 507d62e5e65437444b0c8530c1c957f7, type: 2}
+    JumpLand: {fileID: 11400000, guid: bafc75128cf5b5549805eebd214a2466, type: 2}
+    JumpLandLight: {fileID: 0}
+    JumpLandHeavy: {fileID: 0}
+    JumpLandRoll: {fileID: 0}
+  abilityMap: {fileID: 11400000, guid: a2b3c4d5e6f7890123456789abcdef02, type: 2}
+  airInterruptPolicy:
+    AscendingAllowed: 3
+    ApexAllowed: 3
+    DescendingAllowed: 3
+    ApexVyThreshold: 1.5
+    GroundCoyoteSeconds: 0.08

@@ -102,7 +102,7 @@ public sealed class MultiStageRouteRuntime : SkillRouteRuntime
             return;
         }
 
-        ArmPendingStage(1, ctx.Now, def.StageChainArmSeconds, ctx.Self as Player);
+        ArmPendingStage(1, ctx.Now, def.StageChainArmSeconds, ctx.Host);
     }
 
     /// <summary>首段播完、等待锚点（仅 PressToAdvance + OnSkillAnchorReady）。</summary>
@@ -137,7 +137,7 @@ public sealed class MultiStageRouteRuntime : SkillRouteRuntime
 
         if (ctx.HitTally != null && ctx.HitTally.HitsHero > 0)
         {
-            ArmPendingStage(1, ctx.Now, def.StageChainArmSeconds, ctx.Self as Player);
+            ArmPendingStage(1, ctx.Now, def.StageChainArmSeconds, ctx.Host);
         }
     }
 
@@ -155,7 +155,7 @@ public sealed class MultiStageRouteRuntime : SkillRouteRuntime
         {
             ClearPendingEntry();
             CurrentStageIndex = idx;
-            BumpPresentationRevisionAndLog(ctx.Self as Player, -1, idx);
+            BumpPresentationRevisionAndLog(ctx.Host, -1, idx);
         }
         else
         {
@@ -320,7 +320,7 @@ public sealed class MultiStageRouteRuntime : SkillRouteRuntime
             case MultiStageChainMode.PressToAdvance:
                 if (def.ArmNextStageTrigger == MultiStageArmTrigger.OnFirstStageComplete)
                 {
-                    ArmPendingStage(1, ctx.Now, def.StageChainArmSeconds, ctx.Self as Player);
+                    ArmPendingStage(1, ctx.Now, def.StageChainArmSeconds, ctx.Host);
                 }
                 else
                 {
@@ -331,13 +331,13 @@ public sealed class MultiStageRouteRuntime : SkillRouteRuntime
             case MultiStageChainMode.HitToAdvance:
                 if (ctx.HitTally != null && ctx.HitTally.HitsHero > 0)
                 {
-                    ArmPendingStage(1, ctx.Now, def.StageChainArmSeconds, ctx.Self as Player);
+                    ArmPendingStage(1, ctx.Now, def.StageChainArmSeconds, ctx.Host);
                 }
                 break;
         }
     }
 
-    void ArmPendingStage(int stageIndex, float now, float windowSeconds, Player player)
+    void ArmPendingStage(int stageIndex, float now, float windowSeconds, ISkillHost host)
     {
         var def = Definition as MultiStageRouteDefinition;
         if (def?.Stages == null || stageIndex < 0 || stageIndex >= def.Stages.Length)
@@ -349,28 +349,28 @@ public sealed class MultiStageRouteRuntime : SkillRouteRuntime
         var prev = _pendingEntryStageIndex;
         _pendingEntryStageIndex = stageIndex;
         _pendingEntryExpireTime = now + win;
-        BumpPresentationRevisionAndLog(player, prev, stageIndex);
+        BumpPresentationRevisionAndLog(host, prev, stageIndex);
     }
 
-    void BumpPresentationRevisionAndLog(Player player, int fromStage, int toStage)
+    void BumpPresentationRevisionAndLog(ISkillHost host, int fromStage, int toStage)
     {
         BumpPresentationRevision();
-        if (player == null)
+        if (host == null || host.Entity == null)
         {
             return;
         }
 
         SkillRouteDebug.Log(
-            player,
+            host.Entity,
             SkillRouteDebug.CatHud,
             $"revision bump slot=- idx={toStage} stage={fromStage}→{toStage} rev={PresentationRevision}");
     }
 
     static void ClearAnchorMechanicTag(in SkillRouteContext ctx)
     {
-        if (ctx.Self is Player player)
+        if (ctx.Host != null)
         {
-            player.Tags.Remove(TagCategory.Mechanic, (ulong)MechanicTag.SkillAnchorReady);
+            ctx.Host.RemoveTag(TagCategory.Mechanic, (ulong)MechanicTag.SkillAnchorReady);
         }
     }
 }

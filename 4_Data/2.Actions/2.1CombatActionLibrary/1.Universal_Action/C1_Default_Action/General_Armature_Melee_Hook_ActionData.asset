@@ -33,7 +33,7 @@ MonoBehaviour:
   BakeMaxAnimSpeed: 1.15
   IntentCategory: 1
   GraphParticipation: -1
-  Category: 3
+  Category: 2
   InterruptPriority: 10
   InterruptStability: 10
   AllowSelfInterrupt: 0
@@ -92,8 +92,8 @@ MonoBehaviour:
     AllowMoveInput: 0
     incomingAbilityGate: 0
     _legacyDirectStateTagMask: 0
-  - NormalizedStart: 0.5
-    NormalizedEnd: 0.6
+  - NormalizedStart: 0.4
+    NormalizedEnd: 0.59999996
     WindowSlotMask: 256
     RuntimeEvents: []
     InterruptibleByCategories: 0
@@ -104,32 +104,35 @@ MonoBehaviour:
     incomingAbilityGate: 0
     _legacyDirectStateTagMask: 0
   AttackClips:
-  - DebugName: Hook
-    ActiveStart: 0.47
-    ActiveEnd: 0.71000004
+  - DebugName: Melee_Hook_Player
+    ActiveStart: 0.41
+    ActiveEnd: 0.61
     ShapeMode: 0
     Shape: {fileID: 11400000, guid: 5496af1eb2568dd4d9a80f27f2cc4e12, type: 2}
-    WeaponSockets: {fileID: 0}
+    WeaponSockets: {fileID: 11400000, guid: fdc98222cf2742ffafd17264aa5477db, type: 2}
     Origin: 1
-    OriginOffset: {x: 1.0769621, y: 1.8666631, z: 1.1999193}
-    OriginEuler: {x: 55.66044, y: 269.51624, z: 329.68716}
+    OriginOffset: {x: 0, y: 0, z: 0}
+    OriginEuler: {x: 0, y: 0, z: 0}
     Reach: 1.5
-    Filter:
-      Kind: 0
+    Target:
+      Relations: 24
+      UnitKinds: 31
+      SelfHit: 0
       IncludeDead: 0
+      RequireSelectable: 0
     QueryLayerMask:
       serializedVersion: 2
-      m_Bits: 320
+      m_Bits: 256
     Policy:
       Kind: 0
       IntervalSeconds: 0.2
       MaxHitsPerTarget: 1
       MaxTargets: 999
     Reaction:
-      BaseDamage: 10
+      BaseDamage: 0
       ImpulseLocalDir: {x: 0, y: 0, z: 1}
-      ImpulseForce: 8
-      LaunchUpSpeed: 12
+      ImpulseForce: 4
+      LaunchUpSpeed: 0
       HitStopSeconds: 0.06
       CameraShakeIntensity: 0
       CameraShakeDuration: 0.12

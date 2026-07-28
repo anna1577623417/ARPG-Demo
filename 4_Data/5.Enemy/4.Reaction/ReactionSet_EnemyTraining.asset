@@ -1,0 +1,45 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4a39cf743c27409e9acf857e2d8f73c4, type: 3}
+  m_Name: ReactionSet_EnemyTraining
+  m_EditorClassIdentifier: 
+  Entries:
+  - RouteId: Hit_F
+    Action: {fileID: 11400000, guid: a45d1b768e107074c98cba1781eed780, type: 2}
+    MotionProfile: {fileID: 11400000, guid: c8e849cff295107439533a7fed5eee5d, type: 2}
+    MotionAuthority: 1
+    InterruptDisposition: 2
+    ReturnToLocomotion: 1
+  - RouteId: Hit_B
+    Action: {fileID: 11400000, guid: 5027f0334a7b12a4aa3fb0de3da20735, type: 2}
+    MotionProfile: {fileID: 11400000, guid: a0889eca284691f4b84be605b21b02e8, type: 2}
+    MotionAuthority: 1
+    InterruptDisposition: 2
+    ReturnToLocomotion: 1
+  - RouteId: Hit_L
+    Action: {fileID: 11400000, guid: 7dd83a52f38f4d144be699efb31ac18f, type: 2}
+    MotionProfile: {fileID: 11400000, guid: 197efac8a0eadfd44b611a4d008a6fd2, type: 2}
+    MotionAuthority: 1
+    InterruptDisposition: 2
+    ReturnToLocomotion: 1
+  - RouteId: Hit_R
+    Action: {fileID: 11400000, guid: 3978235e6d58d6c4c82c7773dfe3f639, type: 2}
+    MotionProfile: {fileID: 11400000, guid: 016e55f280abd1144a2222534289a143, type: 2}
+    MotionAuthority: 1
+    InterruptDisposition: 2
+    ReturnToLocomotion: 1
+  - RouteId: Hit_Up
+    Action: {fileID: 11400000, guid: aa194903499f63c4ba44d74b1292d4fd, type: 2}
+    MotionProfile: {fileID: 11400000, guid: e01426e6b181a794593ecd6bfd076c3f, type: 2}
+    MotionAuthority: 1
+    InterruptDisposition: 2
+    ReturnToLocomotion: 1

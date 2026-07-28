@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text;
 using UnityEngine;
 
 /// <summary>
@@ -69,13 +70,51 @@ public sealed class AttackInstance
 
         if (GameMainDebugSettings.CombatHit)
         {
-            Debug.Log(
-                $"[Attack] BEGIN clip={SafeName(clip.DebugName)} active={clip.ActiveStart:F2}~{clip.ActiveEnd:F2} " +
-                $"mode={clip.ShapeMode} policy={clip.Policy.Kind} " +
-                $"shape={(clip.Shape != null ? clip.Shape.name : "null")} " +
-                $"sockets={(clip.WeaponSockets != null ? clip.WeaponSockets.Count : 0)}");
-            Debug.Log($"[Attack] mode={clip.ShapeMode}");
+            LogBegin(in clip);
         }
+    }
+
+    void LogBegin(in HitClip clip)
+    {
+        var targetSummary = TargetProfileEvaluator.DescribeProfile(in clip.Target);
+        var mask = clip.QueryLayerMask.value;
+        var header =
+            $"[Attack] BEGIN clip={SafeName(clip.DebugName)} active={clip.ActiveStart:F2}~{clip.ActiveEnd:F2} " +
+            $"mode={clip.ShapeMode} policy={clip.Policy.Kind} {targetSummary} mask={mask}";
+
+        if (clip.ShapeMode == HitShapeMode.WeaponTrace)
+        {
+            var socketCount = clip.WeaponSockets != null ? clip.WeaponSockets.Count : 0;
+            header += $" sockets={socketCount}";
+            Debug.Log(header);
+            LogWeaponSocketSummary(clip.WeaponSockets);
+            return;
+        }
+
+        var shapeName = clip.Shape != null ? clip.Shape.name : "null";
+        header += $" shape={shapeName} reach={clip.Reach:F2}";
+        Debug.Log(header);
+    }
+
+    static void LogWeaponSocketSummary(WeaponSocketSetSO set)
+    {
+        if (set == null || set.Sockets == null || set.Sockets.Length == 0)
+        {
+            Debug.Log("[Attack] BEGIN trace sockets=(none)");
+            return;
+        }
+
+        var sb = new StringBuilder(128);
+        sb.Append("[Attack] BEGIN trace");
+        for (var i = 0; i < set.Sockets.Length; i++)
+        {
+            var def = set.Sockets[i];
+            var name = string.IsNullOrEmpty(def.DebugName) ? $"s{i}" : def.DebugName;
+            var radius = def.Radius > 0.01f ? def.Radius : 0.05f;
+            sb.Append(' ').Append(name).Append("(r=").Append(radius.ToString("F2")).Append(')');
+        }
+
+        Debug.Log(sb.ToString());
     }
 
     /// <summary>
@@ -190,8 +229,9 @@ public sealed class AttackInstance
 
         if (GameMainDebugSettings.CombatHit)
         {
+            var selfName = Source != null ? Source.name : null;
             Debug.Log(
-                $"[Attack] CLASH detect self={SafeName(Source != null ? Source.name : null)} " +
+                $"[Attack] CLASH detect self={SafeName(selfName)} " +
                 $"vs={opponent.name} point={point} clip={SafeName(Clip.DebugName)}");
         }
 
@@ -269,8 +309,22 @@ public sealed class AttackInstance
             return;
         }
 
-        if (!TargetFilterEvaluator.Passes(Clip.Filter, Source, target))
+        if (!TargetProfileEvaluator.Passes(Clip.Target, Source, target))
         {
+            if (GameMainDebugSettings.CombatHit)
+            {
+                var reason = TargetProfileEvaluator.DescribeReject(Clip.Target, Source, target);
+                if (!string.IsNullOrEmpty(reason))
+                {
+                    Debug.Log(
+                        $"[Attack] REJECT source={(Source != null ? Source.name : "null")} " +
+                        $"sourceInfo=({TargetFilterEvaluator.DescribeEntity(Source)}) " +
+                        $"target={target.name} targetInfo=({TargetFilterEvaluator.DescribeEntity(target)}) " +
+                        $"relation={TargetFilterEvaluator.DescribeRelation(Source, target)} " +
+                        $"reason={reason} clip={SafeName(Clip.DebugName)}");
+                }
+            }
+
             return;
         }
 
@@ -297,10 +351,13 @@ public sealed class AttackInstance
 
         if (GameMainDebugSettings.CombatHit)
         {
+            var relation = TargetFilterEvaluator.DescribeRelation(Source, target);
             Debug.Log(
                 $"[Attack] POLICY={policy.Kind} allow target={target.name} " +
                 $"clip={SafeName(Clip.DebugName)} hits={hitCount}");
-            Debug.Log($"[Attack] HIT clip={SafeName(Clip.DebugName)} target={target.name}");
+            Debug.Log(
+                $"[Attack] HIT clip={SafeName(Clip.DebugName)} target={target.name} " +
+                $"kind={target.UnitKind} relation={relation}");
             if (viaWeaponTrace)
             {
                 Debug.Log(

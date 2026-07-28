@@ -39,6 +39,8 @@ public sealed class PlayerActionState : PlayerState
     readonly ActionTimelinePlaybackState m_timelineState = new ActionTimelinePlaybackState();
     readonly ActionMotionPlayback m_motionPlayback = new ActionMotionPlayback();
     float m_nextAirLocoMoveLogTime;
+    uint m_leaseVersion;
+    bool m_hasLease;
 
     /// <summary>
     /// 196.x Slide 闪现根治：本帧内是否发生过 SwapToStageAction（Stage 衔接）。
@@ -49,13 +51,17 @@ public sealed class PlayerActionState : PlayerState
     bool m_actionSwappedThisFrame;
     protected override void OnEnter(Player player)
     {
-        if (!player.TryTakePendingAction(out m_kind, out m_action) || m_action == null)
+        if (!player.TryConsumePendingAction(out var lease) || lease.Action == null)
         {
-            // 无 PendingAction：立即退回 Locomotion
-            InputActionProbe.LogIntentDropped(player, "(no-pending-action)", "PlayerActionState.OnEnter", "TryTakePendingAction failed → back to Loco");
+            InputActionProbe.LogIntentDropped(player, "(no-action-lease)", "PlayerActionState.OnEnter", "TryConsumePendingAction failed → back to Loco");
             player.States.Change<PlayerLocomotionState>();
             return;
         }
+
+        m_leaseVersion = lease.Version;
+        m_hasLease = true;
+        m_kind = lease.Kind;
+        m_action = lease.Action;
 
         InputActionProbe.LogActionEnter(player, m_action, "PlayerActionState.OnEnter");
 
@@ -74,7 +80,7 @@ public sealed class PlayerActionState : PlayerState
         EnsureMotionPlumbing(player);
         m_baseDuration = m_motionPlayback.ResolveActionDuration(player, m_action, m_kind);
 
-        var normalizedStart = player.ConsumePendingActionNormalizedStart();
+        var normalizedStart = lease.NormalizedStart;
         m_motionPlayback.ApplyDriverPolicy(player, m_action);
         ApplyStopAuthoring(player, m_action, ref normalizedStart);
         m_baseDuration = ResolveDurationSeconds();
@@ -453,6 +459,13 @@ public sealed class PlayerActionState : PlayerState
 
     protected override void OnExit(Player player)
     {
+        if (m_hasLease)
+        {
+            player.CompleteActionLease(m_leaseVersion);
+            m_hasLease = false;
+            m_leaseVersion = 0;
+        }
+
         StopInPlaceBonePresenter(player);
         ActionMotionPlayback.SetClipRootMotionForPlayer(player, false);
 

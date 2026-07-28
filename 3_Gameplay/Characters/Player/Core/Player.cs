@@ -16,7 +16,7 @@ using UnityEngine;
 [RequireComponent(typeof(PlayerStateManager))]
 [RequireComponent(typeof(PlayerController))]
 [RequireComponent(typeof(PlayerKCCMotor))]
-public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
+public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, IDamageable, IEffectReceiver, IActionContext, IActionLeaseOwner, IActionIntentCommitter
 {
     // ─── 输入 ───
     [Header("Input")]
@@ -90,13 +90,14 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
     public ref GameplayTagContainer Tags => ref m_gameplayTags;
     public ref GameplayTagMask GameplayTags => ref m_gameplayTags.State;
 
-    public readonly GameplayIntentBuffer IntentBuffer = new GameplayIntentBuffer(16);
+    public GameplayIntentBuffer IntentBuffer { get; } = new GameplayIntentBuffer(16);
 
     readonly ContextWindowTracker m_contextWindows = new ContextWindowTracker();
-    ActionDataSO m_pendingAction;
-    bool m_pendingActionArmed;
-    GameplayIntentKind m_pendingActionKind;
-    float m_pendingActionNormalizedStart;
+    ActionLease m_pendingActionLease;
+    ActionLease m_activeActionLease;
+    uint m_nextActionLeaseVersion;
+    bool m_hasPendingActionLease;
+    bool m_hasActiveActionLease;
     bool m_jumpRequestedByIntent;
     ActionDataSO m_graphContextAction;
     LocomotionStateId m_lastActionEndStateHint = LocomotionStateId.None;
@@ -110,6 +111,7 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
     TurnInfo m_currentTurnInfo;
     LocomotionPresentationSnapshot m_locoPresentation;
     IGameModeMovementContext m_movementContext;
+    ILockTargetProvider m_lockTargetProvider;
 
     // 198.x — VelocityDecayState 已删除（167.1 ExitVelocityPolicy 死代码全清；182.1 StopStrategy 唯一权威）
 
@@ -189,14 +191,44 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
     public TurnInfo CurrentTurnInfo => m_currentTurnInfo;
     /// <summary>159.1 L2+：Resolver 连续 Clip 表现快照（Strafe 等）。</summary>
     public LocomotionPresentationSnapshot LocomotionPresentation => m_locoPresentation;
-    /// <summary>159.1 L2：LockOn 信号；Play 验收见 Tools/GameMain/Debug Settings → Simulate LockOn。</summary>
-    public bool IsLockedOn => GameMainDebugSettings.SimulateLockOnLocomotion;
+    /// <summary>
+    /// 锁定 Locomotion 信号。正式路径由 Targeting Runtime 注入；Debug 开关仅保留旧 Strafe 回归验收。
+    /// Debug 模式不会伪造目标方向，因此 MotionSpace.LockTarget 仍安全回退到角色前方。
+    /// </summary>
+    public bool IsLockedOn => (m_lockTargetProvider != null && m_lockTargetProvider.HasValidLock)
+                              || GameMainDebugSettings.SimulateLockOnLocomotion;
 
     public void ActivateRunLatch(float seconds) => m_runLatchEndTime = Time.time + Mathf.Max(0.01f, seconds);
     public void SetTurnInfo(in TurnInfo info) => m_currentTurnInfo = info;
     public void SetLocomotionPresentation(in LocomotionPresentationSnapshot snapshot) => m_locoPresentation = snapshot;
 
     internal void InjectMovementContext(IGameModeMovementContext context) => m_movementContext = context;
+
+    /// <summary>
+    /// 由 Player Targeting Bridge 在 RuntimeReady 后注入。
+    /// Player 不持有 Targeting Session，也不搜索 Entity；只消费其稳定方向快照。
+    /// </summary>
+    public void BindLockTargetProvider(ILockTargetProvider provider) => m_lockTargetProvider = provider;
+
+    /// <summary>供 MotionSpace.LockTarget 使用；无有效 Targeting Runtime 时返回 false 走既有朝向回退。</summary>
+    public bool TryGetLockTargetPlanarForward(out Vector3 forward)
+    {
+        forward = Vector3.forward;
+        if (m_lockTargetProvider == null || !m_lockTargetProvider.HasValidLock
+            || !m_lockTargetProvider.TryGetPlanarDirection(out var direction))
+        {
+            return false;
+        }
+
+        direction.y = 0f;
+        if (direction.sqrMagnitude <= 0.0001f)
+        {
+            return false;
+        }
+
+        forward = direction.normalized;
+        return true;
+    }
 
     /// <summary>MotionProfile 局部轴 → 世界水平前向（Z 轴）；不读 MovementIntent。</summary>
     public Vector3 ResolveMotionPlanarForward(MotionSpace space)
@@ -310,11 +342,139 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
     Transform IEntity.Transform => transform;
     IReadOnlyStatSet IEntity.Stats => Stats;
     IResourcePool IEntity.Resources => Resources;
+    Entity ISkillHost.Entity => this;
+    SkillEntryLoadoutSO ISkillHost.SkillEntryLoadout => skillEntryLoadout;
+    GameplayTagContainer ISkillHost.Tags => m_gameplayTags;
+    InputSemanticResolver ISkillHost.InputSemantic => m_skillComponent?.InputSemantic;
+    float ISkillHost.SkillTime => Time.time;
+    CombatContextSnapshot ISkillHost.BuildCombatContext(
+        bool hitConfirmedThisStage,
+        Vector2 moveOverride,
+        bool moveOverrideValid)
+        => BuildCombatContext(hitConfirmedThisStage, moveOverride, moveOverrideValid);
+    void ISkillHost.ArmPendingAction(
+        GameplayIntentKind kind,
+        ActionDataSO action,
+        float normalizedStart)
+        => ArmPendingAction(kind, action, normalizedStart);
+    ActionDataSO ISkillHost.PeekPendingAction() => PeekPendingAction();
+    void ISkillHost.ClearPendingAction() => ClearPendingAction();
+    void ISkillHost.NotifyRouteStageAction(ActionDataSO action) => NotifyRouteStageAction(action);
+    void ISkillHost.RemoveTag(TagCategory category, ulong bits) => m_gameplayTags.Remove(category, bits);
+
+    public bool TryCommitActionIntent(
+        in GameplayIntent intent,
+        in ArbitrationDecision decision,
+        out string reason)
+    {
+        if (!decision.IsResolved)
+        {
+            reason = "missing-route";
+            return false;
+        }
+
+        if (decision.FirstAction == null)
+        {
+            reason = "route-without-action";
+            return true;
+        }
+
+        var lease = CreateActionLease(intent.Kind, decision.FirstAction, SkillEntries?.ActiveRoute);
+        if (!TryArm(in lease))
+        {
+            reason = "action-lease-arm-failed";
+            return false;
+        }
+
+        reason = "action-lease-armed";
+        return true;
+    }
+
+    Transform IActionContext.Transform => transform;
+    Animator IActionContext.Animator => base.Animator;
+    IEntityMotor IActionContext.Motor => m_motor;
+    LocalEventBus IActionContext.EventBus => base.EventBus;
+    CombatObjectSpawner IActionContext.CombatObjectSpawner => CombatObjectSpawner;
+    void IActionContext.PublishActionPresentation(ActionTimelineMarkerKind kind, string payload)
+        => PublishEvent(new EntityActionPresentationEvent(GetInstanceID(), kind, payload));
+    void IActionContext.PublishTeleported(Vector3 worldPosition)
+        => PublishEvent(new EntityTeleportedEvent(GetInstanceID(), name, worldPosition));
     GameplayTagContainer ITagOwner.Tags => m_gameplayTags;
     bool IEntity.IsAlive => !IsDead;
     IBuffStack IEffectReceiver.BuffStack => Buffs;
     IReadOnlyStatSet IEffectReceiver.Stats => Stats;
     IResourcePool IEffectReceiver.Resources => Resources;
+
+    public ImpulseApplyResult TryApplyImpulse(in ImpulseRequest request)
+    {
+        if (IsDead)
+        {
+            return ImpulseApplyResult.RejectedDead;
+        }
+
+        if (m_motor == null)
+        {
+            return ImpulseApplyResult.RejectedNoMotor;
+        }
+
+        var applied = false;
+        var planarDirection = request.Direction;
+        planarDirection.y = 0f;
+        var currentPlanarVelocity = m_motor.PlanarVelocity;
+        var requestedPlanarVelocity = Vector3.zero;
+        var alignmentDot = 0f;
+        var alignment = "None";
+        if (request.Force > 0.01f && planarDirection.sqrMagnitude > 0.0001f)
+        {
+            requestedPlanarVelocity = planarDirection.normalized * request.Force;
+            if (currentPlanarVelocity.sqrMagnitude > 0.0001f)
+            {
+                alignmentDot = Vector3.Dot(currentPlanarVelocity.normalized, requestedPlanarVelocity.normalized);
+                alignment = alignmentDot < -0.5f
+                    ? "Opposed"
+                    : alignmentDot > 0.5f ? "Aligned" : "Crossed";
+            }
+        }
+
+        if (GameMainDebugSettings.ReactionDirection2206Log)
+        {
+            Debug.Log(
+                $"[Reaction2206] channel=PlayerImpulse phase=BeforeApply frame={Time.frameCount} " +
+                $"target={name} state={States?.Current?.StateId ?? "(none)"} " +
+                $"currentPlanar={currentPlanarVelocity.ToString("F2")} " +
+                $"requestedPlanar={requestedPlanarVelocity.ToString("F2")} " +
+                $"currentSpeed={currentPlanarVelocity.magnitude:F2} force={request.Force:F2} " +
+                $"alignment={alignment} dot={alignmentDot:F2} log=220.6");
+        }
+
+        if (GameMainDebugSettings.ReactionDirection2206Log)
+        {
+            m_motor.BeginReactionDirection2206SpeedProbe();
+        }
+
+        if (request.Force > 0.01f && planarDirection.sqrMagnitude > 0.0001f)
+        {
+            SetPlanarVelocity(requestedPlanarVelocity);
+            applied = true;
+        }
+
+        if (request.LaunchUpSpeed > 0.01f)
+        {
+            SetVerticalSpeed(Mathf.Max(VerticalSpeed, request.LaunchUpSpeed));
+            applied = true;
+        }
+
+        var result = applied ? ImpulseApplyResult.Applied : ImpulseApplyResult.IgnoredByProfile;
+        if (GameMainDebugSettings.ReactionDirection2206Log)
+        {
+            Debug.Log(
+                $"[Reaction2206] channel=PlayerImpulse phase=AfterApply frame={Time.frameCount} " +
+                $"target={name} result={result} postPlanar={m_motor.PlanarVelocity.ToString("F2")} " +
+                $"verticalSpeed={m_motor.VerticalSpeed:F2} log=220.6");
+        }
+
+        return result;
+    }
 
     // ─── 生命周期 ───
 
@@ -728,7 +888,34 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
         };
     }
 
-    public void EnqueueGameplayIntent(in GameplayIntent intent) => IntentBuffer.Enqueue(intent);
+    Entity IIntentHost.Owner => this;
+
+    public IntentEnqueueResult TryEnqueue(in GameplayIntent intent)
+    {
+        IntentEnqueueResult result;
+        if (IsDead)
+        {
+            result = IntentEnqueueResult.RejectedOwnerDead;
+        }
+        else
+        {
+            IntentBuffer.Enqueue(in intent);
+            result = IntentEnqueueResult.Accepted;
+        }
+
+        if (GameMainDebugSettings.IntentArbitration || GameMainDebugSettings.InterruptFlow)
+        {
+            Debug.Log(
+                $"[Intent] channel=Enqueue result={result} host=Player kind={intent.Kind} " +
+                $"timestamp={intent.TimeStamp:F3} expire={intent.ExpireTime:F3}");
+        }
+
+        return result;
+    }
+
+    public void FlushExpiredIntents(float now) => IntentBuffer.FlushExpired(now);
+
+    public void EnqueueGameplayIntent(in GameplayIntent intent) => TryEnqueue(in intent);
 
     /// <summary>157.2/157.3 — 写入 Graph 上下文 Action（Airborne 相位 / 落地 JumpLand 等）。</summary>
     public void SetGraphContextAction(ActionDataSO action, string reason = null)
@@ -779,45 +966,129 @@ public class Player : Entity<Player>, IEntity, IDamageable, IEffectReceiver
         return false;
     }
 
-    // ─── PendingAction（Locomotion/Airborne 切到 Action 前的待播）───
+    // ─── ActionLease（Locomotion/Airborne/Combat 切到 Action 前的待播）───
 
     public void ArmPendingAction(GameplayIntentKind kind, ActionDataSO action, float normalizedStart = 0f)
     {
-        m_pendingActionArmed = true;
-        m_pendingActionKind = kind;
-        m_pendingAction = action;
-        m_pendingActionNormalizedStart = Mathf.Clamp01(normalizedStart);
+        var lease = CreateActionLease(kind, action, SkillEntries?.ActiveRoute, normalizedStart);
+        TryArm(in lease);
     }
 
-    /// <summary>167.1 Segment 预留：ActionState OnEnter 消费归一化起播点。</summary>
+    public ActionLease CreateActionLease(
+        GameplayIntentKind kind,
+        ActionDataSO action,
+        SkillRouteRuntime route,
+        float normalizedStart = 0f)
+    {
+        return new ActionLease(
+            ++m_nextActionLeaseVersion,
+            kind,
+            action,
+            route,
+            Mathf.Clamp01(normalizedStart));
+    }
+
+    public bool TryArm(in ActionLease lease)
+    {
+        if (lease.Version == 0 || lease.Action == null)
+        {
+            return false;
+        }
+
+        m_pendingActionLease = lease;
+        m_hasPendingActionLease = true;
+        return true;
+    }
+
+    public bool TryConsumePendingAction(out ActionLease lease)
+    {
+        if (!m_hasPendingActionLease)
+        {
+            lease = default;
+            return false;
+        }
+
+        return TryConsume(m_pendingActionLease.Version, out lease);
+    }
+
+    public bool TryConsume(uint version, out ActionLease lease)
+    {
+        if (!m_hasPendingActionLease || m_pendingActionLease.Version != version)
+        {
+            lease = default;
+            return false;
+        }
+
+        lease = m_pendingActionLease;
+        m_pendingActionLease = default;
+        m_hasPendingActionLease = false;
+        m_activeActionLease = lease;
+        m_hasActiveActionLease = true;
+        return true;
+    }
+
+    public void CompleteActionLease(uint version)
+    {
+        if (m_hasActiveActionLease && m_activeActionLease.Version == version)
+        {
+            m_activeActionLease = default;
+            m_hasActiveActionLease = false;
+        }
+    }
+
+    public void CancelActionLease(uint version, ActionCancelReason reason)
+    {
+        if (m_hasPendingActionLease && m_pendingActionLease.Version == version)
+        {
+            m_pendingActionLease = default;
+            m_hasPendingActionLease = false;
+        }
+
+        if (m_hasActiveActionLease && m_activeActionLease.Version == version)
+        {
+            m_activeActionLease = default;
+            m_hasActiveActionLease = false;
+        }
+    }
+
+    public void CancelActive(ActionCancelReason reason)
+    {
+        m_pendingActionLease = default;
+        m_activeActionLease = default;
+        m_hasPendingActionLease = false;
+        m_hasActiveActionLease = false;
+    }
+
+    /// <summary>兼容旧调用方：当前活动租约的归一化起播点。</summary>
     public float ConsumePendingActionNormalizedStart()
     {
-        var start = m_pendingActionNormalizedStart;
-        m_pendingActionNormalizedStart = 0f;
-        return start;
+        return m_hasActiveActionLease ? m_activeActionLease.NormalizedStart : 0f;
     }
 
-    public ActionDataSO PeekPendingAction() => m_pendingAction;
+    public ActionDataSO PeekPendingAction()
+        => m_hasPendingActionLease ? m_pendingActionLease.Action : null;
 
     /// <summary>仲裁未消费意图时丢弃已装配的 PendingAction，避免下帧误播旧段。</summary>
     public void ClearPendingAction()
     {
-        m_pendingActionArmed = false;
-        m_pendingAction = null;
-        m_pendingActionNormalizedStart = 0f;
+        if (m_hasPendingActionLease)
+        {
+            CancelActionLease(m_pendingActionLease.Version, ActionCancelReason.Replaced);
+        }
     }
 
+    /// <summary>兼容旧调用方；新动作状态应直接消费 ActionLease。</summary>
     public bool TryTakePendingAction(out GameplayIntentKind kind, out ActionDataSO action)
     {
-        if (!m_pendingActionArmed)
+        if (!TryConsumePendingAction(out var lease))
         {
             kind = GameplayIntentKind.None;
             action = null;
             return false;
         }
-        m_pendingActionArmed = false;
-        kind = m_pendingActionKind;
-        action = m_pendingAction;
+
+        kind = lease.Kind;
+        action = lease.Action;
         return true;
     }
 

@@ -154,6 +154,7 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
 
     Vector3 _debugPrevMotorPlanarSolvedDeltaXZ;
     float _debugNextMotorBurstLogTimeUnscaled;
+    int _reaction2206SpeedProbeFrames;
 
     // ─── IPlayerMotor 查询 ────────────────────────────────────────────────
     public bool IsGrounded => _isGrounded;
@@ -209,7 +210,28 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
     // ─── IPlayerMotor 写口 ────────────────────────────────────────────────
     public void SetPlanarVelocity(Vector3 planar)
     {
+        var previous = _planarVelocity;
         _planarVelocity = new Vector3(planar.x, 0f, planar.z);
+        if (GameMainDebugSettings.ReactionDirection2206Log
+            && _reaction2206SpeedProbeFrames > 0
+            && (previous - _planarVelocity).sqrMagnitude > 0.0001f)
+        {
+            Debug.Log(
+                $"[Reaction2206] channel=PlayerMotor phase=SetPlanarVelocity frame={Time.frameCount} " +
+                $"target={_player?.name ?? name} state={_states?.Current?.StateId ?? "(none)"} " +
+                $"previous={previous.ToString("F2")} next={_planarVelocity.ToString("F2")} " +
+                $"log=220.6", this);
+        }
+    }
+
+    public void BeginReactionDirection2206SpeedProbe()
+    {
+        if (!GameMainDebugSettings.ReactionDirection2206Log)
+        {
+            return;
+        }
+
+        _reaction2206SpeedProbeFrames = Mathf.Max(_reaction2206SpeedProbeFrames, 8);
     }
 
     public void SetVerticalSpeed(float vy)
@@ -310,6 +332,8 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
     // ─── IPlayerMotor 触发 ────────────────────────────────────────────────
     public void ApplyMotor(in MotorSolveContext context)
     {
+        var probePositionBefore = transform.position;
+        var probeVelocityBefore = new Vector3(_planarVelocity.x, _verticalSpeed, _planarVelocity.z);
         var wasGroundedAtMotorStart = _wasGroundedLastFrame;
         _lastStepDownTriggered = false;
 
@@ -364,6 +388,8 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
         LogVerticalAuthorityIfEnabled("ApplyMotor", vyEnter, vyAfterGravity, vyAfterClamp, solvedDelta.y, vyAfterOverlap, vyAfterGrounded, in solveCtx);
         LogStairStepObservabilityIfEnabled(
             "ApplyMotor", wasGroundedAtMotorStart, in solvedDelta, vyAfterClamp, stepDownAttemptPath: motorSettings != null);
+        LogReactionDirection2206SpeedProbe(
+            "ApplyMotor", probePositionBefore, probeVelocityBefore, solvedDelta);
     }
 
     public void ApplyMotorFromGameplayVelocity(Vector3 gameplayWorldVelocity, in MotorSolveContext context)
@@ -381,6 +407,8 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
         MotionYAxisConfig yAxisConfig,
         bool useMotionComposer)
     {
+        var probePositionBefore = transform.position;
+        var probeVelocityBefore = gameplayWorldVelocity;
         var wasGroundedAtMotorStart = _wasGroundedLastFrame;
         _lastStepDownTriggered = false;
 
@@ -505,6 +533,32 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
             in solvedDelta,
             vyAfterClamp,
             stepDownAttemptPath: motorSettings != null && !gameplayDrivenVy);
+        LogReactionDirection2206SpeedProbe(
+            gameplayDrivenVy ? "ApplyMotorFromGameplay[Y-driven]" : "ApplyMotorFromGameplay",
+            probePositionBefore, probeVelocityBefore, solvedDelta);
+    }
+
+    void LogReactionDirection2206SpeedProbe(
+        string phase,
+        Vector3 positionBefore,
+        Vector3 velocityBefore,
+        Vector3 solvedDelta)
+    {
+        if (!GameMainDebugSettings.ReactionDirection2206Log
+            || _reaction2206SpeedProbeFrames <= 0)
+        {
+            return;
+        }
+
+        var actualDelta = transform.position - positionBefore;
+        Debug.Log(
+            $"[Reaction2206] channel=PlayerMotor phase={phase} frame={Time.frameCount} " +
+            $"target={_player?.name ?? name} state={_states?.Current?.StateId ?? "(none)"} " +
+            $"velocityBefore={velocityBefore.ToString("F2")} planarAfter={_planarVelocity.ToString("F2")} " +
+            $"solvedDelta={solvedDelta.ToString("F3")} actualDelta={actualDelta.ToString("F3")} " +
+            $"position={transform.position.ToString("F3")} grounded={_isGrounded} " +
+            $"traceRemaining={_reaction2206SpeedProbeFrames - 1} log=220.6", this);
+        _reaction2206SpeedProbeFrames--;
     }
 
     /// <summary>

@@ -16,6 +16,7 @@ using UnityEngine;
 /// </summary>
 public sealed class SkillEntryService : IComboSessionHost, IGroupCooldownHost, ISkillEntryResolveHost
 {
+    readonly ISkillHost _host;
     readonly Player _owner;
     readonly ComboSessionController _comboSession;
     readonly GroupCooldownRegistry _groupCooldowns;
@@ -53,8 +54,14 @@ public sealed class SkillEntryService : IComboSessionHost, IGroupCooldownHost, I
     float _lastLoggedPriCd = -1f;
 
     public SkillEntryService(Player owner)
+        : this((ISkillHost)owner)
     {
-        _owner = owner;
+    }
+
+    public SkillEntryService(ISkillHost host)
+    {
+        _host = host;
+        _owner = host?.Entity as Player;
         _comboSession = new ComboSessionController(this);
         _groupCooldowns = new GroupCooldownRegistry(this);
         _resolver = new SkillEntryResolver(this);
@@ -64,6 +71,8 @@ public sealed class SkillEntryService : IComboSessionHost, IGroupCooldownHost, I
     public SkillRouteRuntime ActiveRoute => _activeRouteRuntime;
     public SkillEntrySlot ActiveEntrySlot => _activeEntrySlot;
     public SkillEntryLoadoutSO Loadout => _loadout;
+    /// <summary>B3.2：为仲裁管线暴露宿主能力，不暴露 Player 类型。</summary>
+    public ISkillHost Host => _host;
     public IReadOnlyList<IRouteRuntimeHandle> HudHandles => _hudHandles;
 
     /// <summary>Loadout 开关：是否请求启用 Combat Graph。</summary>
@@ -134,6 +143,12 @@ public sealed class SkillEntryService : IComboSessionHost, IGroupCooldownHost, I
     /// <summary>装配 Combat Flow Graph（147.1）；须在 Rebuild 之后调用。</summary>
     public void AttachGraph(CombatGraphAsset asset)
     {
+        if (_owner == null)
+        {
+            _combatGraph = null;
+            return;
+        }
+
         _combatGraph ??= new CombatGraphRunner(_owner, this);
         _combatGraph.Attach(asset);
 
@@ -271,7 +286,7 @@ public sealed class SkillEntryService : IComboSessionHost, IGroupCooldownHost, I
 
     void TryAddGroupHudHandle(SkillGroupDefinition group, SkillEntrySlot slot, string keyLabel)
     {
-        if (group == null || !group.IsHudVisible())
+        if (_owner == null || group == null || !group.IsHudVisible())
         {
             return;
         }
@@ -358,7 +373,7 @@ public sealed class SkillEntryService : IComboSessionHost, IGroupCooldownHost, I
 
     void TryAddRouteHudHandle(SkillRouteDefinition def, SkillEntrySlot slot, string keyLabel)
     {
-        if (def == null || !_routeRuntimes.TryGetValue(def, out var rt))
+        if (_owner == null || def == null || !_routeRuntimes.TryGetValue(def, out var rt))
         {
             return;
         }
@@ -960,19 +975,21 @@ public sealed class SkillEntryService : IComboSessionHost, IGroupCooldownHost, I
 
     void FillContext(in InputSnapshot input, float dt)
     {
-        _scratchCtx.Self = _owner;
-        _scratchCtx.SelfTransform = _owner != null ? _owner.transform : null;
-        _scratchCtx.Stats = _owner?.Stats;
-        _scratchCtx.Resources = _owner?.Resources;
-        _scratchCtx.Tags = _owner != null ? _owner.Tags : default;
+        var entity = _host?.Entity;
+        _scratchCtx.Host = _host;
+        _scratchCtx.Self = entity;
+        _scratchCtx.SelfTransform = entity != null ? entity.transform : null;
+        _scratchCtx.Stats = entity?.Stats;
+        _scratchCtx.Resources = entity?.Resources;
+        _scratchCtx.Tags = _host != null ? _host.Tags : default;
         _scratchCtx.Input = input;
         _scratchCtx.DeltaTime = dt;
         _scratchCtx.Now = Time.time;
         _scratchCtx.EntryService = this;
 
-        if (_owner != null)
+        if (_host != null)
         {
-            _scratchCtx.CombatCtx = _owner.BuildCombatContext(
+            _scratchCtx.CombatCtx = _host.BuildCombatContext(
                 _hitConfirmedThisStage,
                 input.MoveBuffered,
                 input.MoveBufferValid);
@@ -1056,7 +1073,11 @@ public sealed class SkillEntryService : IComboSessionHost, IGroupCooldownHost, I
         out string reason) =>
         PickComboForNewChain(entry, in ctx, out reason);
 
-    Player ISkillEntryResolveHost.Owner => _owner;
+    Entity ISkillEntryResolveHost.Owner => _host?.Entity;
+
+    ISkillHost ISkillEntryResolveHost.Host => _host;
+
+    Player ISkillEntryResolveHost.LegacyPlayer => _owner;
 
     SkillEntryLoadoutSO ISkillEntryResolveHost.Loadout => _loadout;
 

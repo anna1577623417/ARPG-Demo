@@ -75,16 +75,21 @@ public static class ClashSession
         if (self is Player player)
         {
             player.ForceEndAttackIfActive();
+        }
 
-            if (other != null)
+        if (other != null && self is IImpulseReceiver receiver)
+        {
+            var away = self.transform.position - other.transform.position;
+            away.y = 0f;
+            if (away.sqrMagnitude > 1e-4f)
             {
-                var away = player.transform.position - other.transform.position;
-                away.y = 0f;
-                if (away.sqrMagnitude > 1e-4f)
-                {
-                    away.Normalize();
-                    player.SetPlanarVelocity(away * 1.8f);
-                }
+                var request = new ImpulseRequest(
+                    away,
+                    1.8f,
+                    0f,
+                    ImpulseKind.Small,
+                    other as IEntity);
+                receiver.TryApplyImpulse(in request);
             }
         }
     }

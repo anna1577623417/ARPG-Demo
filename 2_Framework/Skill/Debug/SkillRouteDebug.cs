@@ -33,15 +33,15 @@ public static class SkillRouteDebug
     static string s_lastGraphDedupKey;
     static float s_lastGraphDedupTime;
 
-    public static bool IsEnabled(Player player) => player != null && GameMainDebugSettings.SkillRouteGraph;
+    public static bool IsEnabled(Entity player) => player != null && GameMainDebugSettings.SkillRouteGraph;
 
-    public static bool IsDodge4Enabled(Player player) =>
+    public static bool IsDodge4Enabled(Entity player) =>
         player != null && GameMainDebugSettings.SkillRouteDodge4;
 
-    public static bool IsRoll4Enabled(Player player) =>
+    public static bool IsRoll4Enabled(Entity player) =>
         player != null && GameMainDebugSettings.SkillRouteRoll4;
 
-    public static bool IsAbilityEnabled(Player player) =>
+    public static bool IsAbilityEnabled(Entity player) =>
         player != null && GameMainDebugSettings.SkillAbility;
 
     public static bool IsDodge4TraceIntent(in GameplayIntent intent) =>
@@ -53,7 +53,7 @@ public static class SkillRouteDebug
     public static bool IsRoll4Group(SkillGroupDefinition group) =>
         group != null && group.name.IndexOf("Wuxia", System.StringComparison.OrdinalIgnoreCase) >= 0;
 
-    public static void LogDodge4(Player player, string phase, string message, Object context = null)
+    public static void LogDodge4(Entity player, string phase, string message, Object context = null)
     {
         if (!IsDodge4Enabled(player))
         {
@@ -65,7 +65,7 @@ public static class SkillRouteDebug
 
     /// <summary>173.3 八向选路 — Console 过滤 <c>[Dodge8]</c>，开关与 Dodge4 共用。</summary>
     public static void LogDodge8(
-        Player player,
+        Entity player,
         SkillGroupDefinition group,
         string phase,
         string message,
@@ -80,7 +80,7 @@ public static class SkillRouteDebug
         Emit(player, CatDodge8, phase, $"{message}{groupNote}", context, warning: false);
     }
 
-    public static void LogRoll4(Player player, string phase, string message, Object context = null)
+    public static void LogRoll4(Entity player, string phase, string message, Object context = null)
     {
         if (!IsRoll4Enabled(player))
         {
@@ -92,7 +92,7 @@ public static class SkillRouteDebug
 
     /// <summary>四向解析：按 Group 名自动走 Dodge4 或 Roll4 通道。</summary>
     public static void LogDirectional4(
-        Player player,
+        Entity player,
         SkillGroupDefinition group,
         string phase,
         string message,
@@ -109,7 +109,7 @@ public static class SkillRouteDebug
     }
 
     /// <summary>Ability 专向 Flow（Debug Skill Ability）；不再走 Debug Skill Route。</summary>
-    public static void LogFlow(Player player, string message, Object context = null)
+    public static void LogFlow(Entity player, string message, Object context = null)
     {
         if (!IsAbilityEnabled(player))
         {
@@ -121,7 +121,7 @@ public static class SkillRouteDebug
     }
 
     /// <summary>Combat Graph 专向 — Console 过滤 <c>[SkillRoute][Graph]</c>。</summary>
-    public static void LogGraph(Player player, string message, Object context = null)
+    public static void LogGraph(Entity player, string message, Object context = null)
     {
         if (!IsEnabled(player))
         {
@@ -138,7 +138,7 @@ public static class SkillRouteDebug
     }
 
     /// <summary>Graph 末段退出专向 — 独立前缀，避免与 Graph 混滤。</summary>
-    public static void LogFinisher(Player player, string message, Object context = null)
+    public static void LogFinisher(Entity player, string message, Object context = null)
     {
         if (!IsEnabled(player))
         {
@@ -149,7 +149,7 @@ public static class SkillRouteDebug
         Debug.Log($"[CombatGraph][{CatFinisher}] {message}", ctx);
     }
 
-    public static void LogAbility(Player player, string message, Object context = null)
+    public static void LogAbility(Entity player, string message, Object context = null)
     {
         if (!IsAbilityEnabled(player))
         {
@@ -160,7 +160,7 @@ public static class SkillRouteDebug
         Debug.Log($"[Ability] {message}", ctx);
     }
 
-    public static void LogSetup(Player player, CombatGraphAsset flow, AbilityMapSO abilityMap, int contextGroupCount)
+    public static void LogSetup(Entity player, CombatGraphAsset flow, AbilityMapSO abilityMap, int contextGroupCount)
     {
         if (!IsEnabled(player) && !IsAbilityEnabled(player))
         {
@@ -183,7 +183,7 @@ public static class SkillRouteDebug
             ctx);
     }
 
-    public static void LogDodge4Warn(Player player, string phase, string message, Object context = null)
+    public static void LogDodge4Warn(Entity player, string phase, string message, Object context = null)
     {
         if (!IsDodge4Enabled(player))
         {
@@ -193,7 +193,7 @@ public static class SkillRouteDebug
         Emit(player, CatDodge4, phase, message, context, warning: true);
     }
 
-    public static void LogRoll4Warn(Player player, string phase, string message, Object context = null)
+    public static void LogRoll4Warn(Entity player, string phase, string message, Object context = null)
     {
         if (!IsRoll4Enabled(player))
         {
@@ -203,7 +203,7 @@ public static class SkillRouteDebug
         Emit(player, CatRoll4, phase, message, context, warning: true);
     }
 
-    public static void Log(Player player, string category, string message, Object context = null)
+    public static void Log(Entity player, string category, string message, Object context = null)
     {
         if (!IsEnabled(player) || !ShouldEmit(category, message))
         {
@@ -214,7 +214,7 @@ public static class SkillRouteDebug
         Debug.Log($"[SkillRoute][{category}] {message}", ctx);
     }
 
-    public static void LogWarn(Player player, string category, string message, Object context = null)
+    public static void LogWarn(Entity player, string category, string message, Object context = null)
     {
         if (player != null && (!IsEnabled(player) || !ShouldEmit(category, message)))
         {
@@ -225,7 +225,7 @@ public static class SkillRouteDebug
         Debug.LogWarning($"[SkillRoute][{category}] {message}", ctx);
     }
 
-    public static void LogError(Player player, string category, string message, Object context = null)
+    public static void LogError(Entity player, string category, string message, Object context = null)
     {
         if (!ShouldEmit(category, message) && category != CatGraph)
         {
@@ -237,7 +237,7 @@ public static class SkillRouteDebug
     }
 
     public static void TryLogActionStuck(
-        Player player,
+        Entity player,
         float actionNt,
         bool routeActive,
         bool stageCompleted,
@@ -245,7 +245,7 @@ public static class SkillRouteDebug
     {
     }
 
-    static void Emit(Player player, string category, string phase, string message, Object context, bool warning)
+    static void Emit(Entity player, string category, string phase, string message, Object context, bool warning)
     {
         var ctx = context != null ? context : player;
         var line = $"[SkillRoute][{category}] {phase} | {message}";

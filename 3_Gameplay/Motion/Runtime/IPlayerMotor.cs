@@ -15,7 +15,7 @@ using UnityEngine;
 ///   · R3：引入 MotorPolicy（Locomotion / Airborne / ActionSuspended / ActionPhysics …），
 ///         由状态机 SetPolicy 驱动 Motor 的「重力 / 接地 / EdgeSlip / Snap」分支选择。
 /// </summary>
-public interface IPlayerMotor
+public interface IPlayerMotor : IEntityMotor
 {
     // ─── 输入：写速度 / 重力开关 ─────────────────────────────────────────
     void SetPlanarVelocity(Vector3 planar);

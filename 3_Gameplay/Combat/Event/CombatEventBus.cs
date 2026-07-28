@@ -8,13 +8,22 @@ using UnityEngine;
 /// </summary>
 public static class CombatEventBus
 {
+    static ulong s_nextEventId;
+
     public static event Action<CombatResolvedEvent> Resolved;
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    static void ResetRuntime()
+    {
+        s_nextEventId = 0UL;
+    }
 
     /// <summary>
     /// 裁决 + 组事件 + 发布。AttackInstance 命中后的唯一出口。
     /// </summary>
     public static void PublishResolved(in HitResult hit, in HitReaction reaction)
     {
+        var eventId = ++s_nextEventId;
         var interaction = CombatResolver.Resolve(in hit);
 
         if (GameMainDebugSettings.CombatHit)
@@ -23,24 +32,25 @@ public static class CombatEventBus
             switch (interaction)
             {
                 case CombatInteraction.Guard:
-                    Debug.Log($"[Resolve] Blocked target={tName}");
+                    Debug.Log($"[Resolve] eventId={eventId} interaction=Guard target={tName}");
                     break;
                 case CombatInteraction.Parry:
-                    Debug.Log("[Resolve] Parry! attacker stagger");
+                    Debug.Log($"[Resolve] eventId={eventId} interaction=Parry target={tName}");
                     break;
                 case CombatInteraction.Clash:
                 {
                     var aName = hit.Source != null ? hit.Source.name : "?";
-                    Debug.Log($"[Resolve] Clash {aName} vs {tName} → ClashState");
+                    Debug.Log($"[Resolve] eventId={eventId} interaction=Clash source={aName} target={tName}");
                     break;
                 }
                 default:
-                    Debug.Log($"[Resolve] {interaction} target={tName}");
+                    Debug.Log($"[Resolve] eventId={eventId} interaction={interaction} target={tName}");
                     break;
             }
         }
 
         var reactionNorm = NormalizeReaction(in reaction);
+
         var finalDamage = 0f;
         var isCrit = false;
         var ctx = default(CombatContext);
@@ -59,6 +69,7 @@ public static class CombatEventBus
         }
 
         var evt = new CombatResolvedEvent(
+            eventId,
             interaction,
             in hit,
             in reactionNorm,
@@ -69,13 +80,16 @@ public static class CombatEventBus
         if (GameMainDebugSettings.CombatHit)
         {
             Debug.Log(
-                $"[CombatEvt] {interaction} Damage={finalDamage:F1} HitStop={reactionNorm.HitStopSeconds:F2} " +
-                $"Impulse={reactionNorm.ImpulseForce:F1} target={(hit.Target != null ? hit.Target.name : "null")}");
+                $"[CombatEvt] eventId={eventId} interaction={interaction} Damage={finalDamage:F1} " +
+                $"HitStop={reactionNorm.HitStopSeconds:F2} Impulse={reactionNorm.ImpulseForce:F1} " +
+                $"Launch={reactionNorm.LaunchUpSpeed:F1} source={(hit.Source != null ? hit.Source.name : "null")} " +
+                $"target={(hit.Target != null ? hit.Target.name : "null")}");
 
             if (interaction == CombatInteraction.Hit)
             {
                 Debug.Log(
-                    $"[CombatEvt] atk={ctx.AttackerAttackPower:F1} def={ctx.DefenderDefense:F1} final={finalDamage:F1}");
+                    $"[CombatEvt] eventId={eventId} atk={ctx.AttackerAttackPower:F1} " +
+                    $"def={ctx.DefenderDefense:F1} final={finalDamage:F1}");
             }
         }
 

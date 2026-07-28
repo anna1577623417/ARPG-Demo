@@ -18,6 +18,10 @@ public abstract class Entity : MonoBehaviour
     [SerializeField] protected string entityId = "entity";
     [SerializeField] protected string displayName = "Entity";
     [SerializeField] protected int teamId = 0;
+    [Tooltip("217.2 L1：对战单位主类（Hero/Monster/Structure…）。")]
+    [SerializeField] protected UnitKind unitKind = UnitKind.Hero;
+    [Tooltip("217.2 L2：召唤物/分身的主人；Owned 关系判定用。")]
+    [SerializeField] protected Entity ownerEntity;
 
     // ─── 基础属性（无 Stats 蓝图时使用；有蓝图时由 RuntimeEntityStats 覆盖同步） ───
 
@@ -76,6 +80,8 @@ public abstract class Entity : MonoBehaviour
     public string EntityId => entityId;
     public string DisplayName => displayName;
     public int TeamId => teamId;
+    public UnitKind UnitKind => unitKind;
+    public Entity Owner => ownerEntity;
 
     public float MaxHealth => m_runtimeStats.MaxHealth;
     [Obsolete("Use Resources.GetCurrent(ResourceType.HP). Removed in Phase 4.")]

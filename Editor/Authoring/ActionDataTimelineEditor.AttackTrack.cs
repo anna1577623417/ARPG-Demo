@@ -288,12 +288,10 @@ public sealed partial class ActionDataTimelineEditor
         elem.FindPropertyRelative(nameof(HitClip.OriginEuler)).vector3Value = Vector3.zero;
         elem.FindPropertyRelative(nameof(HitClip.Reach)).floatValue = 0f;
 
-        var filter = elem.FindPropertyRelative(nameof(HitClip.Filter));
-        if (filter != null)
+        var target = elem.FindPropertyRelative(nameof(HitClip.Target));
+        if (target != null)
         {
-            filter.FindPropertyRelative(nameof(TargetFilterParams.Kind)).enumValueIndex =
-                (int)TargetFilterKind.AnyExceptSelf;
-            filter.FindPropertyRelative(nameof(TargetFilterParams.IncludeDead)).boolValue = false;
+            WriteTargetProfile(target, TargetProfile.HostileCombatantsOnly);
         }
 
         var policy = elem.FindPropertyRelative(nameof(HitClip.Policy));
@@ -342,8 +340,17 @@ public sealed partial class ActionDataTimelineEditor
         EditorGUILayout.Space(4f);
         EditorGUILayout.LabelField($"HitClip #{_selectedAttackClip}", EditorStyles.boldLabel);
         EditorGUILayout.HelpBox(
-            "ShapeMode=Volume 用 Shape；WeaponTrace 用 WeaponSockets。二选一不双跑。拖左右边界改 Active。",
+            "ShapeMode=Volume 用 Shape + Reach；WeaponTrace 用 WeaponSockets（改 SocketSet 的 Bone/Offset/Radius，Reach 无效）。拖 Active 边界改开判区间。",
             MessageType.None);
+
+        var shapeMode = (HitShapeMode)elem.FindPropertyRelative(nameof(HitClip.ShapeMode)).enumValueIndex;
+        if (shapeMode == HitShapeMode.WeaponTrace)
+        {
+            EditorGUILayout.HelpBox(
+                "WeaponTrace 预览：Timeline 工具栏 Show → 勾选 Attack HitClip / Attack Coverage / Attack Ghost；\n" +
+                "Scene 需有 Preview 角色（Humanoid Animator）。调刃长：打开 WeaponSockets 资产，改 tip/mid/base 的 LocalOffset Z 与 Radius。",
+                MessageType.Info);
+        }
 
         EditorGUILayout.PropertyField(elem.FindPropertyRelative(nameof(HitClip.DebugName)));
         EditorGUILayout.PropertyField(elem.FindPropertyRelative(nameof(HitClip.ActiveStart)));
@@ -355,7 +362,7 @@ public sealed partial class ActionDataTimelineEditor
         EditorGUILayout.PropertyField(elem.FindPropertyRelative(nameof(HitClip.OriginOffset)));
         EditorGUILayout.PropertyField(elem.FindPropertyRelative(nameof(HitClip.OriginEuler)));
         EditorGUILayout.PropertyField(elem.FindPropertyRelative(nameof(HitClip.Reach)));
-        EditorGUILayout.PropertyField(elem.FindPropertyRelative(nameof(HitClip.Filter)), true);
+        DrawTargetProfileInspector(elem.FindPropertyRelative(nameof(HitClip.Target)));
         EditorGUILayout.PropertyField(elem.FindPropertyRelative(nameof(HitClip.QueryLayerMask)));
         EditorGUILayout.PropertyField(elem.FindPropertyRelative(nameof(HitClip.Policy)), true);
         EditorGUILayout.PropertyField(elem.FindPropertyRelative(nameof(HitClip.Reaction)), true);
@@ -521,6 +528,63 @@ public sealed partial class ActionDataTimelineEditor
     {
         _selectedAttackClip = -1;
         _dragAttackClipIndex = -1;
+    }
+
+    void DrawTargetProfileInspector(SerializedProperty targetProp)
+    {
+        if (targetProp == null)
+        {
+            return;
+        }
+
+        EditorGUILayout.LabelField("Target Profile", EditorStyles.boldLabel);
+        EditorGUILayout.PropertyField(targetProp.FindPropertyRelative(nameof(TargetProfile.Relations)));
+        EditorGUILayout.PropertyField(targetProp.FindPropertyRelative(nameof(TargetProfile.UnitKinds)));
+        EditorGUILayout.PropertyField(targetProp.FindPropertyRelative(nameof(TargetProfile.SelfHit)));
+        EditorGUILayout.PropertyField(targetProp.FindPropertyRelative(nameof(TargetProfile.IncludeDead)));
+        EditorGUILayout.PropertyField(targetProp.FindPropertyRelative(nameof(TargetProfile.RequireSelectable)));
+
+        using (new EditorGUILayout.HorizontalScope())
+        {
+            if (GUILayout.Button("预设：敌战斗单位", EditorStyles.miniButtonLeft))
+            {
+                WriteTargetProfile(targetProp, TargetProfile.DamageEnemyCombatants);
+            }
+
+            if (GUILayout.Button("预设：仅敌对", EditorStyles.miniButtonMid))
+            {
+                WriteTargetProfile(targetProp, TargetProfile.HostileCombatantsOnly);
+            }
+
+            if (GUILayout.Button("预设：治疗友方", EditorStyles.miniButtonRight))
+            {
+                WriteTargetProfile(targetProp, TargetProfile.HealAllies);
+            }
+        }
+
+        if (GUILayout.Button("预设：仅敌方小兵（例 C）", EditorStyles.miniButtonLeft))
+        {
+            WriteTargetProfile(targetProp, TargetProfile.ClearMinionsOnly);
+        }
+
+        if (GUILayout.Button("预设：Owned 召唤（例 D）", EditorStyles.miniButtonRight))
+        {
+            WriteTargetProfile(targetProp, TargetProfile.DamageOwnedSummons);
+        }
+    }
+
+    static void WriteTargetProfile(SerializedProperty targetProp, in TargetProfile profile)
+    {
+        if (targetProp == null)
+        {
+            return;
+        }
+
+        targetProp.FindPropertyRelative(nameof(TargetProfile.Relations)).enumValueFlag = (int)profile.Relations;
+        targetProp.FindPropertyRelative(nameof(TargetProfile.UnitKinds)).enumValueFlag = (int)profile.UnitKinds;
+        targetProp.FindPropertyRelative(nameof(TargetProfile.SelfHit)).enumValueIndex = (int)profile.SelfHit;
+        targetProp.FindPropertyRelative(nameof(TargetProfile.IncludeDead)).boolValue = profile.IncludeDead;
+        targetProp.FindPropertyRelative(nameof(TargetProfile.RequireSelectable)).boolValue = profile.RequireSelectable;
     }
 }
 #endif

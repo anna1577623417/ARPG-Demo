@@ -6,6 +6,7 @@ using UnityEngine;
 /// </summary>
 public readonly struct CombatResolvedEvent
 {
+    public readonly ulong EventId;
     public readonly CombatInteraction Interaction;
     public readonly HitResult Hit;
     public readonly HitReaction Reaction;
@@ -14,6 +15,7 @@ public readonly struct CombatResolvedEvent
     public readonly CombatContext Context;
 
     public CombatResolvedEvent(
+        ulong eventId,
         CombatInteraction interaction,
         in HitResult hit,
         in HitReaction reaction,
@@ -21,6 +23,7 @@ public readonly struct CombatResolvedEvent
         bool isCritical,
         in CombatContext context)
     {
+        EventId = eventId;
         Interaction = interaction;
         Hit = hit;
         Reaction = reaction;

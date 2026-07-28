@@ -18,6 +18,7 @@ public sealed class MotionExecutor
     private float _motionScale;
     private Vector3 _startPos;
     private Vector3 _direction;
+    private Vector3 _initialDirection;
     private Vector3 _lastPos;
     private float _smoothedAnimSpeed = 1f;
     private bool _active;
@@ -67,6 +68,7 @@ public sealed class MotionExecutor
         _action = action;
         _baseDuration = Mathf.Max(0.0001f, baseDuration);
         _direction = direction.sqrMagnitude > 0.0001f ? direction.normalized : Vector3.forward;
+        _initialDirection = _direction;
         var startT = Mathf.Clamp01(startNormalizedTime);
         _elapsed = startT * _baseDuration;
         _startPos = startPos;
@@ -106,7 +108,9 @@ public sealed class MotionExecutor
         float timeScale,
         Vector3 currentPosition,
         float prevNormalizedTime,
-        float currentNormalizedTime)
+        float currentNormalizedTime,
+        Vector3 lockTargetForward = default,
+        bool hasLockTargetForward = false)
     {
         if (!_active || _profile == null || deltaTime <= 0.0001f)
         {
@@ -136,7 +140,7 @@ public sealed class MotionExecutor
             return;
         }
 
-        TickAxisCurves(prevT, currT, deltaTime);
+        TickAxisCurves(prevT, currT, deltaTime, lockTargetForward, hasLockTargetForward);
         TickAnimSpeed(currT);
     }
 
@@ -164,7 +168,12 @@ public sealed class MotionExecutor
         _elapsed = currT * _baseDuration;
     }
 
-    void TickAxisCurves(float prevT, float currT, float deltaTime)
+    void TickAxisCurves(
+        float prevT,
+        float currT,
+        float deltaTime,
+        Vector3 lockTargetForward,
+        bool hasLockTargetForward)
     {
         Vector3 localDelta;
         var yAxisConfig = _profile.GetYAxisConfig();
@@ -265,6 +274,24 @@ public sealed class MotionExecutor
             RootMotionBlend = rmBlend,
             HitstopMultiplier = hitMul,
         };
+
+        // LockTarget 的曲线基准固定在动作起手；每帧只由已验证的 Targeting 方向修正。
+        // 锁丢失时保留上一帧方向，避免 Motion 在同一动作内突然翻回角色前方。
+        if (_profile.MotionSpace == MotionSpace.LockTarget
+            && hasLockTargetForward
+            && lockTargetForward.sqrMagnitude > 0.0001f)
+        {
+            var planarLock = lockTargetForward;
+            planarLock.y = 0f;
+            if (planarLock.sqrMagnitude > 0.0001f)
+            {
+                var contribution = LastContribution;
+                _direction = MotionV2Consumer.BlendTargetTracking(
+                    _initialDirection,
+                    planarLock.normalized,
+                    in contribution);
+            }
+        }
 
         var worldDelta = LocalDeltaToWorld(localDelta);
         LastWorldDelta = worldDelta;

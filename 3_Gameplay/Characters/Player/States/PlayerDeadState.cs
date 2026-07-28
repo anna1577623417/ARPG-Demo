@@ -8,7 +8,8 @@ public class PlayerDeadState : PlayerState
     {
         player.Tags.ClearAll();
         player.GameplayTags.Add((ulong)StateTag.Dead);
-        player.IntentBuffer.Clear();
+        ((IIntentHost)player).IntentBuffer.Clear();
+        ((IActionLeaseOwner)player).CancelActive(ActionCancelReason.Dead);
 
         player.StopMove();
         if (player.InputReader != null)
