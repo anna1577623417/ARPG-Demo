@@ -2,7 +2,7 @@ using UnityEngine;
 
 /// <summary>
 /// Motion 运行时执行器（时间意图 -> 期望速度 / MotionContribution）。
-/// Clip 墙钟由 Action.AnimSpeed 负责；Profile 的 SpeedOverTime 仅作 motionT 上的局部节奏倍率。
+/// Clip 基准速率由 Action（Free/AutoFit）负责；Profile SpeedOverTime 在 ∫≈1 时叠加局部节奏（226）。
 /// </summary>
 public sealed class MotionExecutor
 {

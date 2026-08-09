@@ -46,6 +46,12 @@ public sealed partial class MotionProfileEditor : Editor
         "legacyYPolicyRaw",
         "AnimSpeedMode",
         "SpeedOverTime",
+        nameof(MotionProfileSO.AnimSpeedAuthoringMode),
+        nameof(MotionProfileSO.AnimSpeedSolveTarget),
+        nameof(MotionProfileSO.AnimSpeedMidTime),
+        nameof(MotionProfileSO.AnimSpeedPointStart),
+        nameof(MotionProfileSO.AnimSpeedPointMid),
+        nameof(MotionProfileSO.AnimSpeedPointEnd),
         "BurstDurationSeconds",
         "LegacyConstantPlanarSpeed",
         "UsePlanarVelocityShape",
@@ -291,14 +297,189 @@ public sealed partial class MotionProfileEditor : Editor
             return;
         }
 
-        EditorGUILayout.PropertyField(serializedObject.FindProperty(nameof(MotionProfileSO.AnimSpeedMode)));
-        EditorGUILayout.PropertyField(serializedObject.FindProperty(nameof(MotionProfileSO.SpeedOverTime)));
+        // 竖向单列：避免左右并排拉伸曲线区
+        EditorGUILayout.PropertyField(
+            serializedObject.FindProperty(nameof(MotionProfileSO.AnimSpeedMode)),
+            new GUIContent("Anim Speed Mode"));
+
+        var mode = (AnimSpeedMode)serializedObject.FindProperty(nameof(MotionProfileSO.AnimSpeedMode)).enumValueIndex;
+        if (mode == AnimSpeedMode.Constant)
+        {
+            EditorGUILayout.HelpBox(
+                "Constant：profileFactor = 1。\n" +
+                "finalClipSpeed = Action 基准 S（Free 手填 / AutoFit=Clip×Seg÷Duration）。",
+                MessageType.None);
+            EditorGUILayout.EndFoldoutHeaderGroup();
+            return;
+        }
+
+        EditorGUILayout.Space(4f);
+        EditorGUI.BeginChangeCheck();
+        EditorGUILayout.PropertyField(
+            serializedObject.FindProperty(nameof(MotionProfileSO.AnimSpeedAuthoringMode)),
+            new GUIContent("Authoring Mode"));
+        var authoringChanged = EditorGUI.EndChangeCheck();
+        if (authoringChanged)
+        {
+            serializedObject.ApplyModifiedProperties();
+        }
+
+        var authoring = (AnimSpeedCurveAuthoringMode)serializedObject
+            .FindProperty(nameof(MotionProfileSO.AnimSpeedAuthoringMode)).enumValueIndex;
+
+        if (authoring == AnimSpeedCurveAuthoringMode.ThreePointConserve)
+        {
+            if (authoringChanged)
+            {
+                // 切入三点模式：若当前字段可解则立即烘焙，避免左右分栏遗留脏曲线
+                TryBakeThreePointCurve(profile);
+                serializedObject.Update();
+            }
+
+            DrawThreePointConserveAuthoring(profile);
+        }
+        else
+        {
+            DrawFreehandAnimSpeedAuthoring(profile);
+        }
+
+        EditorGUILayout.Space(4f);
         EditorGUILayout.HelpBox(
-            "finalClipSpeed = Action.AnimSpeed × SpeedOverTime(motionT)。\n" +
-            "Constant 恒 1；Curve 按归一化 Motion 时间塑形段内节奏。\n" +
-            "【171.7】SpeedOverTime 仅当绑定 Action 的 ClipAnimSpeedMode=Free 时参与运行时；AutoFitDuration 下忽略。",
+            "finalClipSpeed = Action基准S × SpeedOverTime(motionT)。\n" +
+            "【226】Free / AutoFit 均可叠加；须 ∫₀¹ f ≈ 1，否则 Runtime 拒绝曲线（按 Constant）并打 [AnimSpeed226] REJECT。",
             MessageType.None);
         EditorGUILayout.EndFoldoutHeaderGroup();
+    }
+
+    void DrawFreehandAnimSpeedAuthoring(MotionProfileSO profile)
+    {
+        EditorGUILayout.LabelField("Speed Over Time", EditorStyles.boldLabel);
+        EditorGUILayout.PropertyField(
+            serializedObject.FindProperty(nameof(MotionProfileSO.SpeedOverTime)),
+            GUIContent.none);
+
+        serializedObject.ApplyModifiedProperties();
+        var integral = AnimSpeedIntegralMath.IntegrateCurve(profile.SpeedOverTime);
+        DrawIntegralStatus(integral);
+
+        if (GUILayout.Button("从曲线采样三点 → ThreePoint 字段", GUILayout.Height(22f)))
+        {
+            Undo.RecordObject(profile, "Sample AnimSpeed ThreePoint");
+            var sampled = AnimSpeedIntegralMath.SampleThreePointFromCurve(
+                profile.SpeedOverTime,
+                profile.AnimSpeedMidTime,
+                profile.AnimSpeedSolveTarget);
+            profile.WriteAnimSpeedThreePointSpec(sampled);
+            EditorUtility.SetDirty(profile);
+            serializedObject.Update();
+        }
+    }
+
+    void DrawThreePointConserveAuthoring(MotionProfileSO profile)
+    {
+        EditorGUI.BeginChangeCheck();
+        EditorGUILayout.PropertyField(
+            serializedObject.FindProperty(nameof(MotionProfileSO.AnimSpeedSolveTarget)),
+            new GUIContent("Solve Target（求哪一点）"));
+        EditorGUILayout.PropertyField(
+            serializedObject.FindProperty(nameof(MotionProfileSO.AnimSpeedMidTime)),
+            new GUIContent("Mid Time"));
+
+        var solveTarget = (AnimSpeedCurveSolveTarget)serializedObject
+            .FindProperty(nameof(MotionProfileSO.AnimSpeedSolveTarget)).enumValueIndex;
+
+        using (new EditorGUI.DisabledScope(solveTarget == AnimSpeedCurveSolveTarget.Start))
+        {
+            EditorGUILayout.PropertyField(
+                serializedObject.FindProperty(nameof(MotionProfileSO.AnimSpeedPointStart)),
+                new GUIContent("Start (t=0)"));
+        }
+
+        using (new EditorGUI.DisabledScope(solveTarget == AnimSpeedCurveSolveTarget.Mid))
+        {
+            EditorGUILayout.PropertyField(
+                serializedObject.FindProperty(nameof(MotionProfileSO.AnimSpeedPointMid)),
+                new GUIContent("Mid (t=MidTime)"));
+        }
+
+        using (new EditorGUI.DisabledScope(solveTarget == AnimSpeedCurveSolveTarget.End))
+        {
+            EditorGUILayout.PropertyField(
+                serializedObject.FindProperty(nameof(MotionProfileSO.AnimSpeedPointEnd)),
+                new GUIContent("End (t=1)"));
+        }
+
+        var pointsChanged = EditorGUI.EndChangeCheck();
+        if (serializedObject.ApplyModifiedProperties() || pointsChanged)
+        {
+            TryBakeThreePointCurve(profile);
+            serializedObject.Update();
+        }
+
+        var spec = profile.ReadAnimSpeedThreePointSpec();
+        var previewIntegral = AnimSpeedIntegralMath.IntegrateThreePoint(
+            spec.Start, spec.Mid, spec.End, spec.MidTime);
+        DrawIntegralStatus(previewIntegral);
+
+        if (!AnimSpeedIntegralMath.TrySolveThirdPoint(ref spec, out var solveError))
+        {
+            EditorGUILayout.HelpBox(
+                "【非法曲线】" + solveError + "\n策略1：拒绝写入 SpeedOverTime；Runtime 将按 Constant。",
+                MessageType.Error);
+        }
+        else
+        {
+            EditorGUILayout.LabelField(
+                $"已解 {spec.SolveTarget}: Start={spec.Start:F3}  Mid={spec.Mid:F3}  End={spec.End:F3}",
+                EditorStyles.miniLabel);
+        }
+
+        EditorGUILayout.Space(2f);
+        EditorGUILayout.LabelField("Speed Over Time（由三点烘焙，只读预览）", EditorStyles.boldLabel);
+        using (new EditorGUI.DisabledScope(true))
+        {
+            EditorGUILayout.PropertyField(
+                serializedObject.FindProperty(nameof(MotionProfileSO.SpeedOverTime)),
+                GUIContent.none);
+        }
+
+        if (GUILayout.Button("重新烘焙三点 → SpeedOverTime", GUILayout.Height(22f)))
+        {
+            TryBakeThreePointCurve(profile);
+            serializedObject.Update();
+        }
+    }
+
+    void TryBakeThreePointCurve(MotionProfileSO profile)
+    {
+        var spec = profile.ReadAnimSpeedThreePointSpec();
+        if (!AnimSpeedIntegralMath.TrySolveThirdPoint(ref spec, out _))
+        {
+            return;
+        }
+
+        Undo.RecordObject(profile, "Bake AnimSpeed ThreePoint");
+        profile.WriteAnimSpeedThreePointSpec(spec);
+        profile.SpeedOverTime = AnimSpeedIntegralMath.BuildThreePointCurve(spec);
+        EditorUtility.SetDirty(profile);
+    }
+
+    static void DrawIntegralStatus(float integral)
+    {
+        var ok = AnimSpeedIntegralMath.IsIntegralValid(integral);
+        var residual = integral - 1f;
+        if (ok)
+        {
+            EditorGUILayout.HelpBox(
+                $"积分 I = {integral:F4}（残差 {residual:+0.0000;-0.0000}）· 合法 ∫≈1",
+                MessageType.Info);
+            return;
+        }
+
+        EditorGUILayout.HelpBox(
+            $"【非法曲线】积分 I = {integral:F4}（残差 {residual:+0.0000;-0.0000}），要求 |I-1| ≤ {AnimSpeedIntegralMath.DefaultEpsilon:F3}。\n" +
+            "策略1：红字警告，拒绝作为正式局部节奏；Runtime 返回 factor=1。",
+            MessageType.Error);
     }
 
     void DrawClipExtractSection(MotionProfileSO profile)
