@@ -205,21 +205,57 @@ public sealed class ActionTimeAuthorityTests
     }
 
     [Test]
-    public void ProfileAnimSpeedFactor_IgnoredWhenNotFree()
+    public void ProfileAnimSpeedFactor_AppliesUnderAutoFitWhenIntegralValid()
     {
         var action = ScriptableObject.CreateInstance<ActionDataSO>();
         var profile = ScriptableObject.CreateInstance<MotionProfileSO>();
         action.ClipAnimSpeedMode = ActionAnimSpeedMode.AutoFitDuration;
         profile.AnimSpeedMode = AnimSpeedMode.Curve;
-        profile.SpeedOverTime = AnimationCurve.Linear(0f, 2f, 1f, 2f);
+        // Constant 1.0 → I=1，合法
+        profile.SpeedOverTime = AnimationCurve.Constant(0f, 1f, 1f);
 
         Assert.AreEqual(1f, ActionAnimSpeedAuthority.ResolveProfileAnimSpeedFactor(action, profile, 0.5f), 0.001f);
 
-        action.ClipAnimSpeedMode = ActionAnimSpeedMode.Free;
-        Assert.AreEqual(2f, ActionAnimSpeedAuthority.ResolveProfileAnimSpeedFactor(action, profile, 0.5f), 0.001f);
+        // I=2 非法 → 策略1 拒绝，返回 1
+        profile.SpeedOverTime = AnimationCurve.Linear(0f, 2f, 1f, 2f);
+        Assert.AreEqual(1f, ActionAnimSpeedAuthority.ResolveProfileAnimSpeedFactor(action, profile, 0.5f), 0.001f);
+
+        // 合法非 1 形状：三点 a=0.5,b=0.5,c=2.5 → I=(0.5+1+2.5)/4=1
+        var spec = new AnimSpeedThreePointSpec
+        {
+            MidTime = 0.5f,
+            Start = 0.5f,
+            Mid = 0.5f,
+            End = 2.5f,
+            SolveTarget = AnimSpeedCurveSolveTarget.End,
+        };
+        Assert.IsTrue(AnimSpeedIntegralMath.TrySolveThirdPoint(ref spec, out _));
+        profile.SpeedOverTime = AnimSpeedIntegralMath.BuildThreePointCurve(spec);
+        Assert.AreEqual(
+            profile.SampleAnimSpeed(0.5f),
+            ActionAnimSpeedAuthority.ResolveProfileAnimSpeedFactor(action, profile, 0.5f),
+            0.001f);
 
         Object.DestroyImmediate(action);
         Object.DestroyImmediate(profile);
+    }
+
+    [Test]
+    public void AnimSpeedThreePoint_SolveEnd_ConservesIntegral()
+    {
+        var spec = new AnimSpeedThreePointSpec
+        {
+            MidTime = 0.5f,
+            Start = 0.5f,
+            Mid = 0.8f,
+            End = 0f,
+            SolveTarget = AnimSpeedCurveSolveTarget.End,
+        };
+
+        Assert.IsTrue(AnimSpeedIntegralMath.TrySolveThirdPoint(ref spec, out _));
+        Assert.AreEqual(4f - 0.5f - 2f * 0.8f, spec.End, 0.001f);
+        Assert.IsTrue(AnimSpeedIntegralMath.IsIntegralValid(
+            AnimSpeedIntegralMath.IntegrateThreePoint(spec.Start, spec.Mid, spec.End, spec.MidTime)));
     }
 
     [Test]

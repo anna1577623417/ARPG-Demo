@@ -68,14 +68,36 @@ public class MotionProfileSO : ScriptableObject
 
     [Header("Animation Speed / 局部节奏")]
     [Tooltip(
-        "局部节奏倍率（与 Action.AnimSpeed 相乘）：\n" +
+        "局部节奏倍率（与 Action 基准 AnimSpeed 相乘）：\n" +
         "  Constant — 恒 1；\n" +
-        "  Curve — SpeedOverTime(motionT)，控制段内先慢后快等节奏。\n" +
-        "【171.7】仅当绑定 Action 的 ClipAnimSpeedMode=Free 时生效；AutoFitDuration 下运行时忽略本曲线。")]
+        "  Curve — SpeedOverTime(motionT)，段内先慢后快等节奏。\n" +
+        "【226】Free / AutoFit 均可叠加；曲线须满足 ∫₀¹ f≈1，否则 Runtime 拒绝曲线（按 Constant）。")]
     public AnimSpeedMode AnimSpeedMode = AnimSpeedMode.Constant;
 
-    [Tooltip("AnimSpeedMode=Curve：归一化 Motion 时间 t→局部速率倍率。仅 Action ClipAnimSpeedMode=Free 时参与运行时合成。")]
+    [Tooltip("AnimSpeedMode=Curve：归一化 Motion 时间 t→局部速率倍率。须积分守恒（∫≈1）。")]
     public AnimationCurve SpeedOverTime = AnimationCurve.Constant(0f, 1f, 1f);
+
+    [Tooltip("Curve 作者方式：Freehand 手绘校验；ThreePointConserve 三点锁二求一并烘焙。")]
+    public AnimSpeedCurveAuthoringMode AnimSpeedAuthoringMode = AnimSpeedCurveAuthoringMode.Freehand;
+
+    [Tooltip("三点求解目标：默认求 End（锁 Start+Mid）。")]
+    public AnimSpeedCurveSolveTarget AnimSpeedSolveTarget = AnimSpeedCurveSolveTarget.End;
+
+    [Tooltip("三点中点归一化时间，默认 0.5。")]
+    [Range(0.05f, 0.95f)]
+    public float AnimSpeedMidTime = 0.5f;
+
+    [Tooltip("三点 Start 倍率（t=0）。")]
+    [Min(0f)]
+    public float AnimSpeedPointStart = 1f;
+
+    [Tooltip("三点 Mid 倍率（t=MidTime）。")]
+    [Min(0f)]
+    public float AnimSpeedPointMid = 1f;
+
+    [Tooltip("三点 End 倍率（t=1）。")]
+    [Min(0f)]
+    public float AnimSpeedPointEnd = 1f;
 
     [Header("Stat Scaling (displacement only)")]
     [Tooltip("仅缩放位移幅度（AxisCurves）。逻辑时长属性缩放见 ActionData.DurationStatScaling。")]
@@ -242,7 +264,7 @@ public class MotionProfileSO : ScriptableObject
 #pragma warning restore CS0618
     }
 
-    /// <summary>Curve 模式下按归一化 Motion 时间采样局部节奏倍率（不含 Action 层门控）。</summary>
+    /// <summary>Curve 模式下按归一化 Motion 时间采样局部节奏倍率（不含积分门禁）。</summary>
     public float SampleAnimSpeed(float t)
     {
         if (AnimSpeedMode != AnimSpeedMode.Curve
@@ -255,9 +277,49 @@ public class MotionProfileSO : ScriptableObject
         return Mathf.Max(0f, SpeedOverTime.Evaluate(Mathf.Clamp01(t)));
     }
 
-    /// <summary>171.7：Action 非 Free 时恒 1；Free 时走 <see cref="SampleAnimSpeed"/> 曲线。</summary>
+    /// <summary>226：经 Authority 积分校验后的局部倍率（非法曲线拒绝为 1）。</summary>
     public float SampleAnimSpeed(ActionDataSO action, float t) =>
         ActionAnimSpeedAuthority.ResolveProfileAnimSpeedFactor(action, this, t);
+
+    /// <summary>当前 SpeedOverTime 积分；Constant 视为 1。</summary>
+    public float EvaluateAnimSpeedIntegral()
+    {
+        if (AnimSpeedMode != AnimSpeedMode.Curve)
+        {
+            return 1f;
+        }
+
+        return AnimSpeedIntegralMath.IntegrateCurve(SpeedOverTime);
+    }
+
+    /// <summary>策略1：曲线非法（∫≠1）时 false。</summary>
+    public bool IsAnimSpeedCurveIntegralValid(float epsilon = AnimSpeedIntegralMath.DefaultEpsilon)
+    {
+        if (AnimSpeedMode != AnimSpeedMode.Curve)
+        {
+            return true;
+        }
+
+        return AnimSpeedIntegralMath.TryValidateCurve(SpeedOverTime, out _, epsilon);
+    }
+
+    public AnimSpeedThreePointSpec ReadAnimSpeedThreePointSpec() => new AnimSpeedThreePointSpec
+    {
+        MidTime = AnimSpeedMidTime,
+        Start = AnimSpeedPointStart,
+        Mid = AnimSpeedPointMid,
+        End = AnimSpeedPointEnd,
+        SolveTarget = AnimSpeedSolveTarget,
+    };
+
+    public void WriteAnimSpeedThreePointSpec(in AnimSpeedThreePointSpec spec)
+    {
+        AnimSpeedMidTime = Mathf.Clamp(spec.MidTime, 0.05f, 0.95f);
+        AnimSpeedPointStart = Mathf.Max(0f, spec.Start);
+        AnimSpeedPointMid = Mathf.Max(0f, spec.Mid);
+        AnimSpeedPointEnd = Mathf.Max(0f, spec.End);
+        AnimSpeedSolveTarget = spec.SolveTarget;
+    }
 
     // ═══ 174.2 V2 采样接口 ═══
     // 所有方法默认返回 V1 等价值；启用 V2 字段后才生效。

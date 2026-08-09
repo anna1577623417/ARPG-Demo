@@ -69,12 +69,14 @@ public partial class ActionDataSO : ScriptableObject
     [Range(0f, 0.5f)]
     public float CrossfadeTime = 0.08f;
 
-    [Tooltip("Clip 播放倍率；仅 ClipAnimSpeedMode=Free 时运行时生效。")]
+    [Tooltip("Clip 基准播放倍率；仅 ClipAnimSpeedMode=Free 时作为基准 S。AutoFit 下由 Duration/Segment 推算。")]
     [Range(0.1f, 20f)]
     public float AnimSpeed = 1f;
 
-    [Header("Anim Speed (171.7)")]
-    [Tooltip("Free = SO 手填 AnimSpeed + MotionProfile SpeedOverTime 可选；AutoFitDuration = Clip×Segment÷Duration，忽略 Profile 曲线。")]
+    [Header("Anim Speed (171.7 / 226)")]
+    [Tooltip(
+        "Free = 手填基准 S；AutoFitDuration = Clip×Segment÷Duration 为基准 S。\n" +
+        "MotionProfile SpeedOverTime 在 Free/AutoFit 下均可叠加，但须 ∫≈1。")]
     [FormerlySerializedAs("AutoSyncAnimSpeedToDuration")]
     public ActionAnimSpeedMode ClipAnimSpeedMode = ActionAnimSpeedMode.AutoFitDuration;
 

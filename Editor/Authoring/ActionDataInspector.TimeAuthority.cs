@@ -105,8 +105,9 @@ public sealed partial class ActionDataInspector
         DrawTimeAuthorityPreview(action);
 
         EditorGUILayout.HelpBox(
-            "三条时间轴：Action nt 0~1 | Motion t=nt（100%位移）| Clip 由 AnimSpeed 推演（Free 可见后摇）。\n" +
-            "AutoFitDuration = Clip×Segment÷Duration；Free = 手填 AnimSpeed，MotionProfile SpeedOverTime 仅 Free 叠加。\n" +
+            "三条时间轴：Action nt 0~1 | Motion t=nt（100%位移）| Clip 由基准 S × SpeedOverTime 推演（Free 可见后摇）。\n" +
+            "AutoFitDuration = 基准 S=Clip×Segment÷Duration；Free = 手填基准 S。\n" +
+            "【226】MP SpeedOverTime 在 Free/AutoFit 下均可叠加，须 ∫≈1。\n" +
             "Motion Retiming：Duration = 主轴位移 ÷ ReferenceSpeed；Apply 后写入 Duration + AnimSpeed 并切 Free。",
             MessageType.None);
 
