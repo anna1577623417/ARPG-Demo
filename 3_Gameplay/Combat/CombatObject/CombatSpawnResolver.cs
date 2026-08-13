@@ -14,9 +14,18 @@ public static class CombatSpawnResolver
         out Vector3 worldPos,
         out Quaternion worldRot)
     {
-        var src = ev.OverrideSpawn ? ev.SpawnSourceOverride : def.SpawnSource;
-        var localOffset = ev.OverrideSpawn ? ev.LocalOffsetOverride : def.LocalOffset;
-        var localEuler = ev.OverrideSpawn ? ev.LocalEulerOffsetOverride : def.LocalEulerOffset;
+        var useV2Spawned = def.SchemaVersion >= CombatObjectSchemaVersion.ArchetypeV2
+            && def.Archetype != CombatObjectArchetype.ActionContact
+            && def.SpawnedData.UseExplicitData;
+        var src = ev.OverrideSpawn
+            ? ev.SpawnSourceOverride
+            : useV2Spawned ? def.SpawnedData.Origin : def.SpawnSource;
+        var localOffset = ev.OverrideSpawn
+            ? ev.LocalOffsetOverride
+            : useV2Spawned ? def.SpawnedData.LocalOffset : def.LocalOffset;
+        var localEuler = ev.OverrideSpawn
+            ? ev.LocalEulerOffsetOverride
+            : useV2Spawned ? def.SpawnedData.LocalEuler : def.LocalEulerOffset;
 
         var sourceTf = source != null ? source.transform : null;
         var sourcePos = sourceTf != null ? sourceTf.position : Vector3.zero;
@@ -56,19 +65,11 @@ public static class CombatSpawnResolver
 
             case SpawnSource.WorldFromCamera:
             {
-                var cam = Camera.main;
-                if (cam != null)
-                {
-                    var camFwd = cam.transform.forward;
-                    var camPos = cam.transform.position;
-                    worldPos = camPos + camFwd * 10f + localOffset;
-                    worldRot = Quaternion.LookRotation(camFwd) * Quaternion.Euler(localEuler);
-                }
-                else
-                {
-                    worldPos = sourcePos + sourceRot * localOffset;
-                    worldRot = sourceRot * Quaternion.Euler(localEuler);
-                }
+                // 新 SpawnRequest 必须由调用方显式携带 Aim Context；解析层禁止隐式读取 Camera.main。
+                // 历史 WorldFromCamera 在迁移前确定性退化为 Source Forward。
+                var forward = sourceRot * Vector3.forward;
+                worldPos = sourcePos + forward * 10f + sourceRot * localOffset;
+                worldRot = Quaternion.LookRotation(forward) * Quaternion.Euler(localEuler);
                 break;
             }
 

@@ -18,23 +18,32 @@ public static class CombatResolver
             return CombatInteraction.Miss;
         }
 
+        var capabilities = hit.HasCombatContactFact
+            ? hit.CombatContactFact.Capabilities
+            : CombatCapability.Guardable
+              | CombatCapability.Parryable
+              | CombatCapability.Clashable;
+
         if (IsInvulnerable(hit.Target))
         {
             return CombatInteraction.Invincible;
         }
 
         // 216.3 M5 L3：双方均开 WeaponTrace 且 Socket 相交 → Clash（先于 Parry/Guard/Hit）。
-        if (IsWeaponClash(in hit))
+        if ((capabilities & CombatCapability.Clashable) != 0
+            && IsWeaponClash(in hit))
         {
             return CombatInteraction.Clash;
         }
 
-        if (DefenseRuntimeRegistry.IsParryActive(hit.Target))
+        if ((capabilities & CombatCapability.Parryable) != 0
+            && DefenseRuntimeRegistry.IsParryActive(hit.Target))
         {
             return CombatInteraction.Parry;
         }
 
-        if (DefenseRuntimeRegistry.TryGetActiveGuard(hit.Target, out var guard)
+        if ((capabilities & CombatCapability.Guardable) != 0
+            && DefenseRuntimeRegistry.TryGetActiveGuard(hit.Target, out var guard)
             && IsHitInGuardVolume(in hit, guard))
         {
             return CombatInteraction.Guard;

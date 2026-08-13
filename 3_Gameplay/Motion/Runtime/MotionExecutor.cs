@@ -2,7 +2,7 @@ using UnityEngine;
 
 /// <summary>
 /// Motion 运行时执行器（时间意图 -> 期望速度 / MotionContribution）。
-/// Clip 墙钟由 Action.AnimSpeed 负责；Profile 的 SpeedOverTime 仅作 motionT 上的局部节奏倍率。
+/// Clip 基准速率由 Action（Free/AutoFit）负责；Profile SpeedOverTime 在 ∫≈1 时叠加局部节奏（226）。
 /// </summary>
 public sealed class MotionExecutor
 {
@@ -98,6 +98,9 @@ public sealed class MotionExecutor
             MotionXYZDebug.Log(_debugOwner, MotionXYZDebug.CatMotion,
                 $"OPEN axisCurves missing on profile={_profile.name} — no displacement (run Tools/Motion XYZ/Migrate All)");
         }
+
+        LogAnimSpeed226Begin();
+        LogAnimSpeed228Begin();
     }
 
     /// <summary>
@@ -352,6 +355,8 @@ public sealed class MotionExecutor
 
     public void End()
     {
+        LogAnimSpeed226End();
+        LogAnimSpeed228End();
         _playback = default;
         _active = false;
         LastContribution = MotionContribution.Inactive;
@@ -361,6 +366,93 @@ public sealed class MotionExecutor
         _animSpeed?.SetSpeed(1f);
         _baseAnimSpeed = 1f;
         _smoothedAnimSpeed = 1f;
+    }
+
+    void LogAnimSpeed226Begin()
+    {
+        if (!GameMainDebugSettings.AnimSpeed226Log || !_active || _profile == null)
+        {
+            return;
+        }
+
+        if (_profile.AnimSpeedMode != AnimSpeedMode.Curve)
+        {
+            return;
+        }
+
+        var mode = _action != null ? _action.ClipAnimSpeedMode.ToString() : "null";
+        var actionName = _action != null ? _action.name : "null";
+        var integral = _profile.EvaluateAnimSpeedIntegral();
+        var factor0 = ActionAnimSpeedAuthority.ResolveProfileAnimSpeedFactor(_action, _profile, 0f);
+        var factorMid = ActionAnimSpeedAuthority.ResolveProfileAnimSpeedFactor(_action, _profile, 0.5f);
+        Debug.Log(
+            $"[AnimSpeed226] BEGIN action={actionName} profile={_profile.name} mode={mode} " +
+            $"S={_baseAnimSpeed:F3} I={integral:F4} factor0={factor0:F3} factor0.5={factorMid:F3} " +
+            $"authoring={_profile.AnimSpeedAuthoringMode} solve={_profile.AnimSpeedSolveTarget}");
+    }
+
+    void LogAnimSpeed226End()
+    {
+        if (!GameMainDebugSettings.AnimSpeed226Log || !_active || _profile == null)
+        {
+            return;
+        }
+
+        if (_profile.AnimSpeedMode != AnimSpeedMode.Curve)
+        {
+            return;
+        }
+
+        var actionName = _action != null ? _action.name : "null";
+        var motionT = NormalizedTime;
+        var clipDone = ActionAnimSpeedAuthority.ResolveClipDoneNormalizedTime(_action);
+        var integral = _profile.EvaluateAnimSpeedIntegral();
+        Debug.Log(
+            $"[AnimSpeed226] END action={actionName} profile={_profile.name} motionT={motionT:F3} " +
+            $"clipDoneNt={clipDone:F3} I={integral:F4} residual={integral - 1f:+0.0000;-0.0000}");
+    }
+
+    void LogAnimSpeed228Begin()
+    {
+        if (!GameMainDebugSettings.AnimSpeed228Log || !_active || _profile == null)
+        {
+            return;
+        }
+
+        if (_profile.AnimSpeedMode != AnimSpeedMode.Curve
+            || _profile.AnimSpeedAuthoringMode != AnimSpeedCurveAuthoringMode.FreeFrontAutoTail)
+        {
+            return;
+        }
+
+        var actionName = _action != null ? _action.name : "null";
+        var timeline = _profile.ReadAnimSpeedKnotTimeline();
+        var integral = _profile.EvaluateAnimSpeedIntegral();
+        var factor0 = ActionAnimSpeedAuthority.ResolveProfileAnimSpeedFactor(_action, _profile, 0f);
+        Debug.Log(
+            $"[AnimSpeed228] BEGIN action={actionName} profile={_profile.name} " +
+            $"knots={timeline.KnotCount} t*={timeline.FrontEndTime:F3} L_min={timeline.TailMinLength:F3} " +
+            $"tailShape={timeline.TailSolveShape} I={integral:F4} factor0={factor0:F3} S={_baseAnimSpeed:F3}");
+    }
+
+    void LogAnimSpeed228End()
+    {
+        if (!GameMainDebugSettings.AnimSpeed228Log || !_active || _profile == null)
+        {
+            return;
+        }
+
+        if (_profile.AnimSpeedMode != AnimSpeedMode.Curve
+            || _profile.AnimSpeedAuthoringMode != AnimSpeedCurveAuthoringMode.FreeFrontAutoTail)
+        {
+            return;
+        }
+
+        var actionName = _action != null ? _action.name : "null";
+        var integral = _profile.EvaluateAnimSpeedIntegral();
+        Debug.Log(
+            $"[AnimSpeed228] END action={actionName} profile={_profile.name} motionT={NormalizedTime:F3} " +
+            $"I={integral:F4} residual={integral - 1f:+0.0000;-0.0000}");
     }
 
     void ApplyLoopWindowIfNeeded()

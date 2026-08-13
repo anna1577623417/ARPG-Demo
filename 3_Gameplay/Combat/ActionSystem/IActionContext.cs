@@ -11,7 +11,7 @@ public interface IActionContext : IIntentHost, ISkillHost
     Animator Animator { get; }
     IEntityMotor Motor { get; }
     LocalEventBus EventBus { get; }
-    CombatObjectSpawner CombatObjectSpawner { get; }
+    ICombatSpawnPort CombatSpawnPort { get; }
 
     void PublishActionPresentation(ActionTimelineMarkerKind kind, string payload);
     void PublishTeleported(Vector3 worldPosition);

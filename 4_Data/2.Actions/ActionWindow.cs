@@ -13,6 +13,18 @@ using UnityEngine.Serialization;
 [Serializable]
 public struct ActionWindow
 {
+    [Tooltip("稳定窗口身份；选择/绑定/删除不使用数组 index。旧资产可为空，仅 Legacy Adapter 解释。")]
+    [SerializeField] string _windowId;
+
+    public string WindowId
+    {
+        get => _windowId;
+        set => _windowId = value;
+    }
+
+    [Tooltip("Timeline / Inspector 显示名；可空。")]
+    public string DisplayName;
+
     [Range(0f, 1f)] public float NormalizedStart;
 
     [Range(0f, 1f)] public float NormalizedEnd;

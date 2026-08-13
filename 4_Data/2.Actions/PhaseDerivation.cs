@@ -2,12 +2,12 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// 216.3 M0 — Phase【单一真相】衍生：由 <b>判定窗</b>（HitboxActive_Window）与 <b>打断窗</b>（InterruptibleByCategories）
+/// Phase【单一真相】衍生：由 <b>ActionContact</b> 判定窗与 <b>打断窗</b>（InterruptibleByCategories）
 /// 计算 前摇 / 判定 / 后摇 归一化区间。
 /// <para>编辑器 Phase Ribbon（M0 L2）与运行时 <see cref="ActionDataSO.EvaluatePhaseTags"/>（M0 L3）共用此算法，
 /// 杜绝手工 Phase 标签与判定/打断的双源漂移（见 216.3 §15.2 / §16）。</para>
 /// <para>层级：置于 4_Data（与 <see cref="ActionDataSO"/> / <see cref="ActionWindow"/> 同层，纯数据衍生，
-/// 不引入 3_Gameplay 依赖）。M1 落地 HitClip 后，判定源切到 HitClip.Active，读取源保持单一（非双轨）。</para>
+/// 不引入 3_Gameplay 依赖）。判定阶段由 ActionContact 窗口统一提供，读取源保持单一。</para>
 /// </summary>
 public static class PhaseDerivation
 {
@@ -66,7 +66,43 @@ public static class PhaseDerivation
     /// <summary>从 ActionData 的时间窗衍生阶段区间。</summary>
     public static Spans Compute(ActionDataSO action)
     {
-        return action == null ? Empty() : Compute(action.Windows);
+        if (action == null)
+        {
+            return Empty();
+        }
+
+        var spans = Compute(action.Windows);
+        if (action.ContactEvents == null || action.ContactEvents.Count == 0)
+        {
+            return spans;
+        }
+
+        var contactStart = 1f;
+        var contactEnd = 0f;
+        for (var i = 0; i < action.ContactEvents.Count; i++)
+        {
+            var contact = action.ContactEvents[i];
+            var start = Mathf.Clamp01(Mathf.Min(contact.ActiveStart, contact.ActiveEnd));
+            var end = Mathf.Clamp01(Mathf.Max(contact.ActiveStart, contact.ActiveEnd));
+            contactStart = Mathf.Min(contactStart, start);
+            contactEnd = Mathf.Max(contactEnd, end);
+        }
+
+        if (contactEnd < contactStart)
+        {
+            return spans;
+        }
+
+        var activeStart = spans.HasActive ? Mathf.Min(spans.ActiveStart, contactStart) : contactStart;
+        var activeEnd = spans.HasActive ? Mathf.Max(spans.ActiveEnd, contactEnd) : contactEnd;
+        var recoveryEnd = Mathf.Clamp(spans.RecoveryEnd, activeEnd, 1f);
+        return new Spans(
+            true,
+            activeStart,
+            activeEnd,
+            activeStart,
+            activeEnd,
+            recoveryEnd);
     }
 
     /// <summary>从时间窗列表衍生阶段区间（编辑器/运行时共用核心）。</summary>
@@ -88,7 +124,7 @@ public static class PhaseDerivation
             var w = windows[i];
             var mask = w.ToInternalTagMask();
 
-            // 判定源（过渡：HitboxActive_Window；M1 后切 HitClip.Active）
+            // 判定源：ActionContact 的有效窗口。
             if ((mask & (ulong)StateTag.HitboxActive_Window) != 0UL)
             {
                 hasActive = true;

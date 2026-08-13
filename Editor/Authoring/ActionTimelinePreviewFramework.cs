@@ -55,13 +55,6 @@ internal static class ActionTimelinePreviewFramework
                 DrawCombatVolumeTrack(ctx);
             }
 
-            if (ActionTimelinePreviewVisibility.Has(previewMask, PreviewVisibilityMask.AttackHitClip)
-                || ActionTimelinePreviewVisibility.Has(previewMask, PreviewVisibilityMask.AttackCoverage)
-                || ActionTimelinePreviewVisibility.Has(previewMask, PreviewVisibilityMask.AttackGhost)
-                || ActionTimelinePreviewVisibility.Has(previewMask, PreviewVisibilityMask.AttackHitPreview))
-            {
-                DrawAttackHitClipTrack(ctx, previewMask);
-            }
         }
 
         if (visibility.Teleport && ActionTimelinePreviewVisibility.Has(previewMask, PreviewVisibilityMask.Teleport))
@@ -309,15 +302,6 @@ internal static class ActionTimelinePreviewFramework
         var pos = ctx.TrackAnchor;
         var fwd = ctx.PlanarForward;
 
-        if ((bits & (ulong)StateTag.HitboxActive_Window) != 0
-            && ActionTimelinePreviewVisibility.Has(previewMask, PreviewVisibilityMask.Hitbox))
-        {
-            var center = pos + fwd * 1.1f + Vector3.up * 1f;
-            Handles.color = new Color(1f, 0.22f, 0.22f, 0.85f);
-            Handles.DrawWireCube(center, new Vector3(1.2f, 1.8f, 1.4f));
-            Handles.Label(center + Vector3.up * 1.1f, "Hitbox");
-        }
-
         if ((bits & (ulong)StateTag.HurtboxActive_Window) != 0
             && ActionTimelinePreviewVisibility.Has(previewMask, PreviewVisibilityMask.Hurtbox))
         {
@@ -375,46 +359,10 @@ internal static class ActionTimelinePreviewFramework
             ctx.Anchor,
             drawTrajectory: true,
             drawExpandRings: true);
-    }
-
-    /// <summary>216.3 M1/M6 — HitClip Active Shape + Coverage 攻击云 + Ghost 轨迹。</summary>
-    static void DrawAttackHitClipTrack(in ActionTimelinePreviewContext ctx, PreviewVisibilityMask previewMask)
-    {
-        if (!ctx.HasAnchor || ctx.Anchor == null || ctx.Action?.AttackClips == null)
-        {
-            return;
-        }
-
-        if (ActionTimelinePreviewVisibility.Has(previewMask, PreviewVisibilityMask.AttackCoverage))
-        {
-            CoverageDrawer.Draw(ctx.Action, ctx.Anchor, ctx.PlanarForward, ctx.AnchorOrigin);
-        }
-
-        if (ActionTimelinePreviewVisibility.Has(previewMask, PreviewVisibilityMask.AttackGhost))
-        {
-            GhostTraceDrawer.Draw(
-                ctx.Action, ctx.Anchor, ctx.PlanarForward, ctx.AnchorOrigin, ctx.NormalizedTime);
-        }
-
-        if (ActionTimelinePreviewVisibility.Has(previewMask, PreviewVisibilityMask.AttackHitClip))
-        {
-            CombatHitPreviewResolver.DrawAttackClipsForAction(
-                ctx.Action,
-                ctx.NormalizedTime,
-                ctx.Anchor,
-                ctx.AnchorOrigin,
-                ctx.PlanarForward);
-        }
-
-        if (ActionTimelinePreviewVisibility.Has(previewMask, PreviewVisibilityMask.AttackHitPreview))
-        {
-            HitPreviewDummy.EvaluateAndDraw(
-                ctx.Action,
-                ctx.Anchor,
-                ctx.PlanarForward,
-                ctx.AnchorOrigin,
-                ctx.NormalizedTime);
-        }
+        CombatSceneDrawSourceProbe.RegisterPrimaryDraw(
+            CombatSceneDrawSourceProbe.SourceTimelineCombatVolume,
+            ctx.TrackAnchor,
+            $"action={ctx.Action.name} t={ctx.NormalizedTime:F3}");
     }
 
     static void DrawTeleportTrack(in ActionTimelinePreviewContext ctx)

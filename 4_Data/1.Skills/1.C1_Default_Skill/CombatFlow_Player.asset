@@ -792,8 +792,8 @@ MonoBehaviour:
   serializedParameterList: []
   stickyNotes: []
   nodeInspectorReference: {fileID: 0}
-  position: {x: 871, y: 506, z: 0}
-  scale: {x: 0.43232757, y: 0.43232757, z: 1}
+  position: {x: 2067.2, y: 111.2, z: 0}
+  scale: {x: 1, y: 1, z: 1}
   ownerAsset: {fileID: 11400000}
   edgeMeta:
   - EdgeGuid: 95bf4db9-257e-48af-b0d0-84f6f4b1390c

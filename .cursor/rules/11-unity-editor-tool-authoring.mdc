@@ -6,7 +6,7 @@ alwaysApply: false
 
 # Unity 编辑器工具 Authoring 规范
 
-> **完整设计要点**：`6.AI/Cursor/Output/Editor/Unity编辑器工具设计要点_ActionTimeline实践总结.md`  
+> **完整设计要点**：`F:/Code/Note/3.Core-Drive_Action/3D ARPG/06_开发记录/00_旧开发日志_001-224/03_工程内补充开发记录/Editor/Unity编辑器工具设计要点_ActionTimeline实践总结.md`  
 > **SO Inspector 折叠**：`10-so-inspector-authoring-foldout.mdc`（与本 Rule 同时生效于 Inspector 工作）
 
 本 Rule 在编辑 `Assets/GameMain/Scripts/Editor/**` 时启用。新建或重构 `EditorWindow` / `CustomEditor` / Scene 预览时必须遵守。

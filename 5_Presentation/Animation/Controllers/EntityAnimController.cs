@@ -17,11 +17,16 @@ public abstract class EntityAnimController : MonoBehaviour {
     private float _transitionDuration;
     private float _transitionTimer;
     private bool _isTransitioning;
+    private AnimationClip _currentClipAsset;
+    private string _lastPlaySource = "-";
 
     private Animator _animator;
 
     public string CurrentClipName { get; private set; } = "";
     public bool IsGraphValid => _graph.IsValid();
+
+    /// <summary>227.5.1 探针用实例 Id（Player 侧可覆盖为 Entity.GetInstanceID）。</summary>
+    protected virtual int GetAnimProbeInstanceId() => GetInstanceID();
 
     protected virtual void Awake() {
         _animator = GetComponentInChildren<Animator>();
@@ -84,14 +89,34 @@ public abstract class EntityAnimController : MonoBehaviour {
             _mixer.SetInputWeight(_previousPort, 1f - t);
             _mixer.SetInputWeight(_currentPort, t);
 
+            AnimTransition227Probe.SampleMixerIfNeeded(
+                GetAnimProbeInstanceId(),
+                t,
+                _previousPort,
+                _currentPort,
+                _mixer.GetInputWeight(_previousPort),
+                _mixer.GetInputWeight(_currentPort),
+                ReadLocalTime(_previousPort),
+                ReadLocalTime(_currentPort));
+
             if (t >= 1f) {
                 _isTransitioning = false;
+
+                AnimTransition227Probe.EndMixerTransition(
+                    GetAnimProbeInstanceId(),
+                    _previousPort,
+                    _currentPort,
+                    _mixer.GetInputWeight(_previousPort),
+                    _mixer.GetInputWeight(_currentPort),
+                    ReadLocalTime(_previousPort),
+                    ReadLocalTime(_currentPort));
 
                 // 淡出完成，释放上一个 ClipPlayable 的内存
                 if (_clips[_previousPort].IsValid()) {
                     _mixer.DisconnectInput(_previousPort);
                     _clips[_previousPort].Destroy();
                 }
+
             }
         }
     }
@@ -100,8 +125,63 @@ public abstract class EntityAnimController : MonoBehaviour {
     /// 播放一个 AnimationClip，带 crossfade 过渡。
     /// </summary>
     public void Play(AnimationClip clip, float transitionDuration = 0.2f,
-                     float speed = 1f, bool isLooping = true, float normalizedStart = 0f) {
+                     float speed = 1f, bool isLooping = true, float normalizedStart = 0f,
+                     bool restartIfSameClip = true, string requestSource = "unspecified") {
         if (clip == null || !_graph.IsValid()) return;
+
+        // 227.5.1.1：连续表现与 Jump 双入口可以请求同一 Clip。对明确声明幂等的入口，
+        // 保留当前 Playable 的局部时间和 Mixer 权重，禁止重新从 0 建图导致卡壳。
+        if (ShouldSuppressSameClipReplay(
+                _currentClipAsset,
+                clip,
+                _clips[_currentPort].IsValid(),
+                restartIfSameClip))
+        {
+            var currentDuration = _clips[_currentPort].GetDuration();
+            var currentCodeLooping = currentDuration == double.MaxValue;
+            var loopUpgraded = ShouldUpgradeLoopContract(currentCodeLooping, isLooping);
+            if (loopUpgraded)
+            {
+                // 连续语义比 FBX 的 Loop Time 更权威；原地升级，不重建 Playable/不重置局部时间。
+                _clips[_currentPort].SetDuration(double.MaxValue);
+            }
+
+            var currentSpeed = _clips[_currentPort].GetSpeed();
+            var speedUpdated = System.Math.Abs(currentSpeed - speed) > 0.0001d;
+            if (speedUpdated)
+            {
+                _clips[_currentPort].SetSpeed(speed);
+            }
+
+            AnimTransition227BugProbe.LogSameClipSuppressed(
+                GetAnimProbeInstanceId(),
+                clip,
+                _lastPlaySource,
+                requestSource,
+                _isTransitioning,
+                ReadLocalTime(_currentPort),
+                requestedLoop: isLooping,
+                effectiveLoop: currentCodeLooping || loopUpgraded,
+                loopUpgraded: loopUpgraded,
+                speedUpdated: speedUpdated);
+            return;
+        }
+
+        var supersede = _isTransitioning;
+        var fromClip = _currentClipAsset;
+        var prevPortBefore = _currentPort;
+        var prevWeightBefore = _clips[_currentPort].IsValid() ? _mixer.GetInputWeight(_currentPort) : 0f;
+        var prevTimeBefore = ReadLocalTime(_currentPort);
+
+        if (supersede)
+        {
+            AnimTransition227BugProbe.LogSupersede(
+                GetAnimProbeInstanceId(),
+                fromClip,
+                clip,
+                _lastPlaySource,
+                requestSource);
+        }
 
         _previousPort = _currentPort;
         _currentPort = (_currentPort + 1) % 2;
@@ -126,6 +206,8 @@ public abstract class EntityAnimController : MonoBehaviour {
 
         _clips[_currentPort] = clipPlayable;
         _mixer.ConnectInput(_currentPort, clipPlayable, 0);
+        _currentClipAsset = clip;
+        _lastPlaySource = requestSource;
 
         if (transitionDuration <= 0f || !_clips[_previousPort].IsValid()) {
             _mixer.SetInputWeight(_currentPort, 1f);
@@ -145,6 +227,41 @@ public abstract class EntityAnimController : MonoBehaviour {
         }
 
         CurrentClipName = clip.name;
+
+        AnimTransition227Probe.BeginMixerTransition(
+            GetAnimProbeInstanceId(),
+            supersede ? $"{requestSource}:playDuringBlend" : requestSource,
+            fromClip,
+            clip,
+            transitionDuration,
+            speed,
+            isLooping,
+            prevPortBefore,
+            _currentPort,
+            prevWeightBefore,
+            _mixer.GetInputWeight(_currentPort),
+            prevTimeBefore,
+            ReadLocalTime(_currentPort),
+            supersede);
+    }
+
+    /// <summary>227.5.1.1 — 可独立测试的同 Clip 重播门禁；默认调用仍保持允许重播。</summary>
+    public static bool ShouldSuppressSameClipReplay(
+        AnimationClip currentClip,
+        AnimationClip requestedClip,
+        bool currentPlayableValid,
+        bool restartIfSameClip)
+    {
+        return !restartIfSameClip
+               && currentPlayableValid
+               && currentClip != null
+               && currentClip == requestedClip;
+    }
+
+    /// <summary>227.5.1.2 — 幂等请求可把有限时长 Playable 原地升级为连续循环，但不反向降级。</summary>
+    public static bool ShouldUpgradeLoopContract(bool currentCodeLooping, bool requestedLoop)
+    {
+        return requestedLoop && !currentCodeLooping;
     }
 
     /// <summary>182.6 — Playable 主 Clip 进度 → Action 归一化时间（与 MapActionTimeToClipNormalized 互逆）。</summary>
@@ -204,5 +321,12 @@ public abstract class EntityAnimController : MonoBehaviour {
 
         _isTransitioning = false;
         CurrentClipName = "";
+        _currentClipAsset = null;
+        _lastPlaySource = "-";
+    }
+
+    double ReadLocalTime(int port)
+    {
+        return _clips[port].IsValid() ? _clips[port].GetTime() : 0d;
     }
 }

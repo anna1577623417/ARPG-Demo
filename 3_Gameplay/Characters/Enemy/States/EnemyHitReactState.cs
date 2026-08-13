@@ -91,7 +91,8 @@ public sealed class EnemyHitReactState : EnemyState
             _previousNormalized,
             normalized,
             enemy.Forward,
-            _timelineState);
+            _timelineState,
+            _leaseVersion);
         enemy.SkillEntries?.TickActive(default, Time.deltaTime);
         _motionPlayback.Tick(
             _previousNormalized,

@@ -1,13 +1,19 @@
 using UnityEngine;
 
 /// <summary>
-/// Action Clip 速率单一入口（171.7）：Free / AutoFitDuration + MotionProfile 曲线门控。
+/// Action Clip 速率单一入口（171.7 → 226）：
+/// Free / AutoFitDuration 提供基准 S；MotionProfile SpeedOverTime 在积分合法时始终可叠加。
 /// </summary>
 public static class ActionAnimSpeedAuthority
 {
     const float MinSpeed = 0.01f;
     const float AutoFitMin = 0.05f;
     const float AutoFitMax = 4f;
+    const int IntegralSamples = 64;
+    const int ClipDoneSearchIterations = 24;
+
+    static int s_lastRejectProfileId;
+    static float s_lastRejectLogTime = -999f;
 
     /// <summary>Action 层 Clip 倍率（不含 MotionProfile 局部节奏）。</summary>
     public static float ResolveClipAnimSpeed(ActionDataSO action, float motionT = 0f)
@@ -26,7 +32,7 @@ public static class ActionAnimSpeedAuthority
         };
     }
 
-    /// <summary>AutoFit：Segment 在 Duration 内播完（与 ActionTimeAuthority 一致）。</summary>
+    /// <summary>AutoFit：Segment 在 Duration 内播完的基准倍率 S（曲线叠加前）。</summary>
     public static float ResolveAutoFitClipAnimSpeed(ActionDataSO action)
     {
         if (action == null)
@@ -39,17 +45,23 @@ public static class ActionAnimSpeedAuthority
     }
 
     /// <summary>
-    /// MotionProfile SpeedOverTime 因子；Action 非 Free 模式恒为 1（忽略曲线）。
+    /// MotionProfile SpeedOverTime 因子。
+    /// 【226】Free/AutoFit 均可叠加；Curve 且 ∫≠1 时策略1拒绝曲线（返回 1）并打 OPEN Log。
     /// </summary>
     public static float ResolveProfileAnimSpeedFactor(
         ActionDataSO action,
         MotionProfileSO profile,
         float motionT)
     {
-        if (action == null
-            || action.ClipAnimSpeedMode != ActionAnimSpeedMode.Free
-            || profile == null)
+        _ = action;
+        if (profile == null || profile.AnimSpeedMode != AnimSpeedMode.Curve)
         {
+            return 1f;
+        }
+
+        if (!profile.IsAnimSpeedCurveIntegralValid())
+        {
+            LogRejectInvalidIntegral(profile);
             return 1f;
         }
 
@@ -65,7 +77,8 @@ public static class ActionAnimSpeedAuthority
     }
 
     /// <summary>
-    /// 编辑器预览：按 AnimSpeed 推演 Clip 墙钟秒，Segment 内播完后定格（可见后摇）。
+    /// 编辑器预览：按积分推演 Clip 墙钟秒，Segment 内播完后定格（可见后摇）。
+    /// played = S × Duration × ∫₀^{nt} f
     /// </summary>
     public static float ResolvePreviewClipSeconds(ActionDataSO action, float normalizedTime)
     {
@@ -77,9 +90,10 @@ public static class ActionAnimSpeedAuthority
         var clip = action.MainClip;
         var t = Mathf.Clamp01(normalizedTime);
         var dur = action.ResolveLogicalDurationSeconds();
-        var effectiveSpeed = ResolveCombinedAnimSpeed(action, t);
+        var clipSpeed = ResolveClipAnimSpeed(action);
+        var integral = IntegrateProfileFactor(action, t);
         var segWall = ActionTimeAuthority.ResolveSegmentWallSeconds(action);
-        var rawPlayed = t * dur * effectiveSpeed;
+        var rawPlayed = clipSpeed * dur * integral;
         var played = Mathf.Min(rawPlayed, segWall);
 
         if (segWall <= 0.0001f)
@@ -94,7 +108,10 @@ public static class ActionAnimSpeedAuthority
         return clipNorm * clip.length;
     }
 
-    /// <summary>Action 时间轴上 Clip/Segment 播完点（0~1）；之后为后摇 / 末帧定格。</summary>
+    /// <summary>
+    /// Action 时间轴上 Clip/Segment 播完点（0~1）。
+    /// 求解最小 nt：S × Duration × ∫₀^{nt} f ≥ SegmentWall。
+    /// </summary>
     public static float ResolveClipDoneNormalizedTime(ActionDataSO action)
     {
         if (action?.MainClip == null)
@@ -115,6 +132,81 @@ public static class ActionAnimSpeedAuthority
         }
 
         var segWall = ActionTimeAuthority.ResolveSegmentWallSeconds(action);
-        return Mathf.Clamp01(segWall / (dur * animSpeed));
+        if (segWall <= 0.0001f)
+        {
+            return 1f;
+        }
+
+        var targetIntegral = segWall / (animSpeed * dur);
+        if (targetIntegral <= 0f)
+        {
+            return 0f;
+        }
+
+        if (targetIntegral >= IntegrateProfileFactor(action, 1f) - 1e-5f)
+        {
+            return 1f;
+        }
+
+        var lo = 0f;
+        var hi = 1f;
+        for (var i = 0; i < ClipDoneSearchIterations; i++)
+        {
+            var mid = (lo + hi) * 0.5f;
+            if (IntegrateProfileFactor(action, mid) < targetIntegral)
+            {
+                lo = mid;
+            }
+            else
+            {
+                hi = mid;
+            }
+        }
+
+        return Mathf.Clamp01(hi);
+    }
+
+    /// <summary>∫₀^{toNt} f；非法/Constant 时 f≡1 ⇒ 返回 toNt。</summary>
+    public static float IntegrateProfileFactor(ActionDataSO action, float toNt)
+    {
+        var end = Mathf.Clamp01(toNt);
+        var profile = action != null ? action.MotionProfile : null;
+        if (profile == null
+            || profile.AnimSpeedMode != AnimSpeedMode.Curve
+            || !profile.IsAnimSpeedCurveIntegralValid())
+        {
+            return end;
+        }
+
+        return AnimSpeedIntegralMath.IntegrateCurveRange(profile.SpeedOverTime, end, IntegralSamples);
+    }
+
+    static void LogRejectInvalidIntegral(MotionProfileSO profile)
+    {
+        if (profile == null)
+        {
+            return;
+        }
+
+        var id = profile.GetInstanceID();
+        var now = Time.unscaledTime;
+        if (id == s_lastRejectProfileId && now - s_lastRejectLogTime < 1f)
+        {
+            return;
+        }
+
+        s_lastRejectProfileId = id;
+        s_lastRejectLogTime = now;
+        var integral = profile.EvaluateAnimSpeedIntegral();
+        var epsilon = profile.ResolveAnimSpeedIntegralEpsilon();
+        var prefix = profile.AnimSpeedAuthoringMode == AnimSpeedCurveAuthoringMode.FreeFrontAutoTail
+            ? "[AnimSpeed228]"
+            : "[AnimSpeed226]";
+        var hint = profile.AnimSpeedAuthoringMode == AnimSpeedCurveAuthoringMode.FreeFrontAutoTail
+            ? "Fix FreeFrontAutoTail knots / AutoTail Bake in MotionProfile Inspector."
+            : "Fix ThreePointConserve or Freehand curve in MotionProfile Inspector.";
+        Debug.LogWarning(
+            $"{prefix} REJECT invalid integral profile={profile.name} I={integral:F4} " +
+            $"ε={epsilon:F4} → factor=1 (Constant). {hint}");
     }
 }

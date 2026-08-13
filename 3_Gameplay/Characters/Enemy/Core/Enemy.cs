@@ -31,7 +31,7 @@ public sealed class Enemy : Entity<Enemy>, IEntity, IIntentHost, IMovementIntent
     string _runtimeReadyFailure;
 
     public GameplayIntentBuffer IntentBuffer { get; } = new GameplayIntentBuffer(DefaultIntentCapacity);
-    public CombatObjectSpawner CombatObjectSpawner { get; } = new CombatObjectSpawner();
+    public ICombatSpawnPort CombatSpawnPort => SpawnedCombatWorldHost.Port;
     public SkillEntryLoadoutSO SkillEntryLoadout => skillEntryLoadout;
     public ReactionProfileSO ReactionProfile => reactionProfile;
     public LocomotionProfile LocomotionProfile => locomotionProfile;
@@ -92,7 +92,7 @@ public sealed class Enemy : Entity<Enemy>, IEntity, IIntentHost, IMovementIntent
     Animator IActionContext.Animator => base.Animator;
     IEntityMotor IActionContext.Motor => _motor;
     LocalEventBus IActionContext.EventBus => base.EventBus;
-    CombatObjectSpawner IActionContext.CombatObjectSpawner => CombatObjectSpawner;
+    ICombatSpawnPort IActionContext.CombatSpawnPort => CombatSpawnPort;
     void IActionContext.PublishActionPresentation(ActionTimelineMarkerKind kind, string payload)
         => PublishEvent(new EntityActionPresentationEvent(GetInstanceID(), kind, payload));
     void IActionContext.PublishTeleported(Vector3 worldPosition)
@@ -153,12 +153,6 @@ public sealed class Enemy : Entity<Enemy>, IEntity, IIntentHost, IMovementIntent
         {
             SkillEntries.Rebuild(skillEntryLoadout);
         }
-    }
-
-    protected override void LateUpdate()
-    {
-        base.LateUpdate();
-        CombatObjectSpawner?.Tick(Time.deltaTime);
     }
 
     internal void BindStateManager(EnemyStateManager stateManager)

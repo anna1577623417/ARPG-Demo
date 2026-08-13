@@ -10,6 +10,7 @@ public readonly struct CombatResolvedEvent
     public readonly CombatInteraction Interaction;
     public readonly HitResult Hit;
     public readonly HitReaction Reaction;
+    public readonly CombatOutcomeSet Outcome;
     public readonly float FinalDamage;
     public readonly bool IsCritical;
     public readonly CombatContext Context;
@@ -19,6 +20,7 @@ public readonly struct CombatResolvedEvent
         CombatInteraction interaction,
         in HitResult hit,
         in HitReaction reaction,
+        in CombatOutcomeSet outcome,
         float finalDamage,
         bool isCritical,
         in CombatContext context)
@@ -27,6 +29,7 @@ public readonly struct CombatResolvedEvent
         Interaction = interaction;
         Hit = hit;
         Reaction = reaction;
+        Outcome = outcome;
         FinalDamage = finalDamage;
         IsCritical = isCritical;
         Context = context;

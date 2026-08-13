@@ -37,6 +37,7 @@ MonoBehaviour:
   - slot: 6
     entry: {fileID: 11400000, guid: 6b8eef6920e2a9e4da1df215d72c0d36, type: 2}
     hudKeyLabel: Shift
+  hudLayout: []
   combatFlowEnabled: 1
   combatFlow: {fileID: 11400000, guid: 25708567479bfd74da47966592ad45b3, type: 2}
   contextGroups:

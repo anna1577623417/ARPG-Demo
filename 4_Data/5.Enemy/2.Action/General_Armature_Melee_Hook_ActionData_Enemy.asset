@@ -33,7 +33,7 @@ MonoBehaviour:
   BakeMaxAnimSpeed: 1.15
   IntentCategory: 1
   GraphParticipation: -1
-  Category: 3
+  Category: 2
   InterruptPriority: 10
   InterruptStability: 10
   AllowSelfInterrupt: 0
@@ -79,7 +79,7 @@ MonoBehaviour:
   - 0
   StepIntervalSec: 0.08
   SlideMaxResidualSpeed: 0
-  MotionProfile: {fileID: 11400000, guid: f9a829e0f4a7d1c4db6fd1f88ef7c821, type: 2}
+  MotionProfile: {fileID: 11400000, guid: 10d78fd1fe958d74fbc888d8770769ad, type: 2}
   Windows:
   - NormalizedStart: 0.9
     NormalizedEnd: 1
@@ -92,7 +92,7 @@ MonoBehaviour:
     AllowMoveInput: 0
     incomingAbilityGate: 0
     _legacyDirectStateTagMask: 0
-  - NormalizedStart: 0.4
+  - NormalizedStart: 0.5
     NormalizedEnd: 0.59999996
     WindowSlotMask: 256
     RuntimeEvents: []
@@ -104,16 +104,16 @@ MonoBehaviour:
     incomingAbilityGate: 0
     _legacyDirectStateTagMask: 0
   AttackClips:
-  - DebugName: Melee_Hook_Enemy
-    ActiveStart: 0.39999998
+  - DebugName: Melee_Hook_Player
+    ActiveStart: 0.5
     ActiveEnd: 0.6
     ShapeMode: 0
     Shape: {fileID: 11400000, guid: 5496af1eb2568dd4d9a80f27f2cc4e12, type: 2}
     WeaponSockets: {fileID: 11400000, guid: fdc98222cf2742ffafd17264aa5477db, type: 2}
     Origin: 1
-    OriginOffset: {x: 0, y: 0, z: 0}
-    OriginEuler: {x: 0, y: 0, z: 0}
-    Reach: 1.5
+    OriginOffset: {x: 0, y: -0.57, z: 0.2}
+    OriginEuler: {x: -106, y: 0, z: 0}
+    Reach: 0
     Target:
       Relations: 24
       UnitKinds: 31
@@ -129,9 +129,9 @@ MonoBehaviour:
       MaxHitsPerTarget: 1
       MaxTargets: 999
     Reaction:
-      BaseDamage: 10
+      BaseDamage: 0
       ImpulseLocalDir: {x: 0, y: 0, z: 1}
-      ImpulseForce: 8
+      ImpulseForce: 4
       LaunchUpSpeed: 0
       HitStopSeconds: 0.06
       CameraShakeIntensity: 0

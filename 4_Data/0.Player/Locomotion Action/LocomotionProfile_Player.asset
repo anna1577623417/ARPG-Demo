@@ -17,9 +17,9 @@ MonoBehaviour:
   bindings:
   - State: 1
     FallbackState: 1
-    LocomotionAction: {fileID: 11400000, guid: 71c8131a994a9b54e9825572d7603f53, type: 2}
+    LocomotionAction: {fileID: 11400000, guid: 9a56fa8d1a05cbd48b45a6df1df935b8, type: 2}
     DiscreteAction: {fileID: 0}
-    ContinuousClip: {fileID: 7400002, guid: 456d4b7964b93e34fa6b5e1b42972829, type: 3}
+    ContinuousClip: {fileID: 0}
     TransitionDuration: 0.08
     Speed: 1
     UseRootMotion: 0
@@ -32,7 +32,7 @@ MonoBehaviour:
   - State: 4
     FallbackState: 1
     LocomotionAction: {fileID: 11400000, guid: d6f39c4ebc1d9e548a4724ffae7a3973, type: 2}
-    DiscreteAction: {fileID: 11400000, guid: d6f39c4ebc1d9e548a4724ffae7a3973, type: 2}
+    DiscreteAction: {fileID: 0}
     ContinuousClip: {fileID: 0}
     TransitionDuration: 0.08
     Speed: 1
@@ -47,7 +47,7 @@ MonoBehaviour:
     FallbackState: 1
     LocomotionAction: {fileID: 11400000, guid: a0621f7ea3593d74289de723ac25b8a8, type: 2}
     DiscreteAction: {fileID: 0}
-    ContinuousClip: {fileID: 7400002, guid: 67ab4331c306ad8418c85d32feeeb42c, type: 3}
+    ContinuousClip: {fileID: 0}
     TransitionDuration: 0.08
     Speed: 1
     UseRootMotion: 0
@@ -60,7 +60,7 @@ MonoBehaviour:
   - State: 17
     FallbackState: 2
     LocomotionAction: {fileID: 11400000, guid: 9f115909264b68c43823adc514b49580, type: 2}
-    DiscreteAction: {fileID: 11400000, guid: 9f115909264b68c43823adc514b49580, type: 2}
+    DiscreteAction: {fileID: 0}
     ContinuousClip: {fileID: 0}
     TransitionDuration: 0.08
     Speed: 1.5
@@ -74,7 +74,7 @@ MonoBehaviour:
   - State: 15
     FallbackState: 1
     LocomotionAction: {fileID: 11400000, guid: d7b20cf33da85be46978b8006c605510, type: 2}
-    DiscreteAction: {fileID: 11400000, guid: d7b20cf33da85be46978b8006c605510, type: 2}
+    DiscreteAction: {fileID: 0}
     ContinuousClip: {fileID: 0}
     TransitionDuration: 0.08
     Speed: 1.5
@@ -89,7 +89,7 @@ MonoBehaviour:
     FallbackState: 1
     LocomotionAction: {fileID: 11400000, guid: 5dd9421ee904c764da713928f868e65b, type: 2}
     DiscreteAction: {fileID: 0}
-    ContinuousClip: {fileID: 7400002, guid: f38c419fcff60d34094b7891bf7dc2f1, type: 3}
+    ContinuousClip: {fileID: 0}
     TransitionDuration: 0.08
     Speed: 1.8
     UseRootMotion: 0
@@ -102,7 +102,7 @@ MonoBehaviour:
   - State: 18
     FallbackState: 14
     LocomotionAction: {fileID: 11400000, guid: 7e47b19846d8da84ea58f50717485477, type: 2}
-    DiscreteAction: {fileID: 11400000, guid: 7e47b19846d8da84ea58f50717485477, type: 2}
+    DiscreteAction: {fileID: 0}
     ContinuousClip: {fileID: 0}
     TransitionDuration: 0.08
     Speed: 1.5
@@ -116,7 +116,7 @@ MonoBehaviour:
   - State: 16
     FallbackState: 1
     LocomotionAction: {fileID: 11400000, guid: faebbfd1a59017b418d4684b4463d80b, type: 2}
-    DiscreteAction: {fileID: 11400000, guid: faebbfd1a59017b418d4684b4463d80b, type: 2}
+    DiscreteAction: {fileID: 0}
     ContinuousClip: {fileID: 0}
     TransitionDuration: 0.08
     Speed: 1.5
@@ -131,7 +131,7 @@ MonoBehaviour:
     FallbackState: 1
     LocomotionAction: {fileID: 11400000, guid: f3a8b2c1d4e5f6789012345678abcd02, type: 2}
     DiscreteAction: {fileID: 0}
-    ContinuousClip: {fileID: 7400002, guid: 80ec54c51205ab34b9f8cb18e2f0bfb9, type: 3}
+    ContinuousClip: {fileID: 0}
     TransitionDuration: 0.08
     Speed: 1
     UseRootMotion: 0
@@ -144,7 +144,7 @@ MonoBehaviour:
   - State: 8
     FallbackState: 3
     LocomotionAction: {fileID: 11400000, guid: f3a8b2c1d4e5f6789012345678abcd01, type: 2}
-    DiscreteAction: {fileID: 11400000, guid: 05d0c0b53bf8cfc41a6317827d08769a, type: 2}
+    DiscreteAction: {fileID: 0}
     ContinuousClip: {fileID: 0}
     TransitionDuration: 0.08
     Speed: 1
@@ -158,7 +158,7 @@ MonoBehaviour:
   - State: 9
     FallbackState: 1
     LocomotionAction: {fileID: 11400000, guid: f3a8b2c1d4e5f6789012345678abcd03, type: 2}
-    DiscreteAction: {fileID: 11400000, guid: bafc75128cf5b5549805eebd214a2466, type: 2}
+    DiscreteAction: {fileID: 0}
     ContinuousClip: {fileID: 0}
     TransitionDuration: 0.08
     Speed: 1
@@ -173,7 +173,7 @@ MonoBehaviour:
     FallbackState: 1
     LocomotionAction: {fileID: 11400000, guid: 711e5d70acf578e48ab096d6c03d7a6c, type: 2}
     DiscreteAction: {fileID: 0}
-    ContinuousClip: {fileID: 7400002, guid: cdc90fb67be7d4345b0cb6647f31f253, type: 3}
+    ContinuousClip: {fileID: 0}
     TransitionDuration: 0.2
     Speed: 1
     UseRootMotion: 0
@@ -187,7 +187,7 @@ MonoBehaviour:
     FallbackState: 1
     LocomotionAction: {fileID: 11400000, guid: 662971c2a2b406e47b3debac541a922d, type: 2}
     DiscreteAction: {fileID: 0}
-    ContinuousClip: {fileID: 7400002, guid: 78efd0bda7f7e96479957309a58f5004, type: 3}
+    ContinuousClip: {fileID: 0}
     TransitionDuration: 0.2
     Speed: 1
     UseRootMotion: 0
@@ -201,7 +201,7 @@ MonoBehaviour:
     FallbackState: 1
     LocomotionAction: {fileID: 11400000, guid: c0e1884f05bbb1f4f885b56fed8c38bb, type: 2}
     DiscreteAction: {fileID: 0}
-    ContinuousClip: {fileID: 7400002, guid: b119c65e37afef44f917f12c2186e903, type: 3}
+    ContinuousClip: {fileID: 0}
     TransitionDuration: 0.2
     Speed: 1
     UseRootMotion: 0
@@ -215,7 +215,7 @@ MonoBehaviour:
     FallbackState: 1
     LocomotionAction: {fileID: 11400000, guid: 92dd53c189441ce48a9cedbbd7776b38, type: 2}
     DiscreteAction: {fileID: 0}
-    ContinuousClip: {fileID: 7400002, guid: 0b295b6c99d3897439ddcb11896eb41f, type: 3}
+    ContinuousClip: {fileID: 0}
     TransitionDuration: 0.2
     Speed: 1
     UseRootMotion: 0

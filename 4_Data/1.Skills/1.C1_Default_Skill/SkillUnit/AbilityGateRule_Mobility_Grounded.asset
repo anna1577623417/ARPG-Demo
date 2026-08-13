@@ -15,5 +15,5 @@ MonoBehaviour:
   ability: 2
   requireGrounded: 1
   requireAirborne: 0
-  allowWhenGrounded: 1
+  allowWhenGrounded: 0
   allowWhenAirborne: 0

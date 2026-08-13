@@ -206,6 +206,10 @@ public sealed class PlayerLocomotionState : PlayerState
             return;
         }
 
+        // 227.4 / 227.3：以常规 Locomotion 的一次 LogicUpdate 为位置结算审计边界。
+        // Begin 必须位于离散 Action 分流之后，避免把 Action Motion 误判成 WASD 瞬移。
+        LocomotionPositionSettlement227Probe.BeginLocomotionFrame(player);
+
         // 198.x — 167.1 VelocityDecay Tick 已删除；182.1 StopStrategy 在 Action 退出时唯一权威处理速度
         if (player.HasMovementIntent)
         {
@@ -217,6 +221,7 @@ public sealed class PlayerLocomotionState : PlayerState
         }
 
         player.ApplyMotor(MotorSolveContext.Locomotion);
+        LocomotionPositionSettlement227Probe.EndLocomotionFrame(player);
         LogLocomotionMoveTrace(player, player.CurrentTurnInfo);
     }
 
@@ -280,7 +285,9 @@ public sealed class PlayerLocomotionState : PlayerState
             m_lastWantsRun = player.WantsRun;
         }
 
-        if (decision.IsContinuousLocomotion || decision.DiscreteAction == null || decision.DowngradedFromLogicLayer)
+        if (decision.ExecutionPolicy == LocomotionExecutionPolicy.ContinuousPresentation
+            || decision.DiscreteAction == null
+            || decision.DowngradedFromLogicLayer)
         {
             return false;
         }
@@ -299,6 +306,21 @@ public sealed class PlayerLocomotionState : PlayerState
         {
             return false;
         }
+
+        if (decision.ResolvedState == LocomotionStateId.WalkStart
+            || decision.ResolvedState == LocomotionStateId.RunStart)
+        {
+            // 227.4.3：Start 只保留为解析/表现语义，不再切入离散 Action 独占位移。
+            // 本帧继续执行常规 MoveByLocomotionIntent + ApplyMotor，保证 Walk/Run 首帧响应一致。
+            LocomotionTransition227BugProbe.LogStartActionBypassed(
+                player,
+                decision.ResolvedState,
+                decision.DiscreteAction,
+                "RealtimeKccResponse");
+            return false;
+        }
+
+        LocomotionTransition227BugProbe.BeginRunStartFlow(player, decision.DiscreteAction);
 
         // 198.x — Tail Segment 退役；统一从 0 进入。短按手感由 RecoveryMoveLockSeconds 软屏蔽承担。
         player.ArmPendingAction(GameplayIntentKind.Move, decision.DiscreteAction, 0f);
@@ -320,7 +342,8 @@ public sealed class PlayerLocomotionState : PlayerState
     {
         if (profile != null
             && decision.ResolvedState == LocomotionStateId.StrafeLocomotion
-            && (decision.IsContinuousLocomotion || decision.ContinuousClip != null))
+            && (decision.ExecutionPolicy == LocomotionExecutionPolicy.ContinuousPresentation
+                || decision.ContinuousClip != null))
         {
             var binding = profile.GetBinding(
                 LocomotionStateId.StrafeLocomotion,
@@ -337,7 +360,8 @@ public sealed class PlayerLocomotionState : PlayerState
 
     static void PublishContinuousLocomotionIfNeeded(Player player, in LocomotionDecision decision)
     {
-        if (!decision.IsContinuousLocomotion || decision.LocomotionAction == null)
+        if (decision.ExecutionPolicy != LocomotionExecutionPolicy.ContinuousPresentation
+            || decision.LocomotionAction == null)
         {
             return;
         }
@@ -353,8 +377,31 @@ public sealed class PlayerLocomotionState : PlayerState
             return;
         }
 
+        var instanceId = player.GetInstanceID();
         state.m_lastContinuousLocomotionAction = decision.LocomotionAction;
-        player.RequestContinuousLocomotionPresentation(decision.LocomotionAction);
+        // 227.5.1.1：RESOLVE/REQUEST 只在连续 Action 身份切换时记录，不再随 LogicUpdate 刷屏。
+        AnimTransition227Probe.LogResolve(
+            instanceId,
+            decision.ResolvedState,
+            decision.ExecutionPolicy,
+            "continuousPresentationEdge",
+            string.IsNullOrEmpty(decision.FallbackReason) ? "StateSemantic" : decision.FallbackReason,
+            decision.LocomotionAction,
+            decision.ContinuousClip,
+            decision.TransitionDuration,
+            decision.ClipSpeed,
+            decision.FallbackReason);
+        AnimTransition227Probe.LogRequest(
+            instanceId,
+            decision.ResolvedState,
+            decision.ExecutionPolicy,
+            "publishContinuous",
+            decision.LocomotionAction,
+            duplicateSkipped: false);
+        player.RequestContinuousLocomotionPresentation(
+            decision.LocomotionAction,
+            decision.ResolvedState,
+            decision.ExecutionPolicy);
     }
 
     static void LogPressStartSkippedForTurn(Player player)

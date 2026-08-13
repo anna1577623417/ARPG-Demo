@@ -219,79 +219,41 @@ public sealed class CombatObjectRuntime
             HitsPerTarget[id] = hits + 1;
 
             CombatHitDiagProbe.LogOverlap(target, hits + 1, col, RuntimeId);
-            ApplyDamage(target);
+            SubmitOutcome(target);
             HitCountTotal++;
         }
     }
 
-    void ApplyDamage(Entity target)
+    /// <summary>历史 Runtime 兼容路径也只能提交 Outcome，禁止直接改资源/Effect/Motor。</summary>
+    void SubmitOutcome(Entity target)
     {
         var def = Definition.Damage;
-        if (def == null) return;
+        if (def == null || target == null) return;
 
-        switch (def.Kind)
-        {
-            case DamageKind.Heal:
-            {
-                var hp = target.Resources;
-                var cur = hp.GetCurrent(ResourceType.HP);
-                var max = hp.GetMax(ResourceType.HP);
-                hp.SetCurrent(ResourceType.HP, Mathf.Min(max, cur + def.Amount));
-                break;
-            }
-            case DamageKind.Knockback:
-            {
-                var request = new ImpulseRequest(
-                    SpawnWorldRot * def.KnockbackLocalDir,
-                    def.KnockbackForce,
-                    0f,
-                    ImpulseKind.Large,
-                    Source as IEntity);
-                CombatFeedbackRouter.DispatchImpulse(target, in request, objectId: RuntimeId);
-                break;
-            }
-            case DamageKind.Launch:
-            {
-                var request = new ImpulseRequest(
-                    SpawnWorldRot * Vector3.forward,
-                    0f,
-                    def.LaunchUpSpeed,
-                    ImpulseKind.Launch,
-                    Source as IEntity);
-                CombatFeedbackRouter.DispatchImpulse(target, in request, objectId: RuntimeId);
-                break;
-            }
-
-            case DamageKind.Instant:
-            case DamageKind.InstantPlusEffect:
-            default:
-            {
-                // 走既有 DamagePipeline
-                var ctx = new CombatContext(
-                    attackerAttackPower: 0f,    // TODO: Source.Stats.AttackPower
-                    defenderDefense: 0f,         // TODO: target.Stats.Defense
-                    defenderCurrentHP: target.Resources.GetCurrent(ResourceType.HP),
-                    defenderMaxHP: target.Resources.GetMax(ResourceType.HP),
-                    attackerTags: 0UL,
-                    defenderTags: 0UL);
-                var hit = new HitContext(
-                    baseDamage: def.Amount,
-                    isCritical: false,
-                    criticalMultiplier: 1f,
-                    hitPoint: CurrentWorldPos);
-                var result = DamagePipeline.Compute(in ctx, in hit);
-                var pool = target.Resources;
-                var cur = pool.GetCurrent(ResourceType.HP);
-                pool.SetCurrent(ResourceType.HP, Mathf.Max(0f, cur - result.FinalDamage));
-                CombatHitDiagProbe.LogDamage(target, result.FinalDamage, def.Kind, RuntimeId);
-                break;
-            }
-        }
-
-        // OnHitEffect（216.3 M3 L3 — 与 HitReaction 共用 EffectSystem 单点）
-        if (def.OnHitEffect != null && target is IEffectReceiver receiver)
-        {
-            EffectSystem.ApplyEffect(Source, receiver, def.OnHitEffect);
-        }
+        var outcome = CombatOutcomeBuilder.FromDamageDefinition(def);
+        var capabilities = CombatOutcomeBuilder.ResolveCapabilities(
+            CombatExecutionModel.SpawnedFinite,
+            Definition != null ? Definition.Archetype : CombatObjectArchetype.UnclassifiedLegacy,
+            HitShapeMode.Volume,
+            in outcome);
+        var fact = new CombatContactFact(
+            Source,
+            target,
+            CombatExecutionModel.SpawnedFinite,
+            capabilities,
+            CurrentWorldPos,
+            Vector3.up,
+            "Body",
+            $"legacy-object:{RuntimeId}",
+            0u,
+            HitCountTotal + 1,
+            HitsPerTarget.TryGetValue(target.GetInstanceID(), out var hits) ? hits : 1,
+            null,
+            default,
+            0UL,
+            Definition != null ? Definition.DefinitionRevision : 0,
+            ElapsedSec);
+        var hit = new HitResult(in fact, Definition != null ? Definition.name : "LegacyCombatObject");
+        CombatEventBus.PublishResolved(in hit, in outcome);
     }
 }

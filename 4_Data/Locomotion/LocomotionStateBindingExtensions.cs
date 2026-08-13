@@ -2,6 +2,8 @@ using UnityEngine;
 
 /// <summary>
 /// 164.1：LocomotionStateBinding 统一 Action 解析（双源兼容期）。
+/// 227.5.1：连续表现采用双重门禁：State 声明该槽位是否允许连续表现，
+/// <see cref="ActionDataSO.IsContinuousLocomotion"/> 声明该 Action 是否接管该连续槽位。
 /// </summary>
 public static class LocomotionStateBindingExtensions
 {
@@ -32,7 +34,10 @@ public static class LocomotionStateBindingExtensions
 #pragma warning restore CS0618
     }
 
-    /// <summary>连续 Locomotion 表现：优先 IsContinuousLocomotion Action，回落 ContinuousClip。</summary>
+    /// <summary>
+    /// 连续 Locomotion 表现：State 必须是连续槽；Action 只有显式勾选 IsContinuousLocomotion 才能接管。
+    /// 未接管时只读回落 Obsolete ContinuousClip，最终表现层仍可回落 AnimLibrary。
+    /// </summary>
     public static bool TryGetContinuousPresentation(
         in this LocomotionStateBinding binding,
         out AnimationClip clip,
@@ -42,8 +47,19 @@ public static class LocomotionStateBindingExtensions
         out ActionDataSO continuousAction)
     {
         continuousAction = null;
+        if (!binding.State.IsContinuous())
+        {
+            clip = null;
+            transitionDuration = 0.08f;
+            clipSpeed = 1f;
+            referenceLocomotionSpeed = 0f;
+            return false;
+        }
+
         var action = binding.ResolveLocomotionAction();
-        if (action != null && action.IsContinuousLocomotion && action.MainClip != null)
+        if (action != null
+            && action.MainClip != null
+            && (action.IsContinuousLocomotion || AllowsFinitePresentationAction(binding.State)))
         {
             continuousAction = action;
             clip = action.MainClip;
@@ -70,6 +86,13 @@ public static class LocomotionStateBindingExtensions
         referenceLocomotionSpeed = 0f;
         return false;
     }
+
+    /// <summary>
+    /// TurnInPlaceDirected 当前仍走表现层直接播放，但其切片是有限 one-shot，不应被 Is Continuous 强制成 Loop。
+    /// 这是现有 State 分类的兼容边界；后续 Presentation Graph 应显式拆成 FinitePresentationPolicy。
+    /// </summary>
+    public static bool AllowsFinitePresentationAction(LocomotionStateId state) =>
+        state == LocomotionStateId.TurnInPlaceDirected;
 
     /// <summary>表现过渡时长：Action.CrossfadeTime 或 Obsolete Binding 回落。</summary>
     public static float ResolvePresentationTransition(in this LocomotionStateBinding binding)

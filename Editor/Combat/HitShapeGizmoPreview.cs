@@ -42,12 +42,17 @@ public static class HitShapeGizmoPreview
     static void OnScene(SceneView view)
     {
         if (Shape == null) return;
+        if (!CombatSceneEditCoordinator.AllowsHitShapeGizmoOwner()) return;
         if (FollowSelection && Selection.activeTransform != null)
         {
             OriginWorld = Selection.activeTransform.position;
             RotationWorld = Selection.activeTransform.rotation;
         }
         DrawShapeHandles(Shape, OriginWorld, RotationWorld, Color);
+        CombatSceneDrawSourceProbe.RegisterPrimaryDraw(
+            CombatSceneDrawSourceProbe.SourceHitShapeGizmo,
+            OriginWorld,
+            $"shape={Shape.name} follow={FollowSelection}");
     }
 
     public static void DrawShapeHandles(HitShapeSO shape, Vector3 origin, Quaternion rotation, Color color)

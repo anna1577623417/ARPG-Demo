@@ -115,6 +115,10 @@ public static class CombatTrackEditor
             anchor,
             drawTrajectory: true,
             drawExpandRings: true);
+        CombatSceneDrawSourceProbe.RegisterPrimaryDraw(
+            CombatSceneDrawSourceProbe.SourceCombatTrackEditor,
+            anchor.position,
+            $"action={CurrentAction.name} t={ScrubberNormalized:F3}");
     }
 
     static Transform ResolveAnchor()

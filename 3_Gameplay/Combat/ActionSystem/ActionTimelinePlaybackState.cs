@@ -7,8 +7,9 @@ public sealed class ActionTimelinePlaybackState
     readonly HashSet<int> _firedTeleportIndices = new HashSet<int>();
     readonly HashSet<int> _firedWindowEventKeys = new HashSet<int>();
 
-    // 216.3 M1 L2 — 本次 Action 播放内、按 HitClip 下标持有的攻击实例（Active 区间驱动）。
-    readonly List<AttackInstance> _attacks = new List<AttackInstance>();
+    readonly Dictionary<string, AttackInstance> _contacts =
+        new Dictionary<string, AttackInstance>(8);
+    readonly HashSet<string> _rejectedContactIds = new HashSet<string>();
 
     // 216.3 M5 L1 — 按 DefenseClip 下标持有的 GuardVolume（仅 Kind=Guard 开窗）。
     readonly List<GuardVolumeProvider> _guards = new List<GuardVolumeProvider>();
@@ -16,16 +17,23 @@ public sealed class ActionTimelinePlaybackState
     internal bool CameraLockActive { get; set; }
     internal bool TimeScaleZoneActive { get; set; }
 
-    /// <summary>按 HitClip 下标获取（或惰性创建）攻击实例。</summary>
-    public AttackInstance GetOrCreateAttack(int index)
+    /// <summary>按稳定 EventId 获取 Contact Window 宿主；数组重排不会改变运行实例身份。</summary>
+    public AttackInstance GetOrCreateContact(string eventId)
     {
-        while (_attacks.Count <= index)
+        if (!_contacts.TryGetValue(eventId, out var instance))
         {
-            _attacks.Add(new AttackInstance());
+            instance = new AttackInstance();
+            _contacts.Add(eventId, instance);
         }
 
-        return _attacks[index];
+        return instance;
     }
+
+    public bool TryGetContact(string eventId, out AttackInstance instance) =>
+        _contacts.TryGetValue(eventId, out instance);
+
+    public bool IsContactRejected(string eventId) => _rejectedContactIds.Contains(eventId);
+    public bool RejectContactOnce(string eventId) => _rejectedContactIds.Add(eventId);
 
     /// <summary>按 DefenseClip 下标获取（或惰性创建）GuardVolume。</summary>
     public GuardVolumeProvider GetOrCreateGuard(int index)
@@ -46,16 +54,17 @@ public sealed class ActionTimelinePlaybackState
         _firedCombatEventIndices.Clear();
         _firedDefenseWindowIndices.Clear();
 
-        // 换 Action（含被打断）：结束任何仍开判的攻击，避免残留 Active / 幽灵命中去重。
-        for (var i = 0; i < _attacks.Count; i++)
+        foreach (var pair in _contacts)
         {
-            if (_attacks[i] != null && _attacks[i].Active)
+            var contact = pair.Value;
+            if (contact != null && contact.Active)
             {
-                _attacks[i].End();
+                contact.End();
             }
         }
 
-        _attacks.Clear();
+        _contacts.Clear();
+        _rejectedContactIds.Clear();
 
         for (var i = 0; i < _guards.Count; i++)
         {

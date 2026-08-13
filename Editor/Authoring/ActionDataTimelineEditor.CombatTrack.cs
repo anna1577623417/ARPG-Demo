@@ -91,7 +91,6 @@ public sealed partial class ActionDataTimelineEditor
             _selectedWindow = -1;
             _selectedTeleport = -1;
             _selectedMarker = -1;
-            ClearAttackSelection();
             return true;
         }
 
@@ -174,7 +173,7 @@ public sealed partial class ActionDataTimelineEditor
 
         if (GUILayout.Button("对齐 Hitbox 窗中心"))
         {
-            AlignCombatEventToHitboxMid(elem);
+            AlignCombatEventToContactMid(elem);
         }
 
         var def = elem.FindPropertyRelative(nameof(CombatEvent.Definition)).objectReferenceValue
@@ -189,33 +188,28 @@ public sealed partial class ActionDataTimelineEditor
         return true;
     }
 
-    void AlignCombatEventToHitboxMid(SerializedProperty combatElem)
+    void AlignCombatEventToContactMid(SerializedProperty combatElem)
     {
-        if (_windows == null)
+        if (_contactEvents == null)
         {
-            EditorGUILayout.HelpBox("Windows 未加载。", MessageType.Warning);
+            EditorGUILayout.HelpBox("ContactEvents 未加载。", MessageType.Warning);
             return;
         }
 
-        for (var i = 0; i < _windows.arraySize; i++)
+        for (var i = 0; i < _contactEvents.arraySize; i++)
         {
-            var w = ReadWindow(_windows.GetArrayElementAtIndex(i));
-            if (!WindowContributesToTrack(w, TrackId.Hitbox))
-            {
-                continue;
-            }
-
-            var mid = (w.NormalizedStart + w.NormalizedEnd) * 0.5f;
+            ReadContactRange(_contactEvents.GetArrayElementAtIndex(i), out var start, out var end);
+            var mid = (start + end) * 0.5f;
             Undo.RecordObject(_action, "Align Combat To Hitbox");
             combatElem.FindPropertyRelative(nameof(CombatEvent.NormalizedTime)).floatValue = Snap(mid);
             _so.ApplyModifiedProperties();
             EditorUtility.SetDirty(_action);
             Repaint();
-            Debug.Log($"[CombatTrack] ALIGN hitbox window #{i} mid nt={Snap(mid):F3} ({w.NormalizedStart:F3}~{w.NormalizedEnd:F3})");
+            Debug.Log($"[CombatTrack] ALIGN contact event #{i} mid nt={Snap(mid):F3} ({start:F3}~{end:F3})");
             return;
         }
 
-        EditorGUILayout.HelpBox("未找到 Hitbox ★ 轨片段（需 WindowSlot 含 Hitbox 标签）。", MessageType.Warning);
+        EditorGUILayout.HelpBox("未找到 ContactEvent（请先在 Hitbox 轨创建攻击窗口）。", MessageType.Warning);
     }
 
     bool HasSelectedCombatEvent() =>

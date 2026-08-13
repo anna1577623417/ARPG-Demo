@@ -27,6 +27,21 @@ public static class GameMainDebugSettings
     public static bool TurnSubState { get; set; }
     public static bool ActionYawLog { get; set; }
 
+    /// <summary>226 — AutoFit/Free × MP Anim 曲线积分守恒（BEGIN/END）。</summary>
+    public static bool AnimSpeed226Log { get; set; }
+
+    /// <summary>228 — FreeFrontAutoTail Bake/运行探针（BEGIN/END/SOLVE/REJECT），独立于 226。</summary>
+    public static bool AnimSpeed228Log { get; set; }
+
+    /// <summary>227.5.1 — Idle/连续表现与双端口 Mixer（REQUEST/RESOLVE/BEGIN/SAMPLE/END）。</summary>
+    public static bool AnimTransition227Log { get; set; }
+
+    /// <summary>227.5.1.1 — Idle→Run / Jump 卡壳异常专用探针；与主链核心 Log 独立开关。</summary>
+    public static bool AnimTransition227BugLog { get; set; }
+
+    /// <summary>227 — Jump/RunStart 与 WASD 位置结算、Motor 外写入、显式 Teleport 专项探针。</summary>
+    public static bool LocomotionTransition227BugLog { get; set; }
+
     // ─── Combat / Interrupt ───
     public static bool InterruptFlow { get; set; }
     public static bool ComboAirGate { get; set; }
@@ -54,6 +69,12 @@ public static class GameMainDebugSettings
     public static bool ActionTimelinePreviewLog { get; set; }
     public static bool MirrorDiagLog { get; set; }
 
+    /// <summary>224.0 — Scene 主 Shape 绘制源标签 / 同帧冲突观察。</summary>
+    public static bool CombatSceneDrawSource { get; set; }
+
+    /// <summary>224.0 — Contact Preview/Runtime Pose·Geometry 单次基线快照。</summary>
+    public static bool CombatContactBaseline { get; set; }
+
 #if UNITY_EDITOR
     public static void LoadFromEditorPrefs()
     {
@@ -75,6 +96,11 @@ public static class GameMainDebugSettings
         TurnSubState = EditorPrefsGetBool(nameof(TurnSubState));
         ActionYawLog = EditorPrefsGetBool(nameof(ActionYawLog))
                        || UnityEditor.EditorPrefs.GetBool("Core-Drive/ActionYawProbe/EnableLog", false);
+        AnimSpeed226Log = EditorPrefsGetBool(nameof(AnimSpeed226Log));
+        AnimSpeed228Log = EditorPrefsGetBool(nameof(AnimSpeed228Log));
+        AnimTransition227Log = EditorPrefsGetBool(nameof(AnimTransition227Log));
+        AnimTransition227BugLog = EditorPrefsGetBool(nameof(AnimTransition227BugLog));
+        LocomotionTransition227BugLog = EditorPrefsGetBool(nameof(LocomotionTransition227BugLog));
         InterruptFlow = EditorPrefsGetBool(nameof(InterruptFlow));
         ComboAirGate = EditorPrefsGetBool(nameof(ComboAirGate));
         CombatHit = EditorPrefsGetBool(nameof(CombatHit));
@@ -88,6 +114,8 @@ public static class GameMainDebugSettings
             || UnityEditor.EditorPrefs.GetBool("Core-Drive/ActionTimelinePreviewProbe/EnableLog", false);
         MirrorDiagLog = EditorPrefsGetBool(nameof(MirrorDiagLog))
             || UnityEditor.EditorPrefs.GetBool("Core-Drive/MirroredClipSampler/EnableDiag", false);
+        CombatSceneDrawSource = EditorPrefsGetBool(nameof(CombatSceneDrawSource));
+        CombatContactBaseline = EditorPrefsGetBool(nameof(CombatContactBaseline));
     }
 
     public static void SaveToEditorPrefs()
@@ -105,6 +133,11 @@ public static class GameMainDebugSettings
         EditorPrefsSetBool(nameof(Stop), Stop);
         EditorPrefsSetBool(nameof(TurnSubState), TurnSubState);
         EditorPrefsSetBool(nameof(ActionYawLog), ActionYawLog);
+        EditorPrefsSetBool(nameof(AnimSpeed226Log), AnimSpeed226Log);
+        EditorPrefsSetBool(nameof(AnimSpeed228Log), AnimSpeed228Log);
+        EditorPrefsSetBool(nameof(AnimTransition227Log), AnimTransition227Log);
+        EditorPrefsSetBool(nameof(AnimTransition227BugLog), AnimTransition227BugLog);
+        EditorPrefsSetBool(nameof(LocomotionTransition227BugLog), LocomotionTransition227BugLog);
         EditorPrefsSetBool(nameof(InterruptFlow), InterruptFlow);
         EditorPrefsSetBool(nameof(ComboAirGate), ComboAirGate);
         EditorPrefsSetBool(nameof(CombatHit), CombatHit);
@@ -116,6 +149,8 @@ public static class GameMainDebugSettings
         EditorPrefsSetBool(nameof(HudBugLog), HudBugLog);
         EditorPrefsSetBool(nameof(ActionTimelinePreviewLog), ActionTimelinePreviewLog);
         EditorPrefsSetBool(nameof(MirrorDiagLog), MirrorDiagLog);
+        EditorPrefsSetBool(nameof(CombatSceneDrawSource), CombatSceneDrawSource);
+        EditorPrefsSetBool(nameof(CombatContactBaseline), CombatContactBaseline);
     }
 
     public static void EnableAllLogs()
@@ -133,6 +168,11 @@ public static class GameMainDebugSettings
         Stop = true;
         TurnSubState = true;
         ActionYawLog = true;
+        AnimSpeed226Log = true;
+        AnimSpeed228Log = true;
+        AnimTransition227Log = true;
+        AnimTransition227BugLog = true;
+        LocomotionTransition227BugLog = true;
         InterruptFlow = true;
         ComboAirGate = true;
         CombatHit = true;
@@ -143,6 +183,8 @@ public static class GameMainDebugSettings
         HudBugLog = true;
         ActionTimelinePreviewLog = true;
         MirrorDiagLog = true;
+        CombatSceneDrawSource = true;
+        CombatContactBaseline = true;
         SaveToEditorPrefs();
         HudBugProbe.OnSettingsChanged();
     }
@@ -162,6 +204,11 @@ public static class GameMainDebugSettings
         Stop = false;
         TurnSubState = false;
         ActionYawLog = false;
+        AnimSpeed226Log = false;
+        AnimSpeed228Log = false;
+        AnimTransition227Log = false;
+        AnimTransition227BugLog = false;
+        LocomotionTransition227BugLog = false;
         InterruptFlow = false;
         ComboAirGate = false;
         CombatHit = false;
@@ -173,6 +220,8 @@ public static class GameMainDebugSettings
         HudBugLog = false;
         ActionTimelinePreviewLog = false;
         MirrorDiagLog = false;
+        CombatSceneDrawSource = false;
+        CombatContactBaseline = false;
         SaveToEditorPrefs();
         HudBugProbe.OnSettingsChanged();
     }
@@ -200,6 +249,11 @@ public static class GameMainDebugSettings
         Stop = false;
         TurnSubState = false;
         ActionYawLog = false;
+        AnimSpeed226Log = false;
+        AnimSpeed228Log = false;
+        AnimTransition227Log = false;
+        AnimTransition227BugLog = false;
+        LocomotionTransition227BugLog = false;
         InterruptFlow = false;
         ComboAirGate = false;
         CombatHit = false;
@@ -211,6 +265,8 @@ public static class GameMainDebugSettings
         HudBugLog = false;
         ActionTimelinePreviewLog = false;
         MirrorDiagLog = false;
+        CombatSceneDrawSource = false;
+        CombatContactBaseline = false;
     }
 
 #if UNITY_EDITOR

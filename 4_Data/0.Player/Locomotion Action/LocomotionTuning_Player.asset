@@ -19,6 +19,14 @@ MonoBehaviour:
   AirMoveMultiplier: 0.6
   GroundAcceleration: 12
   GroundDeceleration: 22
+  UseVectorVelocityResponse: 1
+  WalkRiseTime: 0.14
+  RunRiseTime: 0.2
+  ReleaseStopTime: 0.12
+  DirectionTurnResponseTime: 0.09
+  ReverseResponseTime: 0.16
+  StartSpeedFloorRatio: 0.25
+  MotionFacingAngularSpeedDeg: 720
   RotationMode: 1
   RotationSpeedDegPerSec: 720
   SnapSpeedThreshold: 0.2

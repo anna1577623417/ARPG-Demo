@@ -3,7 +3,7 @@ using UnityEngine;
 /// <summary>
 /// 圆锥形粗检：先球形 BroadPhase，再角度筛选；结果写入 buffer 前若干项（可能小于物理返回数）。
 /// </summary>
-[CreateAssetMenu(menuName = "Combat/HitShape/Cone")]
+[CreateAssetMenu(menuName = "GameMain/Combat/Hit Shape/Cone")]
 public class ConeShapeSO : HitShapeSO
 {
     [Tooltip("半角（度）")]

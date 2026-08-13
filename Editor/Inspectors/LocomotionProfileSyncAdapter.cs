@@ -20,6 +20,10 @@ public static class LocomotionProfileSyncAdapter
         public List<string> MissingTurn { get; } = new List<string>();
         public List<string> Duplicate { get; } = new List<string>();
         public List<string> Unused { get; } = new List<string>();
+        /// <summary>227.5.1 — 连续 State 无 MainClip / 离散 State 无 Action 等真实内容错误。</summary>
+        public List<string> ContentErrors { get; } = new List<string>();
+        /// <summary>227.4 — 可运行但需要作者确认/迁移的 Motion Driver 内容警告。</summary>
+        public List<string> ContentWarnings { get; } = new List<string>();
 
         public int ExpectedBindingCount { get; set; }
         public int ActualBindingCount { get; set; }
@@ -28,8 +32,9 @@ public static class LocomotionProfileSyncAdapter
         public bool HasMissing =>
             MissingSimple.Count > 0 || MissingStrafe.Count > 0 || MissingTurn.Count > 0;
 
-        public bool HasErrors => Duplicate.Count > 0 || HasCountMismatch || HasMissing;
-        public bool HasWarnings => Unused.Count > 0;
+        public bool HasErrors =>
+            Duplicate.Count > 0 || HasCountMismatch || HasMissing || ContentErrors.Count > 0;
+        public bool HasWarnings => Unused.Count > 0 || ContentWarnings.Count > 0;
         public bool IsClean => !HasErrors && !HasWarnings;
 
         public string ToSummary()
@@ -63,6 +68,16 @@ public static class LocomotionProfileSyncAdapter
             if (Unused.Count > 0)
             {
                 sb.Append("Unused: ").Append(string.Join(", ", Unused)).Append('\n');
+            }
+
+            if (ContentErrors.Count > 0)
+            {
+                sb.Append("Content: ").Append(string.Join("; ", ContentErrors)).Append('\n');
+            }
+
+            if (ContentWarnings.Count > 0)
+            {
+                sb.Append("ContentWarnings: ").Append(string.Join("; ", ContentWarnings)).Append('\n');
             }
 
             if (HasCountMismatch)
@@ -250,8 +265,157 @@ public static class LocomotionProfileSyncAdapter
             return report;
         }
 
-        AnalyzeBindingsAgainstAuthority(profile.EnabledStates, profile.EditorGetBindingsCopy(), report);
+        var bindings = profile.EditorGetBindingsCopy();
+        AnalyzeBindingsAgainstAuthority(profile.EnabledStates, bindings, report);
+        AnalyzeBindingContent(bindings, report);
         return report;
+    }
+
+    /// <summary>227.5.1 — State 校验执行拓扑，Action.IsContinuousLocomotion 校验连续槽接管资格。</summary>
+    static void AnalyzeBindingContent(IReadOnlyList<LocomotionStateBinding> bindings, Report report)
+    {
+        if (bindings == null)
+        {
+            return;
+        }
+
+        var rolesByAction = new Dictionary<ActionDataSO, byte>();
+        for (var i = 0; i < bindings.Count; i++)
+        {
+            var row = bindings[i];
+            if (row.State == LocomotionStateId.None || row.State.IsObsoleteLocomotionState())
+            {
+                continue;
+            }
+
+            var action = row.ResolveLocomotionAction();
+            if (action != null)
+            {
+                rolesByAction.TryGetValue(action, out var roles);
+                roles |= row.State.IsContinuous() ? (byte)1 : (byte)2;
+                rolesByAction[action] = roles;
+                AnalyzeMotionDriver(row.State, action, report);
+            }
+
+            if (row.State.IsContinuous())
+            {
+                var allowsFinitePresentation =
+                    LocomotionStateBindingExtensions.AllowsFinitePresentationAction(row.State);
+                var hasContinuousAction = action != null
+                                          && action.MainClip != null
+                                          && (action.IsContinuousLocomotion || allowsFinitePresentation);
+#pragma warning disable CS0618
+                var hasLegacyClip = row.ContinuousClip != null;
+#pragma warning restore CS0618
+                if (action != null && action.MainClip == null)
+                {
+                    report.ContentErrors.Add($"{row.State}: continuous State 的 LocomotionAction 无 MainClip");
+                }
+                else if (action != null
+                         && !action.IsContinuousLocomotion
+                         && !allowsFinitePresentation)
+                {
+                    report.ContentErrors.Add(
+                        $"{row.State}: continuous State 的 LocomotionAction 未勾选 Is Continuous，Action 不会接管");
+                }
+                else if (action != null
+                         && action.IsContinuousLocomotion
+                         && allowsFinitePresentation)
+                {
+                    report.ContentErrors.Add(
+                        $"{row.State}: finite presentation State 不得勾选 Is Continuous（会错误循环）");
+                }
+
+                if (!hasContinuousAction && !hasLegacyClip)
+                {
+                    report.ContentErrors.Add(
+                        $"{row.State}: continuous State 无可用接管 Action（且无 Legacy ContinuousClip）");
+                }
+            }
+            else if (row.State.IsDiscrete())
+            {
+                if (action == null)
+                {
+                    report.ContentErrors.Add($"{row.State}: discrete State 无 LocomotionAction");
+                }
+                else if (action.IsContinuousLocomotion)
+                {
+                    report.ContentErrors.Add($"{row.State}: discrete State 不得勾选 Is Continuous");
+                }
+            }
+        }
+
+
+        foreach (var pair in rolesByAction)
+        {
+            if (pair.Value == 3)
+            {
+                report.ContentErrors.Add(
+                    $"{pair.Key.name}: 同时绑定 continuous 与 discrete State，禁止由 Action 字段猜测角色");
+            }
+        }
+    }
+
+    static void AnalyzeMotionDriver(
+        LocomotionStateId state,
+        ActionDataSO action,
+        Report report)
+    {
+        var plan = ActionMotionDriverResolver.Resolve(action);
+        if (!plan.IsValid)
+        {
+            report.ContentErrors.Add($"{state}: {action.name} Motion Driver 无效 — {plan.ResolutionReason}");
+            return;
+        }
+
+        if (action.MotionDriverMode != ActionMotionDriverMode.MotionProfile
+            && action.MotionDriverMode != ActionMotionDriverMode.LegacyAuto
+            && action.MotionProfile != null)
+        {
+            report.ContentWarnings.Add(
+                $"{state}: {action.name} 当前 Driver={action.MotionDriverMode}，但仍残留 MP 引用");
+        }
+
+        if (action.MotionDriverMode == ActionMotionDriverMode.LegacyAuto)
+        {
+            report.ContentWarnings.Add(
+                $"{state}: {action.name} 仍为 LegacyAuto（effective={plan.EffectiveMode}），待显式迁移");
+        }
+
+        if (state.IsContinuous()
+            && action.MotionDriverMode != ActionMotionDriverMode.LegacyAuto
+            && action.MotionDriverMode != ActionMotionDriverMode.InheritStateMotor)
+        {
+            report.ContentErrors.Add(
+                $"{state}: continuous State 不执行离散 Action Driver={action.MotionDriverMode}");
+        }
+
+        if (state == LocomotionStateId.JumpStart
+            && action.MotionDriverMode == ActionMotionDriverMode.Stationary)
+        {
+            report.ContentErrors.Add("JumpStart: Stationary 会阻断跳跃垂直积分");
+        }
+
+        if ((state == LocomotionStateId.RunStart || state == LocomotionStateId.WalkStart)
+            && plan.EffectiveMode == ActionMotionDriverMode.MotionProfile
+            && ResolvePlanarDisplacement(action.MotionProfile) < 0.001f)
+        {
+            report.ContentErrors.Add(
+                $"{state}: MotionProfile 有效平面输出为 0，会形成启动凝固");
+        }
+    }
+
+    static float ResolvePlanarDisplacement(MotionProfileSO profile)
+    {
+        if (profile == null || !profile.UsesAxisCurves)
+        {
+            return 0f;
+        }
+
+        var start = profile.AxisCurves.SampleLocalPosition(0f);
+        var end = profile.AxisCurves.SampleLocalPosition(1f);
+        var delta = end - start;
+        return new Vector2(delta.x, delta.z).magnitude;
     }
 
     public static string BuildSummary(LocomotionProfile profile) => Validate(profile).ToSummary();
@@ -349,7 +513,8 @@ public static class LocomotionProfileSyncAdapter
         }
 
         profile.EditorSetBindings(list.ToArray());
-        result.Converged = Validate(profile).IsClean;
+        // Migration warning 不应让结构 AutoFix 永久显示“不收敛”；只要无 Error 即收敛。
+        result.Converged = !Validate(profile).HasErrors;
 
         Log($"Reconcile simple+{result.AddedSimple} strafe+{result.AddedStrafe} turn+{result.AddedTurn} " +
             $"unused-{result.RemovedUnused} dup-{result.RemovedDuplicates} invalid-{result.RemovedInvalid} " +

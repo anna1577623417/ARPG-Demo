@@ -1,0 +1,111 @@
+---
+description: 代码落位蓝图协议：将设计与仓库事实拆成可追踪、可通电、可验证、可回退的 Landing；仅在生成或评审蓝图时启用
+globs: **/*蓝图*.md, **/*落地计划*.md, **/*设计书*.md
+alwaysApply: false
+---
+
+# Blueprint Code Landing Architect
+
+完整规范：
+`F:\Code\Note\3.Core-Drive_Action\3D ARPG\2.项目开发日志\0.Vibe Coding 经验\2.工作流\6.代码落位蓝图Skill v2.0.md`
+
+与 `AGENTS.md`、`07-single-track-migration.mdc`、`09-refactor-delivery-protocol.mdc`、`12-no-unrequested-scaffolding.mdc`、`15-ai-agent-code-mentor.mdc` 一同适用。
+
+## 一、蓝图必须是施工合同
+
+每条设计要求必须映射：
+
+```text
+Requirement ID
+→ 主 Landing
+→ 文件 / 类型 / 方法 / 调用链
+→ WIRE 握手
+→ Log / Test / Scene / Build 证据
+→ 回退边界
+→ 删除时机
+```
+
+蓝图前必须扫描真实 Data、Runtime、Editor、Timeline、Scene callback、Validator、测试、菜单、YAML/GUID、旧字段和所有读写点。现状结论必须有文件、类型、方法、调用者、消费者；不确定写 `【待代码确认】`。
+
+## 二、L0、需求账本和 Landing
+
+多数据真相、Preview/Runtime 不一致、Legacy 删除、Scene 冲突、性能门禁或调用链不确定时，必须先有 L0：只读探针与基线冻结，不改正式行为或生产资产。
+
+设计和反馈必须原子化为 `REQ-*` 或 `DISCOVERY-*`，输出双向账本：
+
+```text
+需求 → 主 Landing
+Landing → 需求来源
+```
+
+默认 6～8 个 Landing。每个 Landing 只承担一个主要结果、1～3 个 WIRE，并包含：覆盖需求、当前代码事实、本次不做、文件+符号、设施表、握手表、生命周期、失败路径、验证计划、退出门禁、回退边界。
+
+新设施必须有首个消费者和通电 Landing。通电必须是：
+
+```text
+真实入口 → 新数据 → Resolver / Service → Runtime 行为 → Fact / Log / Scene / Presentation
+```
+
+## 三、单轨和删除
+
+Runtime 只有一条正式路径。不得用 fallback、V2 并存、双写、Feature Flag、Obsolete 或 HideInInspector 替代删除。
+
+所有临时 Legacy 必须登记真实消费者、禁止新写入、停止读取 Landing、物理删除 Landing 和零引用门禁。正式测试前必须：
+
+```text
+Legacy Runtime Consumers = 0
+Legacy Authoring Entrances = 0
+Legacy Serialized References = 0
+Compatibility Adapters = 0
+Fallback Branches = 0
+Legacy Menus / Tests = 0
+```
+
+## 四、资产迁移工具：必须当前请求明确授权
+
+**禁止自主编写或在蓝图中默认规划资产迁移工具。** 没有用户在当前请求中明确授权以下四项时，资产写入一律不在本周期：
+
+```text
+迁移资产范围 / 目录
+允许编写的迁移工具或命令
+允许的复制、重绑、原地修改或删除动作
+验收人与回退方式
+```
+
+因此不得新增或预埋：
+
+- `MigrationPlanner`、`MigrationExecutor`、`Migrate All`、`Purge Legacy`；
+- 自动复制/生成/重绑 CO、Shape、Window、TargetProfile 或生产引用；
+- 自动修改 YAML/GUID、自动清旧字段、自动切换资产；
+- 藏在 `OnValidate`、Inspector、MenuItem、测试工厂或 Runtime 的迁移写入逻辑。
+
+Legacy 删除需要资产就绪时，只能写成外部前置条件：
+
+```text
+用户单独准备并确认资产
+→ 允许代码删除 Gate
+否则 → Blocked；报告引用，不编写迁移工具。
+```
+
+以后如用户明确要求迁移，必须新开独立设计/蓝图周期，不能临时插入当前 Runtime、Editor 或删除 Landing。
+
+## 五、验证与范围
+
+未经用户明确要求，不新增 Setup/MVP/Demo 菜单、全项目批处理、测试文件或资产。优先复用现有扫描、测试、Log、Inspector、Timeline 和 Scene 手工验收。
+
+蓝图末尾必须有 Semantic Delta、遗弃清单、最终不存在项和计数：
+
+```text
+Missing Requirements: 0
+Unowned Requirements / Landings: 0
+Infrastructure Without Consumer: 0
+WIRE Without Evidence: 0
+Compatibility Without Removal: 0
+Legacy Without Death Date: 0
+Unapproved Scope Additions: 0
+Unmeasured Performance Claims: 0
+```
+
+任一非零，不得声明蓝图完成。
+
+代码落位时一次只做一个 Landing；开工前复核代码现实，结束后按 `AGENTS.md` 以 `---` 与 `==【N】==` 追加 Output，区分真实验证层级，不能把未运行的 Unity、Build 或表现验收写成 PASS。

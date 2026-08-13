@@ -68,14 +68,86 @@ public class MotionProfileSO : ScriptableObject
 
     [Header("Animation Speed / 局部节奏")]
     [Tooltip(
-        "局部节奏倍率（与 Action.AnimSpeed 相乘）：\n" +
+        "局部节奏倍率（与 Action 基准 AnimSpeed 相乘）：\n" +
         "  Constant — 恒 1；\n" +
-        "  Curve — SpeedOverTime(motionT)，控制段内先慢后快等节奏。\n" +
-        "【171.7】仅当绑定 Action 的 ClipAnimSpeedMode=Free 时生效；AutoFitDuration 下运行时忽略本曲线。")]
+        "  Curve — SpeedOverTime(motionT)，段内先慢后快等节奏。\n" +
+        "【226】Free / AutoFit 均可叠加；曲线须满足 ∫₀¹ f≈1，否则 Runtime 拒绝曲线（按 Constant）。")]
     public AnimSpeedMode AnimSpeedMode = AnimSpeedMode.Constant;
 
-    [Tooltip("AnimSpeedMode=Curve：归一化 Motion 时间 t→局部速率倍率。仅 Action ClipAnimSpeedMode=Free 时参与运行时合成。")]
+    [Tooltip("AnimSpeedMode=Curve：归一化 Motion 时间 t→局部速率倍率。须积分守恒（∫≈1）。")]
     public AnimationCurve SpeedOverTime = AnimationCurve.Constant(0f, 1f, 1f);
+
+    [Tooltip(
+        "Curve 作者方式：\n" +
+        "· Freehand — 手绘校验；\n" +
+        "· ThreePointConserve — 三点锁二求一并烘焙（226，长期兼容）；\n" +
+        "· FreeFrontAutoTail — 【228】共享结点前段自由 + AutoTail 守恒求解。")]
+    public AnimSpeedCurveAuthoringMode AnimSpeedAuthoringMode = AnimSpeedCurveAuthoringMode.Freehand;
+
+    [Tooltip("三点求解目标：默认求 End（锁 Start+Mid）。")]
+    public AnimSpeedCurveSolveTarget AnimSpeedSolveTarget = AnimSpeedCurveSolveTarget.End;
+
+    [Tooltip("三点中点归一化时间，默认 0.5。")]
+    [Range(0.05f, 0.95f)]
+    public float AnimSpeedMidTime = 0.5f;
+
+    [Tooltip("三点 Start 倍率（t=0）。")]
+    [Min(0f)]
+    public float AnimSpeedPointStart = 1f;
+
+    [Tooltip("三点 Mid 倍率（t=MidTime）。")]
+    [Min(0f)]
+    public float AnimSpeedPointMid = 1f;
+
+    [Tooltip("三点 End 倍率（t=1）。")]
+    [Min(0f)]
+    public float AnimSpeedPointEnd = 1f;
+
+    [Tooltip(
+        "【228】积分残差容差 ε：|∫f-1|≤ε 视为合法；前段预算判定亦用此 ε。\n" +
+        "默认 0.005；可按资产调宽/调严。")]
+    [Range(0.0001f, 0.05f)]
+    public float AnimSpeedIntegralEpsilon = AnimSpeedIntegralMath.DefaultEpsilon;
+
+    [Header("Animation Speed / 228 Knot Timeline")]
+    [Tooltip("【228】共享结点全局时间 t∈[0,1]；首结点须为 0，末前段结点为 t*。禁止每段独立 Start+End 双写。")]
+    public float[] AnimSpeedKnotTimes = { 0f, 0.5f };
+
+    [Tooltip("【228】到达结点时的倍率（段右端）。Continuous 时与 Leave 相同。")]
+    public float[] AnimSpeedKnotArriveValues = { 1f, 1f };
+
+    [Tooltip("【228】离开结点时的倍率（段左端）。Break 时可与 Arrive 不同。")]
+    public float[] AnimSpeedKnotLeaveValues = { 1f, 1f };
+
+    [Tooltip("【228】各结点 Join：Continuous / Break。")]
+    public AnimSpeedJoinMode[] AnimSpeedKnotJoins =
+    {
+        AnimSpeedJoinMode.Continuous,
+        AnimSpeedJoinMode.Continuous,
+    };
+
+    [Tooltip("【228】前段形状预设；长度 = KnotCount-1。")]
+    public AnimSpeedSegmentShapePreset[] AnimSpeedSegmentShapes = { AnimSpeedSegmentShapePreset.Linear };
+
+    [Tooltip("【228】AutoTail 求解形状；默认 Linear。")]
+    public AnimSpeedTailSolveShape AnimSpeedTailSolveShape = AnimSpeedTailSolveShape.Linear;
+
+    [Tooltip("【228】前段末结点 → AutoTail 的 Join。Continuous 时 TailStart=Leave(t*)。")]
+    public AnimSpeedJoinMode AnimSpeedTailJoinFromFront = AnimSpeedJoinMode.Continuous;
+
+    [Tooltip("【228】TailJoin=Break 时的 Tail 起点倍率。")]
+    [Min(0f)]
+    public float AnimSpeedTailStartValue = 1f;
+
+    [Tooltip("【228】AutoTail 最小长度 L_min；t* ≤ 1-L_min（仅 AutoTail 开启时）。")]
+    [Min(0.001f)]
+    public float AnimSpeedTailMinLength = AnimSpeedKnotTimeline.DefaultTailMinLength;
+
+    [Tooltip(
+        "【228】是否启用自适应 AutoTail。\n" +
+        "开启：末段按积分预算求解 End。\n" +
+        "关闭：不求解尾部（前段积分已够/过大时使用）；末段 To 可到 1。")]
+    public bool AnimSpeedAutoTailEnabled = true;
 
     [Header("Stat Scaling (displacement only)")]
     [Tooltip("仅缩放位移幅度（AxisCurves）。逻辑时长属性缩放见 ActionData.DurationStatScaling。")]
@@ -242,7 +314,7 @@ public class MotionProfileSO : ScriptableObject
 #pragma warning restore CS0618
     }
 
-    /// <summary>Curve 模式下按归一化 Motion 时间采样局部节奏倍率（不含 Action 层门控）。</summary>
+    /// <summary>Curve 模式下按归一化 Motion 时间采样局部节奏倍率（不含积分门禁）。</summary>
     public float SampleAnimSpeed(float t)
     {
         if (AnimSpeedMode != AnimSpeedMode.Curve
@@ -255,9 +327,168 @@ public class MotionProfileSO : ScriptableObject
         return Mathf.Max(0f, SpeedOverTime.Evaluate(Mathf.Clamp01(t)));
     }
 
-    /// <summary>171.7：Action 非 Free 时恒 1；Free 时走 <see cref="SampleAnimSpeed"/> 曲线。</summary>
+    /// <summary>226：经 Authority 积分校验后的局部倍率（非法曲线拒绝为 1）。</summary>
     public float SampleAnimSpeed(ActionDataSO action, float t) =>
         ActionAnimSpeedAuthority.ResolveProfileAnimSpeedFactor(action, this, t);
+
+    /// <summary>当前 SpeedOverTime 积分；Constant 视为 1。</summary>
+    public float EvaluateAnimSpeedIntegral()
+    {
+        if (AnimSpeedMode != AnimSpeedMode.Curve)
+        {
+            return 1f;
+        }
+
+        return AnimSpeedIntegralMath.IntegrateCurve(SpeedOverTime);
+    }
+
+    /// <summary>本资产积分残差 ε（下限钳制，避免 0）。</summary>
+    public float ResolveAnimSpeedIntegralEpsilon() =>
+        Mathf.Max(0.0001f, AnimSpeedIntegralEpsilon);
+
+    /// <summary>策略1：曲线非法（|∫-1|&gt;ε）时 false；ε 取本资产字段。</summary>
+    public bool IsAnimSpeedCurveIntegralValid()
+    {
+        if (AnimSpeedMode != AnimSpeedMode.Curve)
+        {
+            return true;
+        }
+
+        return AnimSpeedIntegralMath.TryValidateCurve(
+            SpeedOverTime,
+            out _,
+            ResolveAnimSpeedIntegralEpsilon());
+    }
+
+    /// <summary>策略1：使用显式 ε（测试 / 诊断）。</summary>
+    public bool IsAnimSpeedCurveIntegralValid(float epsilon)
+    {
+        if (AnimSpeedMode != AnimSpeedMode.Curve)
+        {
+            return true;
+        }
+
+        return AnimSpeedIntegralMath.TryValidateCurve(
+            SpeedOverTime,
+            out _,
+            Mathf.Max(0.0001f, epsilon));
+    }
+
+    public AnimSpeedThreePointSpec ReadAnimSpeedThreePointSpec() => new AnimSpeedThreePointSpec
+    {
+        MidTime = AnimSpeedMidTime,
+        Start = AnimSpeedPointStart,
+        Mid = AnimSpeedPointMid,
+        End = AnimSpeedPointEnd,
+        SolveTarget = AnimSpeedSolveTarget,
+    };
+
+    public void WriteAnimSpeedThreePointSpec(in AnimSpeedThreePointSpec spec)
+    {
+        AnimSpeedMidTime = Mathf.Clamp(spec.MidTime, 0.05f, 0.95f);
+        AnimSpeedPointStart = Mathf.Max(0f, spec.Start);
+        AnimSpeedPointMid = Mathf.Max(0f, spec.Mid);
+        AnimSpeedPointEnd = Mathf.Max(0f, spec.End);
+        AnimSpeedSolveTarget = spec.SolveTarget;
+    }
+
+    /// <summary>【228】读取共享结点时间轴快照；缺省时回落 CreateDefault。</summary>
+    public AnimSpeedKnotTimeline ReadAnimSpeedKnotTimeline()
+    {
+        if (AnimSpeedKnotTimes == null || AnimSpeedKnotTimes.Length < 2)
+        {
+            return AnimSpeedKnotTimeline.CreateDefault();
+        }
+
+        return new AnimSpeedKnotTimeline
+        {
+            Times = (float[])AnimSpeedKnotTimes.Clone(),
+            ArriveValues = CloneOrFill(AnimSpeedKnotArriveValues, AnimSpeedKnotTimes.Length, 1f),
+            LeaveValues = CloneOrFill(AnimSpeedKnotLeaveValues, AnimSpeedKnotTimes.Length, 1f),
+            Joins = CloneOrFillJoins(AnimSpeedKnotJoins, AnimSpeedKnotTimes.Length),
+            SegmentShapes = CloneOrFillShapes(AnimSpeedSegmentShapes, AnimSpeedKnotTimes.Length - 1),
+            TailSolveShape = AnimSpeedTailSolveShape,
+            TailJoinFromFront = AnimSpeedTailJoinFromFront,
+            TailStartValue = Mathf.Max(0f, AnimSpeedTailStartValue),
+            TailMinLength = Mathf.Max(0.001f, AnimSpeedTailMinLength),
+            AutoTailEnabled = AnimSpeedAutoTailEnabled,
+        };
+    }
+
+    /// <summary>【228】写回共享结点时间轴（Editor / Bake 调用；禁止 OnValidate 静默写）。</summary>
+    public void WriteAnimSpeedKnotTimeline(in AnimSpeedKnotTimeline timeline)
+    {
+        var src = timeline;
+        if (src.Times == null || src.Times.Length < 2)
+        {
+            src = AnimSpeedKnotTimeline.CreateDefault();
+        }
+
+        src.NormalizeContinuousJoins();
+        AnimSpeedKnotTimes = (float[])src.Times.Clone();
+        AnimSpeedKnotArriveValues = (float[])src.ArriveValues.Clone();
+        AnimSpeedKnotLeaveValues = (float[])src.LeaveValues.Clone();
+        AnimSpeedKnotJoins = (AnimSpeedJoinMode[])src.Joins.Clone();
+        AnimSpeedSegmentShapes = (AnimSpeedSegmentShapePreset[])src.SegmentShapes.Clone();
+        AnimSpeedTailSolveShape = src.TailSolveShape;
+        AnimSpeedTailJoinFromFront = src.TailJoinFromFront;
+        AnimSpeedTailStartValue = Mathf.Max(0f, src.TailStartValue);
+        AnimSpeedTailMinLength = Mathf.Max(0.001f, src.TailMinLength);
+        AnimSpeedAutoTailEnabled = src.AutoTailEnabled;
+    }
+
+    /// <summary>
+    /// 【228】前段积分 + AutoTail 求解并烘焙 SpeedOverTime。
+    /// 仅 Editor 变更路径调用；失败不改曲线。
+    /// </summary>
+    public bool TryBakeFreeFrontAutoTail(out AnimSpeedKnotBakeResult result, out string error)
+    {
+        var timeline = ReadAnimSpeedKnotTimeline();
+        if (!AnimSpeedKnotBake.TrySolveTailAndBake(
+                timeline,
+                out result,
+                out error,
+                ResolveAnimSpeedIntegralEpsilon()))
+        {
+            return false;
+        }
+
+        SpeedOverTime = result.Curve;
+        return true;
+    }
+
+    static float[] CloneOrFill(float[] source, int length, float fill)
+    {
+        var arr = new float[length];
+        for (var i = 0; i < length; i++)
+        {
+            arr[i] = source != null && i < source.Length ? Mathf.Max(0f, source[i]) : fill;
+        }
+
+        return arr;
+    }
+
+    static AnimSpeedJoinMode[] CloneOrFillJoins(AnimSpeedJoinMode[] source, int length)
+    {
+        var arr = new AnimSpeedJoinMode[length];
+        for (var i = 0; i < length; i++)
+        {
+            arr[i] = source != null && i < source.Length ? source[i] : AnimSpeedJoinMode.Continuous;
+        }
+
+        return arr;
+    }
+
+    static AnimSpeedSegmentShapePreset[] CloneOrFillShapes(AnimSpeedSegmentShapePreset[] source, int length)
+    {
+        var arr = new AnimSpeedSegmentShapePreset[Mathf.Max(0, length)];
+        for (var i = 0; i < arr.Length; i++)
+        {
+            arr[i] = source != null && i < source.Length ? source[i] : AnimSpeedSegmentShapePreset.Linear;
+        }
+
+        return arr;
+    }
 
     // ═══ 174.2 V2 采样接口 ═══
     // 所有方法默认返回 V1 等价值；启用 V2 字段后才生效。
@@ -451,9 +682,27 @@ public class MotionProfileSO : ScriptableObject
     }
 
 #if UNITY_EDITOR
+    /// <summary>【228/227】结点时间轴只读校验缓存；OnValidate 禁止 SetDirty 改业务字段。</summary>
+    [System.NonSerialized] public string AnimSpeedKnotValidateMessage;
+
     void Reset()
     {
         ApplyDefaultZeroAxisDisplacement();
+    }
+
+    void OnValidate()
+    {
+        AnimSpeedKnotValidateMessage = null;
+        if (AnimSpeedAuthoringMode != AnimSpeedCurveAuthoringMode.FreeFrontAutoTail)
+        {
+            return;
+        }
+
+        var timeline = ReadAnimSpeedKnotTimeline();
+        if (!timeline.TryValidate(out var error))
+        {
+            AnimSpeedKnotValidateMessage = error;
+        }
     }
 #endif
 }

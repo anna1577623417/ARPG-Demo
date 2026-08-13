@@ -141,6 +141,9 @@ public class PlayerAnimController : EntityAnimController
 
     // ─── 生命周期 ───
 
+    protected override int GetAnimProbeInstanceId() =>
+        _entity != null ? _entity.GetInstanceID() : base.GetAnimProbeInstanceId();
+
     protected override void Awake()
     {
         base.Awake();
@@ -255,6 +258,13 @@ public class PlayerAnimController : EntityAnimController
         // Locomotion：启动混合追踪，由 Update 每帧驱动
         if (evt.StateName == nameof(PlayerLocomotionState))
         {
+            // ActionState 在未接地时已直接回 Airborne；此处仍保留防御门，避免未来入口重引入空中 Idle。
+            if (_player != null && !_player.IsGrounded)
+            {
+                _inLocomotion = false;
+                return;
+            }
+
             _inLocomotion = true;
 
             if (!_landingHold)
@@ -343,7 +353,7 @@ public class PlayerAnimController : EntityAnimController
                     out var bindingTransition,
                     out var bindingSpeed,
                     out _,
-                    out _))
+                    out var continuousAction))
             {
                 return;
             }
@@ -351,7 +361,11 @@ public class PlayerAnimController : EntityAnimController
             var transition = transitionOverride >= 0f ? transitionOverride : bindingTransition;
             var speed = bindingSpeed > 0.001f ? bindingSpeed : 1f;
             _currentLocoEntry = null;
-            Play(clip, transition, speed, clip.isLooping);
+            var isLooping = continuousAction != null
+                ? continuousAction.IsContinuousLocomotion
+                : clip.isLooping;
+            Play(clip, transition, speed, isLooping,
+                restartIfSameClip: false, requestSource: "Locomotion.ProfileTurn");
             LogTurnSubPlayIfNeeded(target, turnBinding.TurnDirection, clip.name, "Profile", transition, clip.length, speed);
             LogTurnPresentationEdge(fromSub, target, $"Profile:TurnInPlaceDirected:{turnBinding.TurnDirection}", clip, transition);
             MaybeLogTurnPresentationRepeat(target, turnBinding.TurnDirection.ToString(), clip, transition);
@@ -365,15 +379,19 @@ public class PlayerAnimController : EntityAnimController
             {
                 var transition = transitionOverride >= 0f ? transitionOverride : snap.TransitionDuration;
                 var speed = snap.ClipSpeed > 0.001f ? snap.ClipSpeed : 1f;
+                var isLooping = snap.ContinuousAction != null
+                    ? snap.ContinuousAction.IsContinuousLocomotion
+                    : snap.ContinuousClip.isLooping;
                 _currentLocoEntry = new PlayerAnimManagerSO.AnimClipEntry
                 {
                     Clip = snap.ContinuousClip,
                     TransitionDuration = transition,
                     Speed = speed,
                     ReferenceLocomotionSpeed = snap.ReferenceLocomotionSpeed,
-                    IsLooping = snap.ContinuousClip.isLooping,
+                    IsLooping = isLooping,
                 };
-                Play(snap.ContinuousClip, transition, speed, snap.ContinuousClip.isLooping);
+                Play(snap.ContinuousClip, transition, speed, isLooping,
+                    restartIfSameClip: false, requestSource: "Locomotion.StrafeProfile");
                 return;
             }
         }
@@ -401,7 +419,8 @@ public class PlayerAnimController : EntityAnimController
         {
             var transition = transitionOverride >= 0f ? transitionOverride : _currentLocoEntry.TransitionDuration;
             Play(_currentLocoEntry.Clip, transition, _currentLocoEntry.Speed,
-                _currentLocoEntry.IsLooping);
+                _currentLocoEntry.IsLooping, restartIfSameClip: false,
+                requestSource: $"Locomotion.AnimLibrary.{target}");
             LogTurnSubPlayIfNeeded(target, TurnDirectionFromSub(target), _currentLocoEntry.Clip.name, "AnimLibrary", transition, _currentLocoEntry.Clip.length, _currentLocoEntry.Speed);
             LogTurnPresentationEdge(fromSub, target, key, _currentLocoEntry.Clip, transition);
             MaybeLogTurnPresentationRepeat(target, key, _currentLocoEntry.Clip, transition);
@@ -590,22 +609,33 @@ public class PlayerAnimController : EntityAnimController
                 out var bindingTransition,
                 out var bindingSpeed,
                 out var refSpeed,
-                out _))
+                out var continuousAction))
         {
             return false;
         }
 
         var transition = transitionOverride >= 0f ? transitionOverride : bindingTransition;
         var speed = bindingSpeed > 0.001f ? bindingSpeed : 1f;
+        var isLooping = continuousAction != null
+            ? continuousAction.IsContinuousLocomotion
+            : clip.isLooping;
         _currentLocoEntry = new PlayerAnimManagerSO.AnimClipEntry
         {
             Clip = clip,
             TransitionDuration = transition,
             Speed = speed,
             ReferenceLocomotionSpeed = refSpeed,
-            IsLooping = clip.isLooping,
+            IsLooping = isLooping,
         };
-        Play(clip, transition, speed, clip.isLooping);
+        LocomotionTransition227BugProbe.LogPresentationRequest(
+            _player,
+            $"Locomotion.Profile.{stateId}",
+            continuousAction,
+            clip,
+            CurrentClipName);
+        // 227.5.1.2 勘误：Action 勾选 Is Continuous 才接管循环合同；Legacy Clip 保留导入设置。
+        Play(clip, transition, speed, isLooping,
+            restartIfSameClip: false, requestSource: $"Locomotion.Profile.{stateId}");
         if (target == LocomotionSub.Idle)
         {
             return true;
@@ -640,13 +670,23 @@ public class PlayerAnimController : EntityAnimController
 
     private void OnJumpStart(PlayerJumpEvent evt)
     {
+        if (_entity == null || evt.PlayerInstanceId != _entity.GetInstanceID()) return;
         _inLocomotion = false;
-        PlayLibraryEntry("Airborne_JumpStart");
+        var entry = animLibrary?.GetEntry("Airborne_JumpStart");
+        LocomotionTransition227BugProbe.LogPresentationRequest(
+            _player, "Jump.Event.Start", null, entry?.Clip, CurrentClipName);
+        PlayLibraryEntry("Airborne_JumpStart", restartIfSameClip: false,
+            requestSource: "Jump.Event.Start");
     }
 
     private void OnJumpAirPhase(PlayerJumpAirPhaseEvent evt)
     {
-        PlayLibraryEntry("Airborne_Air", jumpToAirCrossfade);
+        if (_entity == null || evt.PlayerInstanceId != _entity.GetInstanceID()) return;
+        var entry = animLibrary?.GetEntry("Airborne_Air");
+        LocomotionTransition227BugProbe.LogPresentationRequest(
+            _player, "Jump.Event.Air", null, entry?.Clip, CurrentClipName);
+        PlayLibraryEntry("Airborne_Air", jumpToAirCrossfade, restartIfSameClip: false,
+            requestSource: "Jump.Event.Air");
     }
 
     private void OnLanded(PlayerLandedEvent evt)
@@ -683,16 +723,36 @@ public class PlayerAnimController : EntityAnimController
             return;
         }
 
-        if (evt.Action == null || evt.Action.MainClip == null)
+        if (evt.Action == null
+            || evt.Action.MainClip == null
+            || !evt.Action.IsContinuousLocomotion
+            || evt.ExecutionPolicy != LocomotionExecutionPolicy.ContinuousPresentation)
+        {
+            return;
+        }
+
+        if (!_player.IsGrounded)
         {
             return;
         }
 
         _inLocomotion = true;
-        _locoSub = LocomotionSub.None;
+        _locoSub = MapContinuousState(evt.ResolvedState);
+        if (_locoSub == LocomotionSub.None)
+        {
+            _locoSub = ResolveLocomotionSub();
+        }
         var clip = evt.Action.MainClip;
-        var loop = evt.Action.IsContinuousLocomotion || clip.isLooping;
-        Play(clip, evt.Action.CrossfadeTime, Mathf.Max(0.01f, evt.Action.AnimSpeed), loop);
+        LocomotionTransition227BugProbe.LogPresentationRequest(
+            _player,
+            $"Locomotion.ContinuousEvent.{evt.ResolvedState}",
+            evt.Action,
+            clip,
+            CurrentClipName);
+        // 227.5.1.2 勘误：该事件只接受已显式勾选 Is Continuous 的 Action 接管请求。
+        Play(clip, evt.Action.CrossfadeTime, Mathf.Max(0.01f, evt.Action.AnimSpeed),
+            isLooping: evt.Action.IsContinuousLocomotion,
+            restartIfSameClip: false, requestSource: $"Locomotion.ContinuousEvent.{evt.ResolvedState}");
     }
 
     private void OnActionPresentationRequest(PlayerActionPresentationRequestEvent evt)
@@ -704,6 +764,12 @@ public class PlayerAnimController : EntityAnimController
             var clip = evt.PresentationClip != null ? evt.PresentationClip : evt.Action.MainClip;
             if (clip != null)
             {
+                LocomotionTransition227BugProbe.LogPresentationRequest(
+                    _player,
+                    $"ActionPresentation.{evt.Kind}",
+                    evt.Action,
+                    clip,
+                    CurrentClipName);
                 var clipStartNorm = evt.Action.MapActionTimeToClipNormalized(evt.NormalizedStart);
                 var animSpeed = evt.PlaybackAnimSpeedOverride >= 0f
                     ? evt.PlaybackAnimSpeedOverride
@@ -713,7 +779,9 @@ public class PlayerAnimController : EntityAnimController
                     evt.Action.CrossfadeTime,
                     animSpeed,
                     clip.isLooping,
-                    clipStartNorm);
+                    clipStartNorm,
+                    restartIfSameClip: evt.Kind != GameplayIntentKind.Jump,
+                    requestSource: $"ActionPresentation.{evt.Kind}");
                 return;
             }
         }
@@ -771,14 +839,28 @@ public class PlayerAnimController : EntityAnimController
     }
 
     /// <param name="transitionOverride">≥0 时覆盖条目上的 TransitionDuration（用于起跳→滞空等）。</param>
-    private void PlayLibraryEntry(string key, float transitionOverride = -1f)
+    private static LocomotionSub MapContinuousState(LocomotionStateId state) => state switch
+    {
+        LocomotionStateId.Idle => LocomotionSub.Idle,
+        LocomotionStateId.Walk => LocomotionSub.Walk,
+        LocomotionStateId.Run => LocomotionSub.Run,
+        LocomotionStateId.StrafeLocomotion => LocomotionSub.StrafeProfile,
+        _ => LocomotionSub.None,
+    };
+
+    private void PlayLibraryEntry(
+        string key,
+        float transitionOverride = -1f,
+        bool restartIfSameClip = true,
+        string requestSource = "AnimLibrary")
     {
         if (animLibrary == null) return;
         var entry = animLibrary.GetEntry(key);
         if (entry != null && entry.Clip != null)
         {
             var td = transitionOverride >= 0f ? transitionOverride : entry.TransitionDuration;
-            Play(entry.Clip, td, entry.Speed, entry.IsLooping);
+            Play(entry.Clip, td, entry.Speed, entry.IsLooping,
+                restartIfSameClip: restartIfSameClip, requestSource: requestSource);
         }
     }
 }

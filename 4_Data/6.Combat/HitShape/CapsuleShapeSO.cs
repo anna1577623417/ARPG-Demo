@@ -1,6 +1,6 @@
 using UnityEngine;
 
-[CreateAssetMenu(menuName = "Combat/HitShape/Capsule")]
+[CreateAssetMenu(menuName = "GameMain/Combat/Hit Shape/Capsule")]
 public class CapsuleShapeSO : HitShapeSO
 {
     public float radius = 0.35f;

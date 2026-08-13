@@ -465,7 +465,6 @@ public sealed partial class ActionDataTimelineEditor
         _selectedTeleport = -1;
         _selectedMarker = -1;
         _selectedCombatEvent = -1;
-        ClearAttackSelection();
     }
 
     void ClearGuardSelection()

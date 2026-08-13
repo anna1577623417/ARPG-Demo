@@ -1,6 +1,6 @@
 using UnityEngine;
 
-[CreateAssetMenu(menuName = "Combat/HitShape/Box")]
+[CreateAssetMenu(menuName = "GameMain/Combat/Hit Shape/Box")]
 public class BoxShapeSO : HitShapeSO
 {
     public Vector3 halfExtents = new Vector3(0.5f, 0.5f, 1f);

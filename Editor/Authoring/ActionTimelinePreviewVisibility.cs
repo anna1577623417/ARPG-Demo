@@ -15,7 +15,7 @@ internal enum PreviewVisibilityMask : int
     ZAxis = 1 << 5,
     FutureMarkers = 1 << 6,
     Windows = 1 << 7,
-    Hitbox = 1 << 8,
+    // 1 << 8 曾用于旧 Hitbox 占位预览；保留位值以兼容 EditorPrefs，但不再暴露或读取。
     Hurtbox = 1 << 9,
     InvuInter = 1 << 10,
     SceneInfo = 1 << 11,
@@ -24,14 +24,6 @@ internal enum PreviewVisibilityMask : int
     Teleport = 1 << 14,
     Presentation = 1 << 15,
     CombatVolume = 1 << 16,
-    /// <summary>216.3 M1 L3 — HitClip Active 期 Shape 几何。</summary>
-    AttackHitClip = 1 << 17,
-    /// <summary>216.3 M6 L1 — Active 多帧攻击云 Coverage。</summary>
-    AttackCoverage = 1 << 18,
-    /// <summary>216.3 M6 L1 — Trace/Volume Ghost 插值帧。</summary>
-    AttackGhost = 1 << 19,
-    /// <summary>216.3 M6 L2 — HitPreviewDummy 命中变色。</summary>
-    AttackHitPreview = 1 << 20,
     All = ~0,
 }
 
@@ -69,7 +61,6 @@ internal static class ActionTimelinePreviewVisibility
 
     public static PreviewVisibilityMask PresetInfoOnly =>
         PreviewVisibilityMask.Windows
-        | PreviewVisibilityMask.Hitbox
         | PreviewVisibilityMask.Hurtbox
         | PreviewVisibilityMask.InvuInter
         | PreviewVisibilityMask.SceneInfo;

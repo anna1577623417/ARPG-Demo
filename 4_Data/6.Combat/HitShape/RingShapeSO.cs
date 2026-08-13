@@ -4,7 +4,7 @@ using UnityEngine;
 /// 188.3 W10 — 环带形状（光环 / 扩散环）。
 /// <para>仅 InnerRadius~OuterRadius 之间的目标命中（中心圈内不打）。</para>
 /// </summary>
-[CreateAssetMenu(menuName = "Combat/HitShape/Ring")]
+[CreateAssetMenu(menuName = "GameMain/Combat/Hit Shape/Ring")]
 public class RingShapeSO : HitShapeSO
 {
     [Min(0f)] public float innerRadius = 1f;

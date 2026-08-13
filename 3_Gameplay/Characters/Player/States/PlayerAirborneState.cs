@@ -87,6 +87,7 @@ public sealed class PlayerAirborneState : PlayerState
         var ctx = player.LocomotionGraphContext;
 
         var consumed = player.ConsumeJumpFromIntent();
+        LocomotionTransition227BugProbe.BeginJumpFlow(player, consumed);
 
         // 164.1 L0 [Jump] 探针：跳跃流程开始
         if (GameMainDebugSettings.Locomotion)
@@ -104,7 +105,10 @@ public sealed class PlayerAirborneState : PlayerState
 
         if (consumed)
         {
+            var yBeforeJump = player.transform.position.y;
+            var vyBeforeJump = player.VerticalSpeed;
             player.Jump();
+            LocomotionTransition227BugProbe.LogJumpImpulseApplied(player, yBeforeJump, vyBeforeJump);
             if (ctx.JumpStart != null)
             {
                 player.SetGraphContextAction(ctx.JumpStart, "jump-start");
@@ -118,6 +122,7 @@ public sealed class PlayerAirborneState : PlayerState
         else
         {
             _hasPublishedAirPhase = true;
+            LocomotionTransition227BugProbe.LogJumpAirPhase(player, "AirborneEnterWithoutConsumedIntent");
             player.PublishEvent(new PlayerJumpAirPhaseEvent(player.GetInstanceID(), player.name));
             if (ctx.JumpLoop != null)
             {
@@ -141,7 +146,8 @@ public sealed class PlayerAirborneState : PlayerState
 
         var binding = profile.GetBinding(LocomotionStateId.JumpStart);
         var jumpStartAction = binding.ResolveLocomotionAction();
-        if (jumpStartAction == null || jumpStartAction.IsContinuousLocomotion)
+        // 227.5.1：JumpStart 是离散 State；不再用 Action.IsContinuousLocomotion 二次门控。
+        if (jumpStartAction == null || jumpStartAction.MainClip == null)
         {
             return;
         }
@@ -192,6 +198,7 @@ public sealed class PlayerAirborneState : PlayerState
         if (!_hasPublishedAirPhase && player.VerticalSpeed <= 0f)
         {
             _hasPublishedAirPhase = true;
+            LocomotionTransition227BugProbe.LogJumpAirPhase(player, "VerticalSpeedNonPositive");
             player.PublishEvent(new PlayerJumpAirPhaseEvent(player.GetInstanceID(), player.name));
             SyncJumpLoopGraphContext(player);
         }
@@ -218,19 +225,34 @@ public sealed class PlayerAirborneState : PlayerState
     }
 
     void ExitToLandOrLocomotion(Player player)
+        => RouteLanding(player, Mathf.Max(0f, _airbornePeakY - player.transform.position.y));
+
+    /// <summary>
+    /// 227.4.3：普通 Locomotion air-cycle 的共享接地路由。
+    /// 允许 Profile JumpStart 极端情况下在 Action 内先接地时复用；Combat Action 不得调用。
+    /// </summary>
+    internal static void RouteLanding(Player player, float fallHeight, bool forceActionReentry = false)
     {
         player.PublishEvent(new PlayerLandedEvent(player.GetInstanceID(), player.name));
 
-        var fallHeight = Mathf.Max(0f, _airbornePeakY - player.transform.position.y);
+        fallHeight = Mathf.Max(0f, fallHeight);
         var landAction = PickJumpLandFromProfile(player, fallHeight, out var landSource);
 
         Locomotion165Diagnostics.LogJumpLand(player, landSource, landAction, fallHeight);
+        LocomotionTransition227BugProbe.LogLandingRoute(player, landAction, fallHeight, landSource);
 
         if (landAction != null)
         {
             player.SetGraphContextAction(landAction, "jump-land");
             player.ArmPendingAction(GameplayIntentKind.Jump, landAction);
-            player.States.Change<PlayerActionState>();
+            if (forceActionReentry)
+            {
+                player.States.ForceChange<PlayerActionState>();
+            }
+            else
+            {
+                player.States.Change<PlayerActionState>();
+            }
             return;
         }
 

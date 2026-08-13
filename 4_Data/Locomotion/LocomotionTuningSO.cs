@@ -44,6 +44,31 @@ public class LocomotionTuningSO : ScriptableObject
     [Tooltip("地面减速度（m/s²）—— 替代 Player.moveDeceleration。")]
     [Min(0.01f)] public float GroundDeceleration = 22f;
 
+    [Header("227.4.3 Locomotion Response V2")]
+    [Tooltip("启用方向分解式速度响应。关闭时保留旧的标量加速兼容路径。")]
+    public bool UseVectorVelocityResponse = true;
+
+    [Tooltip("Walk 从零到目标速度的设计响应时间（秒）。")]
+    [Range(0.05f, 0.5f)] public float WalkRiseTime = 0.14f;
+
+    [Tooltip("Run 从零到目标速度的设计响应时间（秒）。")]
+    [Range(0.05f, 0.6f)] public float RunRiseTime = 0.20f;
+
+    [Tooltip("松开移动输入后的停止响应时间（秒）。")]
+    [Range(0.05f, 0.5f)] public float ReleaseStopTime = 0.12f;
+
+    [Tooltip("90°转向时旧侧向速度的衰减响应时间（秒）。")]
+    [Range(0.03f, 0.4f)] public float DirectionTurnResponseTime = 0.09f;
+
+    [Tooltip("反向输入时旧方向速度制动至零的响应时间（秒）。")]
+    [Range(0.05f, 0.5f)] public float ReverseResponseTime = 0.16f;
+
+    [Tooltip("从静止起步首帧的最低速度，占当前步态目标速度的比例。")]
+    [Range(0f, 0.6f)] public float StartSpeedFloorRatio = 0.25f;
+
+    [Tooltip("连续移动的逻辑朝向角速度（度/秒）。根节点消费已解析运动方向，不再消费原始 WASD 瞬转。")]
+    [Range(90f, 1440f)] public float MotionFacingAngularSpeedDeg = 720f;
+
     [Header("Rotation (183.1 Layer A — 逻辑朝向)")]
     [Tooltip("Locomotion 柱逻辑朝向策略：Smooth=RotateTowards；SnapAlways=每帧对齐输入（法环默认档）；SnapWhileMoving=跑动 Snap、站立 Smooth。")]
     public LocomotionRotationMode RotationMode = LocomotionRotationMode.Smooth;
@@ -201,4 +226,111 @@ public enum RunInputMode : byte
 {
     Hold = 0,
     Toggle = 1,
+}
+
+/// <summary>
+/// 227.4.3：与 Animator/State/Motor 解耦的平面速度响应器。
+/// 暂与 Tuning 类型同文件，保证 Unity/IDE 工程未刷新时也能参与编译。
+/// </summary>
+public static class LocomotionVelocityResponse
+{
+    public readonly struct Settings
+    {
+        public readonly float RiseTime;
+        public readonly float ReleaseTime;
+        public readonly float TurnTime;
+        public readonly float ReverseTime;
+        public readonly float StartSpeedFloorRatio;
+
+        public Settings(float riseTime, float releaseTime, float turnTime, float reverseTime, float startSpeedFloorRatio)
+        {
+            RiseTime = Mathf.Max(0.001f, riseTime);
+            ReleaseTime = Mathf.Max(0.001f, releaseTime);
+            TurnTime = Mathf.Max(0.001f, turnTime);
+            ReverseTime = Mathf.Max(0.001f, reverseTime);
+            StartSpeedFloorRatio = Mathf.Clamp01(startSpeedFloorRatio);
+        }
+    }
+
+    public enum Branch : byte
+    {
+        Idle = 0,
+        Start = 1,
+        Accelerate = 2,
+        Turn = 3,
+        ReverseBrake = 4,
+        Release = 5,
+    }
+
+    public readonly struct Result
+    {
+        public readonly Vector3 Velocity;
+        public readonly Branch ResponseBranch;
+        public readonly float ParallelBefore;
+        public readonly float ParallelAfter;
+        public readonly float LateralBefore;
+        public readonly float LateralAfter;
+
+        public Result(Vector3 velocity, Branch responseBranch, float parallelBefore, float parallelAfter,
+            float lateralBefore, float lateralAfter)
+        {
+            Velocity = velocity;
+            ResponseBranch = responseBranch;
+            ParallelBefore = parallelBefore;
+            ParallelAfter = parallelAfter;
+            LateralBefore = lateralBefore;
+            LateralAfter = lateralAfter;
+        }
+    }
+
+    public static Result Resolve(Vector3 currentVelocity, Vector3 desiredDirection, float targetSpeed,
+        float deltaTime, in Settings settings)
+    {
+        var dt = Mathf.Max(0f, deltaTime);
+        var current = Vector3.ProjectOnPlane(currentVelocity, Vector3.up);
+        var desired = Vector3.ProjectOnPlane(desiredDirection, Vector3.up);
+        var hasInput = desired.sqrMagnitude > 0.0001f && targetSpeed > 0.0001f;
+
+        if (!hasInput)
+        {
+            var speedBudget = Mathf.Max(current.magnitude, targetSpeed);
+            var released = Vector3.MoveTowards(current, Vector3.zero, speedBudget / settings.ReleaseTime * dt);
+            return new Result(released, released.sqrMagnitude > 0.0001f ? Branch.Release : Branch.Idle,
+                current.magnitude, released.magnitude, 0f, 0f);
+        }
+
+        desired.Normalize();
+        targetSpeed = Mathf.Max(0f, targetSpeed);
+        var currentSpeed = current.magnitude;
+        if (currentSpeed <= 0.0001f)
+        {
+            var startSpeed = Mathf.Max(targetSpeed * settings.StartSpeedFloorRatio,
+                targetSpeed / settings.RiseTime * dt);
+            startSpeed = Mathf.Min(startSpeed, targetSpeed);
+            return new Result(desired * startSpeed, Branch.Start, 0f, startSpeed, 0f, 0f);
+        }
+
+        var parallelBefore = Vector3.Dot(current, desired);
+        var lateral = current - desired * parallelBefore;
+        var lateralBefore = lateral.magnitude;
+        var responseSpeed = Mathf.Max(currentSpeed, targetSpeed);
+        lateral = Vector3.MoveTowards(lateral, Vector3.zero, responseSpeed / settings.TurnTime * dt);
+
+        float parallelAfter;
+        Branch branch;
+        if (parallelBefore < 0f)
+        {
+            parallelAfter = Mathf.MoveTowards(parallelBefore, 0f, responseSpeed / settings.ReverseTime * dt);
+            branch = Branch.ReverseBrake;
+        }
+        else
+        {
+            parallelAfter = Mathf.MoveTowards(parallelBefore, targetSpeed, targetSpeed / settings.RiseTime * dt);
+            branch = lateralBefore > 0.01f ? Branch.Turn : Branch.Accelerate;
+        }
+
+        var resolved = desired * parallelAfter + lateral;
+        resolved = Vector3.ClampMagnitude(resolved, Mathf.Max(targetSpeed, currentSpeed));
+        return new Result(resolved, branch, parallelBefore, parallelAfter, lateralBefore, lateral.magnitude);
+    }
 }

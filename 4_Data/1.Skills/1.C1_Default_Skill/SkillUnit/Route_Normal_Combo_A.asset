@@ -15,7 +15,11 @@ MonoBehaviour:
   routeId: Route_Normal_Combo_A
   icon: {fileID: 21300000, guid: 411a5fc87436b65489de9635b95b5ea4, type: 3}
   displayName: Route_Normal_Combo_A
+  presentationId: 
   showOnHud: 1
+  showPolicy: 0
+  presentationAsset: {fileID: 0}
+  description: {fileID: 0}
   priority: 5
   cooldownPolicy: 1
   baseCooldownSeconds: 0

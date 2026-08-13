@@ -383,10 +383,9 @@ public sealed partial class ActionDataTimelineEditor
             EditorGUILayout.LabelField("战斗片段", EditorStyles.miniBoldLabel);
             using (new EditorGUILayout.HorizontalScope())
             {
-                if (GUILayout.Button("Hitbox", EditorStyles.miniButton)) AddCombatClip(TrackId.Hitbox, _previewTime);
+                if (GUILayout.Button("Hitbox", EditorStyles.miniButton)) AddContactAt(_previewTime);
                 if (GUILayout.Button("Hurt", EditorStyles.miniButton)) AddCombatClip(TrackId.Hurtbox, _previewTime);
                 if (GUILayout.Button("Invuln", EditorStyles.miniButton)) AddCombatClip(TrackId.Invincible, _previewTime);
-                if (GUILayout.Button("Attack", EditorStyles.miniButton)) AddAttackClipAt(_previewTime);
             }
 
             DrawCameraTrackQuickAdd();
@@ -447,32 +446,6 @@ public sealed partial class ActionDataTimelineEditor
             DrawSegment($"Window #{_selectedWindow}", 72f);
         }
 
-        if (_selectedAttackClip >= 0)
-        {
-            DrawSegment($"HitClip #{_selectedAttackClip}", 80f);
-        }
-
-        if (_attackClips != null && _attackClips.arraySize > 0)
-        {
-            var activeCount = 0;
-            for (var i = 0; i < _attackClips.arraySize; i++)
-            {
-                var elem = _attackClips.GetArrayElementAtIndex(i);
-                var s = elem.FindPropertyRelative(nameof(HitClip.ActiveStart)).floatValue;
-                var e = elem.FindPropertyRelative(nameof(HitClip.ActiveEnd)).floatValue;
-                var lo = Mathf.Min(s, e);
-                var hi = Mathf.Max(s, e);
-                if (_previewTime >= lo && _previewTime <= hi)
-                {
-                    activeCount++;
-                }
-            }
-
-            if (activeCount > 0)
-            {
-                DrawSegment($"Active×{activeCount}", 64f);
-            }
-        }
         else if (_selectedMarker >= 0)
         {
             DrawSegment($"Marker #{_selectedMarker}", 72f);

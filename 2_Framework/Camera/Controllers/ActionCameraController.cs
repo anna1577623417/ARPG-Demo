@@ -47,6 +47,19 @@ public class ActionCameraController : CameraController
     [SerializeField] private float verticalMinAngle = -30f;
     [SerializeField] private float verticalMaxAngle = 70f;
 
+    [Header("227.4.3 Chase Assist")]
+    [Tooltip("玩家停止主动 Look 后，让相机水平轨道平滑回到角色运动朝向后方。")]
+    [SerializeField] private bool enableChaseAssist = true;
+
+    [Tooltip("最后一次主动 Look 后等待多少秒才开始回正。")]
+    [SerializeField, Min(0f)] private float chaseRecenterDelay = 0.25f;
+
+    [Tooltip("相机水平轨道向角色朝向回正的最大角速度（度/秒）。")]
+    [SerializeField, Min(0f)] private float chaseRecenterAngularSpeed = 180f;
+
+    [Tooltip("水平角误差小于此值时不再回正，避免微抖。")]
+    [SerializeField, Range(0f, 20f)] private float chaseYawDeadzone = 2f;
+
     [Header("Self-occlusion guard")]
     [Tooltip("从相机防遮挡 LayerMask 中【剔除】的层（玩家自身 / 武器 / Hitbox / IgnoreRaycast 等）。\n空旷场景跳跃时若相机贴脸，把'Player' 层勾入此处即可——相机的防穿墙射线将忽略玩家自身碰撞体，恢复正常距离。\nRebindFollowAndLookAt 时一次性注入到 VCam 的 Cinemachine3rdPersonFollow.CameraCollisionFilter。")]
     [SerializeField] private LayerMask cameraIgnoreLayers;
@@ -56,6 +69,7 @@ public class ActionCameraController : CameraController
 
     private float _yaw;
     private float _pitch;
+    private float _lastLookInputTime = -999f;
 
     float _shakeTimer;
     float _shakeDuration;
@@ -121,11 +135,14 @@ public class ActionCameraController : CameraController
             var look = inputReader.LookInput;
             if (look.sqrMagnitude > 0.0001f)
             {
+                _lastLookInputTime = Time.unscaledTime;
                 _yaw += look.x * horizontalSensitivity * Time.deltaTime;
                 _pitch -= look.y * verticalSensitivity * Time.deltaTime;
                 _pitch = Mathf.Clamp(_pitch, verticalMinAngle, verticalMaxAngle);
             }
         }
+
+        ApplyChaseAssist();
 
         ApplyImpulseOffsets();
 
@@ -151,6 +168,35 @@ public class ActionCameraController : CameraController
     }
 
     public void SetLookInputLocked(bool locked) => _lookInputLocked = locked;
+
+    void ApplyChaseAssist()
+    {
+        if (!enableChaseAssist
+            || _lookInputLocked
+            || followTarget == null
+            || followTarget.parent == null
+            || Time.unscaledTime - _lastLookInputTime < chaseRecenterDelay)
+        {
+            return;
+        }
+
+        var forward = Vector3.ProjectOnPlane(followTarget.parent.forward, Vector3.up);
+        if (forward.sqrMagnitude < 0.0001f)
+        {
+            return;
+        }
+
+        var targetYaw = Mathf.Atan2(forward.x, forward.z) * Mathf.Rad2Deg;
+        if (Mathf.Abs(Mathf.DeltaAngle(_yaw, targetYaw)) <= chaseYawDeadzone)
+        {
+            return;
+        }
+
+        _yaw = Mathf.MoveTowardsAngle(
+            _yaw,
+            targetYaw,
+            chaseRecenterAngularSpeed * Time.unscaledDeltaTime);
+    }
 
     void ApplyImpulseOffsets()
     {
@@ -224,6 +270,7 @@ public class ActionCameraController : CameraController
         var euler = follow.eulerAngles;
         _yaw = euler.y;
         _pitch = euler.x;
+        _lastLookInputTime = Time.unscaledTime;
         if (_pitch > 180f)
         {
             _pitch -= 360f;

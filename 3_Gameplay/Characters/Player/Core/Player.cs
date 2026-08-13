@@ -124,8 +124,8 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
     /// <summary>185.2 — Graph EventWindowCondition 查询。</summary>
     public ContextWindowTracker ContextWindows => m_contextWindows;
 
-    /// <summary>188.3 W9 — CombatObject 生成器（CombatTrack 时间轴触发的 Spawn 容器；运行时由 ActionTimelineRuntime 调用）。</summary>
-    public CombatObjectSpawner CombatObjectSpawner { get; } = new CombatObjectSpawner();
+    /// <summary>223.4-5：实体只持有世界生成端口，不再拥有 Active CombatObject 容器。</summary>
+    public ICombatSpawnPort CombatSpawnPort => SpawnedCombatWorldHost.Port;
     public CombatGraphAsset CombatFlowGraph => skillEntryLoadout != null ? skillEntryLoadout.CombatFlow : null;
     /// <summary>158.2 L1：玩家级 Locomotion 行为资产；L2 之前仅占位，无运行时消费方。</summary>
     public LocomotionProfile LocomotionProfile => locomotionProfile;
@@ -394,7 +394,7 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
     Animator IActionContext.Animator => base.Animator;
     IEntityMotor IActionContext.Motor => m_motor;
     LocalEventBus IActionContext.EventBus => base.EventBus;
-    CombatObjectSpawner IActionContext.CombatObjectSpawner => CombatObjectSpawner;
+    ICombatSpawnPort IActionContext.CombatSpawnPort => CombatSpawnPort;
     void IActionContext.PublishActionPresentation(ActionTimelineMarkerKind kind, string payload)
         => PublishEvent(new EntityActionPresentationEvent(GetInstanceID(), kind, payload));
     void IActionContext.PublishTeleported(Vector3 worldPosition)
@@ -492,13 +492,6 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
     }
 
     protected override void OnEnable() { base.OnEnable(); }
-
-    /// <summary>188.3 W9 — Entity.LateUpdate 已 Tick BuffStack；本方法追加 CombatObjectSpawner Tick。</summary>
-    protected override void LateUpdate()
-    {
-        base.LateUpdate();
-        CombatObjectSpawner?.Tick(Time.deltaTime);
-    }
 
     void EnsurePlayerDefaultResourceStats()
     {
@@ -1109,15 +1102,24 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
     public void RequestPlayablePlaybackSpeed(float speed) =>
         PublishEvent(new PlayablePlaybackSpeedRequestEvent(GetInstanceID(), Mathf.Max(0f, speed)));
 
-    /// <summary>164.1 L3：Locomotion 内 IsContinuousLocomotion Action 换片。</summary>
-    public void RequestContinuousLocomotionPresentation(ActionDataSO action)
+    /// <summary>164.1 L3 / 227.5.1：State Policy 允许连续槽，Action flag 显式授权接管。</summary>
+    public void RequestContinuousLocomotionPresentation(
+        ActionDataSO action,
+        LocomotionStateId resolvedState,
+        LocomotionExecutionPolicy executionPolicy)
     {
-        if (action == null || !action.IsContinuousLocomotion)
+        if (action == null
+            || !action.IsContinuousLocomotion
+            || executionPolicy != LocomotionExecutionPolicy.ContinuousPresentation)
         {
             return;
         }
 
-        PublishEvent(new PlayerContinuousLocomotionRequestEvent(GetInstanceID(), action));
+        PublishEvent(new PlayerContinuousLocomotionRequestEvent(
+            GetInstanceID(),
+            action,
+            resolvedState,
+            executionPolicy));
     }
 
     /// <summary>Route 内 Stage 推进后由 SkillEntryService 调用，换段动画与 Motion。</summary>
@@ -1250,35 +1252,92 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
         var speedCap = baseSpeed * modeMult * externalMult;
         var targetSpeed = hasInput ? speedCap * inputMag : 0f;
 
-        // 加速度：Tuning > Player 旧字段
-        var accel = ResolveMoveAcceleration(tuning, hasInput);
-
         var planar = PlanarVelocity;
         var currentSpeed = planar.magnitude;
-        var newSpeed = Mathf.MoveTowards(currentSpeed, targetSpeed, accel * Time.deltaTime);
 
         if (hasInput)
         {
             // 198.3 Move 维度守卫：Action 期间默认不允许玩家输入叠加位移
             if (ActionRotationGate.IsAllowed(this, ActionRotationGate.Kind.Move))
             {
-                SetPlanarVelocity(input.normalized * newSpeed);
-                SetMoveDirection(input);
+                Vector3 resolvedVelocity;
+                if (tuning != null && tuning.UseVectorVelocityResponse)
+                {
+                    var responseSettings = new LocomotionVelocityResponse.Settings(
+                        wantsRun ? tuning.RunRiseTime : tuning.WalkRiseTime,
+                        tuning.ReleaseStopTime,
+                        tuning.DirectionTurnResponseTime,
+                        tuning.ReverseResponseTime,
+                        tuning.StartSpeedFloorRatio);
+                    var response = LocomotionVelocityResponse.Resolve(
+                        planar,
+                        input,
+                        targetSpeed,
+                        Time.deltaTime,
+                        in responseSettings);
+                    resolvedVelocity = response.Velocity;
+                }
+                else
+                {
+                    // 227.4.3 兼容：未迁移 Tuning 仍保留旧标量响应。
+                    var accel = ResolveMoveAcceleration(tuning, hasInput: true);
+                    var newSpeed = Mathf.MoveTowards(currentSpeed, targetSpeed, accel * Time.deltaTime);
+                    resolvedVelocity = input.normalized * newSpeed;
+                }
+
+                SetPlanarVelocity(resolvedVelocity);
+                if (resolvedVelocity.sqrMagnitude > 0.0001f)
+                {
+                    SetMoveDirection(resolvedVelocity.normalized);
+                }
             }
 
             // 198.3 Facing 维度守卫（与 Move 独立）
             if (!ShouldSuppressLocomotionRotation()
                 && ActionRotationGate.IsAllowed(this, ActionRotationGate.Kind.Facing))
             {
-                ActionTurnProbe.Log(this, m_logicForward, input, "Player.MoveByLocomotionIntent");
-                SetLogicForward(input);
-                MaybeLogLocomotionRotationEdge(LocomotionRotationMode.SnapAlways, immediate: true);
+                var motionDirection = PlanarVelocity.sqrMagnitude > 0.0001f
+                    ? PlanarVelocity.normalized
+                    : input.normalized;
+                var facingSpeed = tuning != null
+                    ? Mathf.Max(0f, tuning.MotionFacingAngularSpeedDeg)
+                    : Mathf.Max(0f, RuntimeStats.RotationSpeed);
+                var maxRadians = facingSpeed * Mathf.Deg2Rad * Time.deltaTime;
+                var resolvedForward = Vector3.RotateTowards(
+                    m_logicForward,
+                    motionDirection,
+                    maxRadians,
+                    0f);
+                ActionTurnProbe.Log(this, m_logicForward, resolvedForward, "Player.MoveByLocomotionIntent.ResolvedMotion");
+                SetLogicForward(resolvedForward);
+                MaybeLogLocomotionRotationEdge(LocomotionRotationMode.Smooth, immediate: false);
             }
         }
         else
         {
-            var dir = currentSpeed > 0.01f ? planar.normalized : Vector3.zero;
-            SetPlanarVelocity(dir * newSpeed);
+            if (tuning != null && tuning.UseVectorVelocityResponse)
+            {
+                var responseSettings = new LocomotionVelocityResponse.Settings(
+                    wantsRun ? tuning.RunRiseTime : tuning.WalkRiseTime,
+                    tuning.ReleaseStopTime,
+                    tuning.DirectionTurnResponseTime,
+                    tuning.ReverseResponseTime,
+                    tuning.StartSpeedFloorRatio);
+                var response = LocomotionVelocityResponse.Resolve(
+                    planar,
+                    Vector3.zero,
+                    0f,
+                    Time.deltaTime,
+                    in responseSettings);
+                SetPlanarVelocity(response.Velocity);
+            }
+            else
+            {
+                var accel = ResolveMoveAcceleration(tuning, hasInput: false);
+                var newSpeed = Mathf.MoveTowards(currentSpeed, 0f, accel * Time.deltaTime);
+                var dir = currentSpeed > 0.01f ? planar.normalized : Vector3.zero;
+                SetPlanarVelocity(dir * newSpeed);
+            }
         }
     }
 
@@ -1321,6 +1380,24 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
     public void StopMove()
     {
         var tuning = locomotionProfile != null ? locomotionProfile.Tuning : null;
+        if (tuning != null && tuning.UseVectorVelocityResponse)
+        {
+            var responseSettings = new LocomotionVelocityResponse.Settings(
+                m_runIntent ? tuning.RunRiseTime : tuning.WalkRiseTime,
+                tuning.ReleaseStopTime,
+                tuning.DirectionTurnResponseTime,
+                tuning.ReverseResponseTime,
+                tuning.StartSpeedFloorRatio);
+            var response = LocomotionVelocityResponse.Resolve(
+                PlanarVelocity,
+                Vector3.zero,
+                0f,
+                Time.deltaTime,
+                in responseSettings);
+            SetPlanarVelocity(response.Velocity);
+            return;
+        }
+
         var decel = tuning != null ? tuning.GroundDeceleration : moveDeceleration;
         SetPlanarVelocity(Vector3.MoveTowards(PlanarVelocity, Vector3.zero, decel * Time.deltaTime));
     }

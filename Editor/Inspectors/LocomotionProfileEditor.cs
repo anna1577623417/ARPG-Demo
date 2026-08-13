@@ -63,10 +63,10 @@ public sealed class LocomotionProfileEditor : Editor
         EditorGUILayout.LabelField("Validation — Authority ↔ Bindings", EditorStyles.boldLabel);
 
         EditorGUILayout.HelpBox(
-            "资源：Binding 填 LocomotionAction（离散或 IsContinuousLocomotion）。旧 DiscreteAction/ContinuousClip 仅回落读取。\n" +
-            "Sort by Enabled States：仅重排现有行，顺序与 Enabled States 下拉菜单声明序一致（Idle→Dead→Walk 组→…→TurnInPlaceDirected 在 Jump 组之后）。\n" +
-            "Auto Fix：对齐 Enabled 全部行 + Strafe 8×2 + Turn 4 子键（去重/补缺/规范化），最后按菜单序排序。\n" +
-            "仅排序请用 Sort by Enabled States。",
+            "资源：Binding 填 LocomotionAction；State 决定连续槽/离散段，Is Continuous 决定 Action 是否接管连续槽。\n" +
+            "Idle/Walk/Run/JumpLoop/Strafe 接管 Action 必须勾选；离散 Start/End/Land 不得勾选。TurnInPlace 为有限表现例外，也不得勾选。\n" +
+            "Sort by Enabled States：仅重排现有行，顺序与 Enabled States 下拉菜单声明序一致。\n" +
+            "Auto Fix：对齐 Enabled 全部行 + Strafe 8×2 + Turn 4 子键，最后按菜单序排序。",
             MessageType.Info);
 
         if (report.IsClean)
@@ -108,6 +108,13 @@ public sealed class LocomotionProfileEditor : Editor
                 EditorGUILayout.HelpBox(
                     "Unused: " + string.Join(", ", report.Unused),
                     MessageType.Warning);
+            }
+
+            if (report.ContentErrors.Count > 0)
+            {
+                EditorGUILayout.HelpBox(
+                    "Content（Error）: " + string.Join("; ", report.ContentErrors),
+                    MessageType.Error);
             }
 
             if (report.HasCountMismatch)

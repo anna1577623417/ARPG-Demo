@@ -22,6 +22,14 @@ public static class CombatHitVolumeSceneEditor
     {
         if (Selection.activeObject is CombatObjectDefinitionSO def)
         {
+            // 224.1 L5：Selection 不再自动进入 Scene Edit；Timeline/Contact 优先。
+            if (!CombatSceneEditCoordinator.AllowsLegacyHitVolumeOwner())
+            {
+                s_activeDef = null;
+                s_anchor = null;
+                return;
+            }
+
             var anchor = ActionDataTimelineEditor.ActiveInstance?.GizmoAnchorOverride
                          ?? Selection.activeTransform;
             SetActive(def, anchor);
@@ -30,8 +38,21 @@ public static class CombatHitVolumeSceneEditor
 
     public static void SetActive(CombatObjectDefinitionSO def, Transform anchor)
     {
+        if (def != null && !CombatSceneEditCoordinator.AllowsLegacyHitVolumeOwner())
+        {
+            Debug.LogWarning(
+                "[CombatHitEdit] Legacy HitVolume editor blocked while Timeline/Contact owns Scene. " +
+                "Use explicit Edit CO In Scene (Coordinator) instead.");
+            return;
+        }
+
         s_activeDef = def;
         s_anchor = anchor;
+        if (def != null)
+        {
+            CombatSceneEditCoordinator.RequestCombatObjectAssetEdit(def);
+        }
+
         CombatHitVolumeEditProbe.LogActivate(def, anchor);
         SceneView.RepaintAll();
     }
@@ -39,6 +60,12 @@ public static class CombatHitVolumeSceneEditor
     static void OnSceneGUI(SceneView view)
     {
         if (s_activeDef == null)
+        {
+            return;
+        }
+
+        if (!CombatSceneEditCoordinator.AllowsLegacyHitVolumeOwner()
+            && CombatSceneEditCoordinator.Session.Mode != CombatSceneEditMode.CombatObjectAssetEdit)
         {
             return;
         }
@@ -62,6 +89,10 @@ public static class CombatHitVolumeSceneEditor
         {
             HitShapeGizmoPreview.DrawShapeHandles(
                 s_activeDef.Shape, worldPos, worldRot, new Color(1f, 0.45f, 0.2f, 0.55f));
+            CombatSceneDrawSourceProbe.RegisterPrimaryDraw(
+                CombatSceneDrawSourceProbe.SourceLegacyHitVolume,
+                worldPos,
+                $"def={s_activeDef.name} shape={s_activeDef.Shape.name} spawn={spawnSource}");
         }
 
         var tool = Tools.current;
@@ -110,6 +141,9 @@ public static class CombatHitVolumeSceneEditor
         }
 
         DrawSceneHud(anchor, spawnSource, tool);
+        CombatSceneDrawSourceProbe.DrawHudBanner(
+            CombatSceneDrawSourceProbe.SourceLegacyHitVolume,
+            $"def={s_activeDef.name} (Selection auto-active)");
     }
 
     static void DrawSceneHud(Transform anchor, SpawnSource spawnSource, Tool tool)
@@ -155,37 +189,60 @@ public static class CombatHitVolumeSceneEditor
 
     static bool DrawShapeScaleHandle(Vector3 worldPos, Quaternion worldRot, HitShapeSO shape)
     {
-        EditorGUI.BeginChangeCheck();
-        var handleSize = HandleUtility.GetHandleSize(worldPos);
-        var scale = Handles.ScaleHandle(Vector3.one, worldPos, worldRot, handleSize);
-        if (!EditorGUI.EndChangeCheck())
-        {
-            return false;
-        }
-
-        Undo.RecordObject(shape, "Scale Hit Shape");
-        var factor = Mathf.Max(scale.x, Mathf.Max(scale.y, scale.z));
-        var detail = $"factor={factor:F3}";
+        // 224.1 L6：与 ContactSceneEditor 对齐，禁止 max-scale 乘法。
         switch (shape)
         {
             case SphereShapeSO sphere:
-                sphere.radius = Mathf.Max(0.01f, sphere.radius * factor);
-                detail += $" radius={sphere.radius:F3}";
-                break;
+            {
+                EditorGUI.BeginChangeCheck();
+                var next = Handles.RadiusHandle(worldRot, worldPos, sphere.radius);
+                if (!EditorGUI.EndChangeCheck()) return false;
+                Undo.RecordObject(sphere, "Scale Hit Shape");
+                sphere.radius = Mathf.Max(0.01f, next);
+                EditorUtility.SetDirty(sphere);
+                CombatHitVolumeEditProbe.LogScale(shape, $"radius={sphere.radius:F3}");
+                return true;
+            }
             case CapsuleShapeSO cap:
-                cap.radius = Mathf.Max(0.01f, cap.radius * factor);
-                cap.height = Mathf.Max(0.01f, cap.height * factor);
-                detail += $" r={cap.radius:F3} h={cap.height:F3}";
-                break;
+            {
+                var axis = worldRot * Vector3.up;
+                var half = Mathf.Max(0f, cap.height * 0.5f - cap.radius);
+                EditorGUI.BeginChangeCheck();
+                var nextRadius = Handles.RadiusHandle(worldRot, worldPos, cap.radius);
+                var nextTop = Handles.Slider(worldPos + axis * half, axis);
+                if (!EditorGUI.EndChangeCheck()) return false;
+                Undo.RecordObject(cap, "Scale Hit Shape");
+                cap.radius = Mathf.Max(0.01f, nextRadius);
+                var newHalf = Vector3.Dot(nextTop - worldPos, axis);
+                cap.height = Mathf.Max(cap.radius * 2f, Mathf.Abs(newHalf) * 2f + cap.radius * 2f);
+                EditorUtility.SetDirty(cap);
+                CombatHitVolumeEditProbe.LogScale(shape, $"r={cap.radius:F3} h={cap.height:F3}");
+                return true;
+            }
             case BoxShapeSO box:
-                box.halfExtents = Vector3.Max(box.halfExtents * factor, Vector3.one * 0.01f);
-                detail += $" half={box.halfExtents}";
-                break;
+            {
+                var center = worldPos + worldRot * box.offset;
+                var right = worldRot * Vector3.right;
+                var up = worldRot * Vector3.up;
+                var fwd = worldRot * Vector3.forward;
+                var he = box.halfExtents;
+                EditorGUI.BeginChangeCheck();
+                var px = Handles.Slider(center + right * he.x, right);
+                var py = Handles.Slider(center + up * he.y, up);
+                var pz = Handles.Slider(center + fwd * he.z, fwd);
+                if (!EditorGUI.EndChangeCheck()) return false;
+                Undo.RecordObject(box, "Scale Hit Shape");
+                box.halfExtents = new Vector3(
+                    Mathf.Max(0.01f, Vector3.Dot(px - center, right)),
+                    Mathf.Max(0.01f, Vector3.Dot(py - center, up)),
+                    Mathf.Max(0.01f, Vector3.Dot(pz - center, fwd)));
+                EditorUtility.SetDirty(box);
+                CombatHitVolumeEditProbe.LogScale(shape, $"half={box.halfExtents}");
+                return true;
+            }
+            default:
+                return false;
         }
-
-        EditorUtility.SetDirty(shape);
-        CombatHitVolumeEditProbe.LogScale(shape, detail);
-        return true;
     }
 }
 #endif

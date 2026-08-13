@@ -4,7 +4,7 @@ using UnityEngine;
 /// 188.3 W10 — 线段形状（激光 / 长枪）。
 /// <para>从 origin 沿 forward 方向延伸 length 米，宽度 width。底层用 OverlapBox 近似。</para>
 /// </summary>
-[CreateAssetMenu(menuName = "Combat/HitShape/Beam")]
+[CreateAssetMenu(menuName = "GameMain/Combat/Hit Shape/Beam")]
 public class BeamShapeSO : HitShapeSO
 {
     [Min(0f)] public float width = 0.5f;

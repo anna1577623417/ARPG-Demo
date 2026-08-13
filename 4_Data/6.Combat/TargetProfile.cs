@@ -2,7 +2,7 @@ using System;
 using UnityEngine;
 
 /// <summary>
-/// 217.2 L2 — HitClip 目标配置：关系 × 单位类 × 自伤策略。
+/// 217.2 L2 — Contact/CombatObject 目标配置：关系 × 单位类 × 自伤策略。
 /// <para>裁决见 <c>TargetProfileEvaluator</c>；CombatObject 仍用 <see cref="TargetFilterParams"/>。</para>
 /// </summary>
 [Serializable]

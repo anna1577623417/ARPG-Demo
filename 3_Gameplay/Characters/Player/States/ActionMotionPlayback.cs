@@ -26,13 +26,22 @@ public sealed class ActionMotionPlayback
 
     public bool UseMotionProfile { get; private set; }
 
+    public ActionMotionExecutionPlan DriverPlan { get; private set; }
+
+    public bool LastFrameAppliedMotor { get; private set; }
+
     public MotionContribution LastContribution =>
 
         _executor != null ? _executor.LastContribution : MotionContribution.Inactive;
 
 
 
-    public void ResetDriverFlags() => UseMotionProfile = false;
+    public void ResetDriverFlags()
+    {
+        UseMotionProfile = false;
+        DriverPlan = default;
+        LastFrameAppliedMotor = false;
+    }
 
 
 
@@ -198,72 +207,31 @@ public sealed class ActionMotionPlayback
 
 
 
-    /// <summary>164.1 L6：MotionProfile 程序化位移 vs Clip RootMotion 二选一。</summary>
+    /// <summary>227.4：由唯一 Resolver 决定位移权威；LegacyAuto 保持旧优先级。</summary>
 
     public void ApplyDriverPolicy(Player player, ActionDataSO action)
 
     {
 
-        if (action == null)
+        DriverPlan = ActionMotionDriverResolver.Resolve(action);
+        UseMotionProfile = DriverPlan.IsValid && DriverPlan.UsesMotionExecutor;
+        LastFrameAppliedMotor = false;
+        SetClipRootMotionForPlayer(player, DriverPlan.IsValid && DriverPlan.UsesClipRootMotion);
 
+        if (!DriverPlan.IsValid)
         {
-
-            UseMotionProfile = false;
-
-            SetClipRootMotionForPlayer(player, false);
-
+            Debug.LogError(
+                $"[ActionMotionDriver] invalid action={(action != null ? action.name : "null")} {DriverPlan}",
+                action);
             return;
-
         }
 
-
-
-        if (action.UseClipRootMotion)
-
+        if (LocomotionDebug.IsEnabled(player))
         {
-
-            UseMotionProfile = false;
-
-            SetClipRootMotionForPlayer(player, true);
-
-            if (LocomotionDebug.IsEnabled(player))
-
-            {
-
-                LocomotionDebug.Log(
-
-                    player,
-
-                    LocomotionDebug.CatResolve,
-
-                    $"[Motion] driver=ClipRootMotion action={action.name}");
-
-            }
-
-
-
-            return;
-
-        }
-
-
-
-        SetClipRootMotionForPlayer(player, false);
-
-        UseMotionProfile = action.MotionProfile != null;
-
-        if (UseMotionProfile && LocomotionDebug.IsEnabled(player))
-
-        {
-
             LocomotionDebug.Log(
-
                 player,
-
                 LocomotionDebug.CatResolve,
-
-                $"[Motion] driver=MotionProfile action={action.name}");
-
+                $"[Motion] {DriverPlan} action={action.name}");
         }
 
     }
@@ -400,6 +368,8 @@ public sealed class ActionMotionPlayback
 
         ApplyActionYaw(player, action, normalizedTime);
 
+        LastFrameAppliedMotor = false;
+
 
 
         if (!UseMotionProfile || _executor == null)
@@ -453,6 +423,8 @@ public sealed class ActionMotionPlayback
                 hasLockTargetForward);
 
             _motorAdapter.ApplyToPlayer();
+
+            LastFrameAppliedMotor = true;
 
             _executor.SyncPostMotorPosition(player.transform.position);
 

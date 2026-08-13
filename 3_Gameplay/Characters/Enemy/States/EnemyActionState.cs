@@ -76,7 +76,8 @@ public sealed class EnemyActionState : EnemyState
             _previousNormalized,
             normalized,
             enemy.Forward,
-            _timelineState);
+            _timelineState,
+            _leaseVersion);
         enemy.SkillEntries?.TickActive(default, Time.deltaTime);
         _previousNormalized = normalized;
 

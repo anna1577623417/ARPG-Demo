@@ -2,9 +2,9 @@ using System.Text;
 using UnityEngine;
 
 /// <summary>
-/// 216.3 M4 — 武器轨迹 Provider：Socket 采样 → 多点 Sweep →（调用方）产 HitResult。
+/// Contact 武器轨迹 Provider：Socket 采样 → 多点 Sweep →（调用方）产 ContactCandidate。
 /// <para>L1：采样 Log。L2：每 Socket 上一帧→当前帧 SphereCast（零位移补 OverlapSphere）。</para>
-/// <para><b>不结算伤害</b>——只报告扫到的 Collider，交 AttackInstance → Resolver。</para>
+/// <para><b>不结算伤害</b>——只提供 Socket 样本，交 Contact Runtime → Resolver。</para>
 /// </summary>
 public sealed class WeaponTraceProvider
 {

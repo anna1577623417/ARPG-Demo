@@ -2,7 +2,7 @@ using System;
 using UnityEngine;
 
 /// <summary>
-/// 216.3 M3 — 命中反应（作者数据）：设计师在 HitClip 上一处编「命中后全部效果」。
+/// 命中反应（作者数据）：Contact/CombatObject 共用的结果描述。
 /// <para>L1 仅数据结构；L2 经 CombatResolver → CombatEvent 订阅方消费（伤害/击退/HitStop…）。
 /// 判定层（AttackInstance）<b>不</b>直接读本结构写 HP。</para>
 /// </summary>

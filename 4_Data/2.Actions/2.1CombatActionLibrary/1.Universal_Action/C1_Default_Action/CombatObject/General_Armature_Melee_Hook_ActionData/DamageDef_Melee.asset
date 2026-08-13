@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   DisplayName: DamageDef_Melee
   Kind: 0
-  Amount: 10
+  Amount: 0
   KnockbackLocalDir: {x: 0, y: 0, z: 1}
   KnockbackForce: 8
   LaunchUpSpeed: 12

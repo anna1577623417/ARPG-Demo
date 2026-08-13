@@ -133,16 +133,24 @@ public readonly struct ActionTimelinePresentationEvent : IGameEvent
     }
 }
 
-/// <summary>164.1 L3：Locomotion 连续 Action 换片（不切 ActionState）。</summary>
+/// <summary>164.1 L3 / 227.5.1：Locomotion 连续表现换片（不切 ActionState）。</summary>
 public readonly struct PlayerContinuousLocomotionRequestEvent : IGameEvent
 {
     public readonly int PlayerInstanceId;
     public readonly ActionDataSO Action;
+    public readonly LocomotionStateId ResolvedState;
+    public readonly LocomotionExecutionPolicy ExecutionPolicy;
 
-    public PlayerContinuousLocomotionRequestEvent(int playerInstanceId, ActionDataSO action)
+    public PlayerContinuousLocomotionRequestEvent(
+        int playerInstanceId,
+        ActionDataSO action,
+        LocomotionStateId resolvedState,
+        LocomotionExecutionPolicy executionPolicy)
     {
         PlayerInstanceId = playerInstanceId;
         Action = action;
+        ResolvedState = resolvedState;
+        ExecutionPolicy = executionPolicy;
     }
 }
 

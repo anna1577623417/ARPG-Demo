@@ -26,6 +26,8 @@ public sealed partial class ActionDataInspector : Editor
         nameof(ActionDataSO.TeleportTriggers),
         nameof(ActionDataSO.TimelineMarkers),
         nameof(ActionDataSO.MotionProfile),
+        nameof(ActionDataSO.MotionDriverMode),
+        nameof(ActionDataSO.UseClipRootMotion),
         nameof(ActionDataSO.EnableStopFeature),
         nameof(ActionDataSO.StopStrategy),
         nameof(ActionDataSO.InheritPhysics),
@@ -45,27 +47,11 @@ public sealed partial class ActionDataInspector : Editor
         nameof(ActionDataSO.OverrideGrammar),
         nameof(ActionDataSO.GrammarOverride),
         nameof(ActionDataSO.CombatTrack),
+        nameof(ActionDataSO.ContactEvents),
         // 198.3 — EnableRotationInput 由顶部 Timeline 快速卡片接管渲染，避免重复
         nameof(ActionDataSO.EnableRotationInput),
-    };
-
-    static readonly string[] HiddenWhenContinuousLocomotion =
-    {
-        nameof(ActionDataSO.Duration),
-        nameof(ActionDataSO.SegmentStart),
-        nameof(ActionDataSO.SegmentEnd),
-        nameof(ActionDataSO.DurationStatScaling),
-        nameof(ActionDataSO.PrincipalAxis),
-        nameof(ActionDataSO.ReferenceMotionSpeed),
-        nameof(ActionDataSO.BakeMinAnimSpeed),
-        nameof(ActionDataSO.BakeMaxAnimSpeed),
-        nameof(ActionDataSO.Windows),
-        nameof(ActionDataSO.TeleportTriggers),
-        nameof(ActionDataSO.TimelineMarkers),
-        nameof(ActionDataSO.MotionProfile),
-        nameof(ActionDataSO.UseClipRootMotion),
-        nameof(ActionDataSO.LeftFootSupportClip),
-        nameof(ActionDataSO.RightFootSupportClip),
+        // 227.5.1 — 连续 Locomotion 接管开关单独绘制。
+        nameof(ActionDataSO.IsContinuousLocomotion),
     };
 
     public override void OnInspectorGUI()
@@ -78,67 +64,28 @@ public sealed partial class ActionDataInspector : Editor
 
         serializedObject.Update();
 
-        var isContinuous = action.IsContinuousLocomotion;
-
         // 198.3 — Timeline 快速入口上移到 Inspector 顶部（最常用，应该最容易访问）
         DrawTimelineQuickAccessTop(action);
-
-        if (!isContinuous)
+        DrawMotionAuthoritySection(action);
+        if (ShouldDrawMotionPass(action))
         {
             DrawMotionPassSection(action);
         }
-
-        if (isContinuous)
-        {
-            EditorGUILayout.HelpBox(
-                "Continuous Locomotion：循环态由 Locomotion 支柱驱动；离散时长/窗口/MotionProfile 已隐藏。",
-                MessageType.Info);
-            DrawPropertiesExcluding(serializedObject, HiddenWhenContinuousLocomotion);
-        }
-        else
-        {
-            DrawPropertiesExcluding(serializedObject, HiddenInDefaultInspector);
-            DrawGrammarSection(action);
-            DrawStopAuthoringSection(action);
-            DrawTimelineSection(action);
-            DrawCombatTrackSection(action);
-        }
-
-        if (!isContinuous)
-        {
-            DrawTimeAuthoritySection(action);
-        }
-
-        if (serializedObject.ApplyModifiedProperties() && isContinuous)
-        {
-            TrySyncMainClipLoop(action);
-        }
+        DrawPropertiesExcluding(serializedObject, HiddenInDefaultInspector);
+        DrawGrammarSection(action);
+        DrawStopAuthoringSection(action);
+        DrawTimelineSection(action);
+        DrawCombatTrackSection(action);
+        DrawTimeAuthoritySection(action);
+        serializedObject.ApplyModifiedProperties();
     }
 
-    static void TrySyncMainClipLoop(ActionDataSO action)
-    {
-        var clip = action.MainClip;
-        if (clip == null)
-        {
-            return;
-        }
-
-        var path = AssetDatabase.GetAssetPath(clip);
-        if (string.IsNullOrEmpty(path) || !path.EndsWith(".anim", System.StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
-
-        var settings = AnimationUtility.GetAnimationClipSettings(clip);
-        if (settings.loopTime)
-        {
-            return;
-        }
-
-        settings.loopTime = true;
-        AnimationUtility.SetAnimationClipSettings(clip, settings);
-        EditorUtility.SetDirty(clip);
-    }
+    static bool ShouldDrawMotionPass(ActionDataSO action) =>
+        action != null
+        && (action.MotionDriverMode == ActionMotionDriverMode.MotionProfile
+            || (action.MotionDriverMode == ActionMotionDriverMode.LegacyAuto
+                && (action.MotionProfile != null
+                    || action.IntentCategory != ActionIntentCategory.Locomotion)));
 
     /// <summary>198.3 — Inspector 顶部 Timeline 快速入口（紧跟 Script / CrossFade 上方常用字段）。</summary>
     void DrawTimelineQuickAccessTop(ActionDataSO action)
@@ -164,18 +111,9 @@ public sealed partial class ActionDataInspector : Editor
             EditorGUILayout.Space(2f);
 
             // 打开按钮独占一行
-            using (new EditorGUI.DisabledScope(action.IsContinuousLocomotion))
+            if (GUILayout.Button("打开 Action 时间轴编辑器", GUILayout.Height(26f)))
             {
-                if (GUILayout.Button("打开 Action 时间轴编辑器", GUILayout.Height(26f)))
-                {
-                    ActionDataTimelineEditor.Open(action);
-                }
-            }
-
-            if (action.IsContinuousLocomotion)
-            {
-                EditorGUILayout.HelpBox("Continuous Locomotion 不使用 Window。", MessageType.None);
-                return;
+                ActionDataTimelineEditor.Open(action);
             }
 
             // 198.3 — Rotation Input 总开关：每个 UI 元素独占一行，避免左右拉伸

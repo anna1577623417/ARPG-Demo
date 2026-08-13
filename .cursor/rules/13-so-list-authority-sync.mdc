@@ -6,7 +6,7 @@ alwaysApply: false
 
 # SO 列表源→目标安全同步（Authority → Target）
 
-> 设计来源：`6.AI/Cursor/BluePrint/151-160/160.2【蓝图】SO列表源目标安全同步机制落地蓝图.md`  
+> 设计来源：`F:/Code/Note/3.Core-Drive_Action/3D ARPG/06_开发记录/00_旧开发日志_001-224/02_工程内补充蓝图/151-160/160.2【蓝图】SO列表源目标安全同步机制落地蓝图.md`  
 > 与 `11-unity-editor-tool-authoring.mdc`（Undo/SetDirty）、`10-so-inspector-authoring-foldout.mdc`（Validation 区常驻）配套。
 
 凡 ScriptableObject（或 Inspector 列表）存在 **「上层勾选/注册集合」驱动「下层明细列表」** 的上下对应关系，**必须**启用本机制，禁止双源手工维护。

@@ -18,6 +18,21 @@ MonoBehaviour:
   LockRotateDuringPlay: 1
   AuthorityPriorityOverride: -1
   CombatTrack: []
+  ContactEvents:
+  - EventId: 25c63689106b4489a0c38f54d649bf74
+    DebugName: Hitbox_MeleeHook_Player
+    WindowId: 
+    ActiveStart: 0
+    ActiveEnd: 1
+    Definition: {fileID: 11400000, guid: 2cc6a24a7e53cf74c950d4ef4a666b5e, type: 2}
+    Override:
+      OverridePlacement: 1
+      Origin: 1
+      LocalOffset: {x: -0.15596522, y: 0.20581344, z: -1.4698504}
+      LocalEuler: {x: 68.21504, y: 40.351696, z: 37.591225}
+      OverrideMotion: 0
+      Motion: 1
+  WindowAuthoringVersion: 0
   MainClip: {fileID: -8061687084165900903, guid: 30e0c6f0ba714704faaf6b4df5acca56,
     type: 3}
   CrossfadeTime: 0.08
@@ -81,8 +96,10 @@ MonoBehaviour:
   SlideMaxResidualSpeed: 0
   MotionProfile: {fileID: 11400000, guid: 10d78fd1fe958d74fbc888d8770769ad, type: 2}
   Windows:
-  - NormalizedStart: 0.9
-    NormalizedEnd: 1
+  - _windowId: 
+    DisplayName: 
+    NormalizedStart: 0.78
+    NormalizedEnd: 0.88
     WindowSlotMask: 0
     RuntimeEvents: []
     InterruptibleByCategories: 17
@@ -92,53 +109,6 @@ MonoBehaviour:
     AllowMoveInput: 0
     incomingAbilityGate: 0
     _legacyDirectStateTagMask: 0
-  - NormalizedStart: 0.4
-    NormalizedEnd: 0.59999996
-    WindowSlotMask: 256
-    RuntimeEvents: []
-    InterruptibleByCategories: 0
-    MinIncomingPriority: 0
-    AllowSelfInterrupt: 0
-    AllowFacingInput: 0
-    AllowMoveInput: 0
-    incomingAbilityGate: 0
-    _legacyDirectStateTagMask: 0
-  AttackClips:
-  - DebugName: Melee_Hook_Player
-    ActiveStart: 0.41
-    ActiveEnd: 0.61
-    ShapeMode: 0
-    Shape: {fileID: 11400000, guid: 5496af1eb2568dd4d9a80f27f2cc4e12, type: 2}
-    WeaponSockets: {fileID: 11400000, guid: fdc98222cf2742ffafd17264aa5477db, type: 2}
-    Origin: 1
-    OriginOffset: {x: 0, y: 0, z: 0}
-    OriginEuler: {x: 0, y: 0, z: 0}
-    Reach: 1.5
-    Target:
-      Relations: 24
-      UnitKinds: 31
-      SelfHit: 0
-      IncludeDead: 0
-      RequireSelectable: 0
-    QueryLayerMask:
-      serializedVersion: 2
-      m_Bits: 256
-    Policy:
-      Kind: 0
-      IntervalSeconds: 0.2
-      MaxHitsPerTarget: 1
-      MaxTargets: 999
-    Reaction:
-      BaseDamage: 0
-      ImpulseLocalDir: {x: 0, y: 0, z: 1}
-      ImpulseForce: 4
-      LaunchUpSpeed: 0
-      HitStopSeconds: 0.06
-      CameraShakeIntensity: 0
-      CameraShakeDuration: 0.12
-      VfxPayload: 
-      SfxPayload: 
-      OnHitEffect: {fileID: 11400000, guid: d96175cd7934fac4bbfabab1c7390d44, type: 2}
   DefenseClips: []
   TeleportTriggers: []
   TimelineMarkers: []

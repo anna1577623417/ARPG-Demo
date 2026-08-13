@@ -223,8 +223,8 @@ public class LocomotionProfile : ScriptableObject
 /// <summary>
 /// 单个 Locomotion 状态的绑定（State → 路径 / 资源 / 降级目标）。
 ///
-/// ═══ 164.1 单数据源 ═══
-///   · <see cref="LocomotionAction"/> 权威；离散或 <see cref="ActionDataSO.IsContinuousLocomotion"/> Loop。
+/// ═══ 164.1 / 227.5.1 单数据源 ═══
+///   · <see cref="LocomotionAction"/> 权威；State 决定连续槽/离散段，Action flag 决定是否接管连续槽。
 ///   · Obsolete 字段（DiscreteAction / ContinuousClip 等）仅只读回落，勿再写入。
 ///   · 二者均空 —— 二级降级（表现层）：Anim 层回退到 Idle 的 Clip。
 ///
@@ -242,7 +242,7 @@ public struct LocomotionStateBinding
     [Tooltip("逻辑层降级目标 —— 当本状态未在 Profile.EnabledStates 注册时，Resolver 沿此链回退。\n建议链：WalkEnd→Idle、TurnInPlaceDirected→Idle、JumpStart→Air、JumpLand→Idle。")]
     public LocomotionStateId FallbackState;
 
-    [Tooltip("164.1 统一 Locomotion Action 入口（离散或 IsContinuousLocomotion Loop）。单数据源权威字段。")]
+    [Tooltip("164.1 / 227.5.1 统一 Locomotion Action 入口。State 决定连续槽/离散段；连续槽中的 Action 必须勾选 Is Continuous 才接管表现。")]
     public ActionDataSO LocomotionAction;
 
     [Obsolete("164.1 L8：改用 LocomotionAction。运行时仅作只读回落，勿再写入。")]

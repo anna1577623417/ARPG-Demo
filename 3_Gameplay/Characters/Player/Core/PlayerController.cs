@@ -531,31 +531,19 @@ public class PlayerController : EntityController
             return;
         }
 
-        var suppressRotation = player.ShouldSuppressLocomotionRotation();
-
         switch (tense)
         {
             case InputTense.Hold:
             case InputTense.ShortHold:
-                if (!suppressRotation
-                    && ActionRotationGate.IsAllowed(player, ActionRotationGate.Kind.Facing))
-                {
-                    ActionTurnProbe.Log(player, player.LogicForward, worldDirection, "PlayerController.Hold");
-                    player.SetLogicForward(worldDirection);
-                }
-
+                // 227.4.3：连续移动只写意图。Gameplay Root 由 MoveByLocomotionIntent
+                // 消费已解析 MotionDirection 并限速转向，禁止原始 WASD 在 Controller 先瞬转根节点。
                 player.SetMovementIntent(worldDirection, wantsRun);
                 break;
 
             case InputTense.Pending:
-                if (!suppressRotation
-                    && ActionRotationGate.IsAllowed(player, ActionRotationGate.Kind.Facing))
-                {
-                    ActionTurnProbe.Log(player, player.LogicForward, worldDirection, "PlayerController.Pending");
-                    player.SetLogicForward(worldDirection);
-                }
-
-                player.SetFacingIntentOnly(worldDirection);
+                // 227.4.3：Pending 仍保留给 Tap/Hold/技能上下文判定，但不能再冻结移动。
+                // 首帧立即写 MovementIntent；若最终判为 Tap，释放帧会清回 Facing-only。
+                player.SetMovementIntent(worldDirection, wantsRun);
                 break;
 
             default:

@@ -13,15 +13,11 @@ MonoBehaviour:
   m_Name: WeaponSocketSet_MeleeHook_HandR
   m_EditorClassIdentifier: 
   Sockets:
-  - DebugName: tip
+  - DebugName: base
     Bone: 18
-    LocalOffset: {x: 0, y: 0, z: 0.15}
-    Radius: 0.12
-  - DebugName: mid
-    Bone: 18
-    LocalOffset: {x: 0, y: 0, z: 0.05}
+    LocalOffset: {x: 0.05, y: -0.09, z: 0}
     Radius: 0.1
   - DebugName: base
     Bone: 18
-    LocalOffset: {x: 0, y: 0, z: -0.05}
-    Radius: 0.08
+    LocalOffset: {x: 0.02, y: -0.5, z: -1.26}
+    Radius: 0.1

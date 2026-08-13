@@ -57,7 +57,7 @@ public struct TeleportTrigger
 
 /// <summary>
 /// 数据驱动动作资产 — 意图、时间轴切片、离散事件（如瞬移触发）及动画/剪辑元数据。
-/// <para><see cref="MotionProfile"/> 非空则由 MotionExecutor 施加程序化位移；为空则<strong>只做表现播放</strong>（无脚本层位移语义）。</para>
+/// <para><see cref="MotionDriverMode"/> 显式声明位移/物理权威；LegacyAuto 兼容旧 MotionProfile / RootMotion 分流。</para>
 /// </summary>
 [CreateAssetMenu(fileName = "NewAction", menuName = "GameMain/Action/Action Data")]
 public partial class ActionDataSO : ScriptableObject
@@ -69,12 +69,14 @@ public partial class ActionDataSO : ScriptableObject
     [Range(0f, 0.5f)]
     public float CrossfadeTime = 0.08f;
 
-    [Tooltip("Clip 播放倍率；仅 ClipAnimSpeedMode=Free 时运行时生效。")]
+    [Tooltip("Clip 基准播放倍率；仅 ClipAnimSpeedMode=Free 时作为基准 S。AutoFit 下由 Duration/Segment 推算。")]
     [Range(0.1f, 20f)]
     public float AnimSpeed = 1f;
 
-    [Header("Anim Speed (171.7)")]
-    [Tooltip("Free = SO 手填 AnimSpeed + MotionProfile SpeedOverTime 可选；AutoFitDuration = Clip×Segment÷Duration，忽略 Profile 曲线。")]
+    [Header("Anim Speed (171.7 / 226)")]
+    [Tooltip(
+        "Free = 手填基准 S；AutoFitDuration = Clip×Segment÷Duration 为基准 S。\n" +
+        "MotionProfile SpeedOverTime 在 Free/AutoFit 下均可叠加，但须 ∫≈1。")]
     [FormerlySerializedAs("AutoSyncAnimSpeedToDuration")]
     public ActionAnimSpeedMode ClipAnimSpeedMode = ActionAnimSpeedMode.AutoFitDuration;
 
@@ -131,8 +133,11 @@ public partial class ActionDataSO : ScriptableObject
     [Tooltip("动作级别自打断开关。窗口未单独允许时，可用它统一放行同动作重入。")]
     public bool AllowSelfInterrupt;
 
-    [Header("Locomotion Mode (164.1)")]
-    [Tooltip("勾选 = Locomotion State 内循环播放（不切 ActionState）；隐藏离散时长/窗口字段。")]
+    [Header("Locomotion Continuous Takeover (164.1 / 227.5.1)")]
+    [Tooltip("仅用于 LocomotionProfile 的连续 State 槽位。\n" +
+             "勾选：此 Action 接管连续表现，并以循环合同播放 MainClip。\n" +
+             "未勾选：不接管连续槽，回落 Legacy ContinuousClip / AnimLibrary。\n" +
+             "JumpStart、JumpLand、WalkStart/End、RunStart/End 等离散 State 不得勾选；有限 TurnInPlace 也不勾选。")]
     public bool IsContinuousLocomotion;
 
     [Header("Locomotion Recovery (184.3)")]
@@ -167,7 +172,15 @@ public partial class ActionDataSO : ScriptableObject
 
     public MotionGrammarRule GrammarOverride;
 
-    [Tooltip("L6：本 Action 使用 Clip RootMotion 驱动 transform（与 MotionProfile 曲线二选一，默认关）。")]
+    [Header("Motion Authority (227.4)")]
+    [Tooltip(
+        "Action 播放期间的位移/物理权威。\n" +
+        "LegacyAuto 保留旧资产行为；InheritStateMotor 继续使用 Grounded/Airborne 基础 Motor；\n" +
+        "MotionProfile 由 MotionExecutor 唯一提交；ClipRootMotion 使用 Animator Root Motion；\n" +
+        "Stationary 禁止平面输入，但继续维护重力、垂直速度和接地。")]
+    public ActionMotionDriverMode MotionDriverMode = ActionMotionDriverMode.LegacyAuto;
+
+    [Tooltip("LegacyAuto 兼容字段：勾选时旧资产使用 Clip RootMotion。显式模式请改 MotionDriverMode；本字段暂不删除。")]
     public bool UseClipRootMotion;
 
     [Tooltip("Continuous Locomotion 期间是否允许 LookAtDirection 逻辑旋转。")]
@@ -231,16 +244,12 @@ public partial class ActionDataSO : ScriptableObject
 
     [Header("Motion Profile (位移驱动)")]
     [Tooltip(
-        "非空：由 MotionExecutor 施加程序化位移（连续曲线等）。为空：不写 Transform，仅凭 MainClip/Duration 由表现层驱动动画（Gameplay 仍可跑标签与时间轴）。Dodge/SwordDash 同上。")]
+        "仅 MotionDriverMode=MotionProfile（或迁移期 LegacyAuto 自动解析为 MotionProfile）时取得位移权威。\n" +
+        "InheritStateMotor / ClipRootMotion / Stationary 下不读取此引用。")]
     public MotionProfileSO MotionProfile;
 
     [Tooltip("归一化时间轴上的标签切片。")]
     public List<ActionWindow> Windows = new List<ActionWindow>();
-
-    [Header("Attack Clips (216.3 M1 — 判定生命周期)")]
-    [Tooltip("216.3 M1：攻击判定片段（Active 区间 + Shape + Reach）。运行时由 AttackInstance 在 Active 区间内 Sweep 判定。\n" +
-             "新增设施：既有资产默认空列表，不影响旧 Hitbox/CombatObject 轨。")]
-    public List<HitClip> AttackClips = new List<HitClip>();
 
     [Header("Defense Clips (216.3 M5 — Guard/Parry/Invincible)")]
     [Tooltip("216.3 M5 L1：防御片段（Active 区间 + Kind + Guard 角度/距离）。运行时由 GuardVolumeProvider 在 Guard 窗内开前向 Volume。\n" +
@@ -353,21 +362,11 @@ public partial class ActionDataSO : ScriptableObject
 #if UNITY_EDITOR
     void OnValidate()
     {
-        if (IsContinuousLocomotion)
-        {
-            IntentCategory = ActionIntentCategory.Locomotion;
-            GraphParticipation = GraphParticipation.SourceOnly;
-            if (Category != ActionCategory.IdleFallback)
-            {
-                Category = ActionCategory.Locomotion;
-            }
-            Duration = 0f;
-            UseClipRootMotion = false;
-            ClipAnimSpeedMode = ActionAnimSpeedMode.Free;
-        }
-        else if (ClipAnimSpeedMode == ActionAnimSpeedMode.Free
-                 && MainClip != null
-                 && Duration > 0.001f)
+        // 227.5.1 L2：不再因 IsContinuousLocomotion 自动改 Intent/Graph/Duration/ClipMode。
+        if (!IsContinuousLocomotion
+            && ClipAnimSpeedMode == ActionAnimSpeedMode.Free
+            && MainClip != null
+            && Duration > 0.001f)
         {
             var segmentLen = ActionTimeAuthority.ResolveSegmentLength(this);
             var expectedWall = MainClip.length * segmentLen / Mathf.Max(0.01f, AnimSpeed);
@@ -422,7 +421,7 @@ public partial class ActionDataSO : ScriptableObject
             }
         }
 
-        if (dirty || IsContinuousLocomotion)
+        if (dirty)
         {
             UnityEditor.EditorUtility.SetDirty(this);
         }

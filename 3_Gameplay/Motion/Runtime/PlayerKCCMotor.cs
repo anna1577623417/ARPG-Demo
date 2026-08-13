@@ -348,11 +348,13 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
 
         var velocity = new Vector3(_planarVelocity.x, _verticalSpeed, _planarVelocity.z);
         var solvedDelta = velocity * Time.deltaTime;
+        var plannedDelta = solvedDelta;
 
         if (motorSettings != null)
         {
             velocity = MaybeProjectVelocityOntoWalkableSlope(velocity, in solveCtx);
             var displacement = velocity * Time.deltaTime;
+            plannedDelta = displacement;
             var applySlideYLock = ShouldApplyGroundedSlideDownwardLock(in solveCtx);
             solvedDelta = KinematicMotorSolver.SolveDisplacementFromPivot(
                 transform.position,
@@ -390,6 +392,20 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
             "ApplyMotor", wasGroundedAtMotorStart, in solvedDelta, vyAfterClamp, stepDownAttemptPath: motorSettings != null);
         LogReactionDirection2206SpeedProbe(
             "ApplyMotor", probePositionBefore, probeVelocityBefore, solvedDelta);
+        LocomotionPositionSettlement227Probe.ReportMotorSettlement(
+            _player,
+            "ApplyMotor",
+            probePositionBefore,
+            plannedDelta,
+            solvedDelta,
+            transform.position);
+        LocomotionTransition227BugProbe.LogTrackedMotorPositionSettlement(
+            _player,
+            "ApplyMotor",
+            probePositionBefore,
+            plannedDelta,
+            solvedDelta,
+            transform.position);
     }
 
     public void ApplyMotorFromGameplayVelocity(Vector3 gameplayWorldVelocity, in MotorSolveContext context)
@@ -481,10 +497,13 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
             gameplayDrivenVy = false;
         }
 
+        var plannedDelta = velocity * Time.deltaTime;
+
         if (motorSettings != null)
         {
             velocity = MaybeProjectVelocityOntoWalkableSlope(velocity, in solveCtx);
             var displacement = velocity * Time.deltaTime;
+            plannedDelta = displacement;
             var applySlideYLock = ShouldApplyGroundedSlideDownwardLock(in solveCtx);
             solvedDelta = KinematicMotorSolver.SolveDisplacementFromPivot(
                 transform.position,
@@ -536,6 +555,21 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
         LogReactionDirection2206SpeedProbe(
             gameplayDrivenVy ? "ApplyMotorFromGameplay[Y-driven]" : "ApplyMotorFromGameplay",
             probePositionBefore, probeVelocityBefore, solvedDelta);
+        var reportedSolvedDelta = motorSettings != null ? solvedDelta : plannedDelta;
+        LocomotionPositionSettlement227Probe.ReportMotorSettlement(
+            _player,
+            gameplayDrivenVy ? "ApplyMotorFromGameplay[Y-driven]" : "ApplyMotorFromGameplay",
+            probePositionBefore,
+            plannedDelta,
+            reportedSolvedDelta,
+            transform.position);
+        LocomotionTransition227BugProbe.LogTrackedMotorPositionSettlement(
+            _player,
+            gameplayDrivenVy ? "ApplyMotorFromGameplay[Y-driven]" : "ApplyMotorFromGameplay",
+            probePositionBefore,
+            plannedDelta,
+            reportedSolvedDelta,
+            transform.position);
     }
 
     void LogReactionDirection2206SpeedProbe(
@@ -785,6 +819,7 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
 
     public void TeleportTo(Vector3 worldPosition, bool forceAirborne = false)
     {
+        var positionBefore = transform.position;
         var destination = worldPosition;
 
         if (motorSettings != null)
@@ -827,6 +862,12 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
         }
 
         RefreshGroundedState(forceAirborne ? MotorSolveContext.Airborne : MotorSolveContext.Locomotion);
+        LocomotionPositionSettlement227Probe.LogExplicitTeleport(
+            _player,
+            worldPosition,
+            positionBefore,
+            transform.position,
+            forceAirborne);
 
         if (_player != null)
         {

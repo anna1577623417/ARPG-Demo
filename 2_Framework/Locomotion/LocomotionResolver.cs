@@ -5,7 +5,7 @@ using UnityEngine;
 ///
 /// ═══ 职责 ═══
 ///   输入：玩家当前 LocomotionIntent（想做什么）+ LocomotionContext（环境）+ LocomotionProfile（角色能力）
-///   输出：LocomotionDecision（应该走哪个 State / 走 Discrete Action 还是 Continuous Clip / 谁主导控制权）
+///   输出：LocomotionDecision（最终 State / ExecutionPolicy / 离散 Action 或连续 Clip / ControlOwner）
 ///
 /// ═══ 两级降级 ═══
 ///   · 一级降级（逻辑层，本 Resolver 负责）：
@@ -14,10 +14,9 @@ using UnityEngine;
 ///     Binding.DiscreteAction / ContinuousClip 均为空 → Anim 层回退到 Idle 的 Clip。
 ///   · 本 Resolver <strong>不</strong>触及表现层降级 —— 关注点分离。
 ///
-/// ═══ 类型契约（158.2 § Q1 修正）═══
-///   · "当前是哪个状态" 一律用 <see cref="LocomotionStateId"/>（单值 byte 枚举）。
-///   · "拥有哪些状态能力" 用 <see cref="LocomotionStateFlag"/>（[Flags] int 集合）。
-///   · 两者通过 <see cref="LocomotionStateIdExtensions.ToFlag"/> / <see cref="LocomotionStateIdExtensions.ToId"/> 转换。
+/// ═══ 227.5.1 ═══
+///   State 的 IsContinuous/IsDiscrete 决定执行拓扑；连续 State 内，只有显式勾选
+///   <see cref="ActionDataSO.IsContinuousLocomotion"/> 的 Action 才接管连续表现。
 /// </summary>
 public static class LocomotionResolver
 {
@@ -30,11 +29,13 @@ public static class LocomotionResolver
         // Profile 缺失 —— 安全降级到 Idle（与"没有 Profile 等同于只注册基础 4 类"语义一致）。
         if (profile == null)
         {
+            var fallbackState = intent.RequestedState == LocomotionStateId.None
+                ? LocomotionStateId.Idle
+                : intent.RequestedState;
             return new LocomotionDecision
             {
-                ResolvedState = intent.RequestedState == LocomotionStateId.None
-                    ? LocomotionStateId.Idle
-                    : intent.RequestedState,
+                ResolvedState = fallbackState,
+                ExecutionPolicy = LocomotionExecutionPolicyUtil.FromState(fallbackState),
                 DiscreteAction = null,
                 ContinuousClip = null,
                 ControlOwnerHint = ControlOwner.Locomotion,
@@ -78,40 +79,42 @@ public static class LocomotionResolver
             resolvedBinding = profile.GetBinding(state);
         }
 
-        // 164.1：统一 Action 解析 —— IsContinuousLocomotion → Clip 路径；否则离散 Action。
         var locomotionAction = resolvedBinding.ResolveLocomotionAction();
         ActionDataSO discreteAction = null;
         AnimationClip continuousClip = null;
         var transitionDuration = 0.08f;
         var clipSpeed = 1f;
-        var isContinuous = false;
+        var policy = LocomotionExecutionPolicyUtil.FromState(state);
         ControlOwner ownerHint;
+        string fallbackReason = null;
 
-        if (locomotionAction != null)
+        if (policy == LocomotionExecutionPolicy.ContinuousPresentation)
         {
-            if (locomotionAction.IsContinuousLocomotion)
+            ownerHint = ControlOwner.Locomotion;
+            if (resolvedBinding.TryGetContinuousPresentation(
+                    out continuousClip,
+                    out transitionDuration,
+                    out clipSpeed,
+                    out _,
+                    out var continuousAction))
             {
-                isContinuous = true;
-                continuousClip = locomotionAction.MainClip;
-                transitionDuration = locomotionAction.CrossfadeTime;
-                clipSpeed = locomotionAction.AnimSpeed > 0.001f ? locomotionAction.AnimSpeed : 1f;
-                ownerHint = ControlOwner.Locomotion;
+                // 连续路径只向事件总线暴露已显式接管的 Action。
+                // Legacy ContinuousClip 没有 Action 身份，由快照/AnimLibrary 路径直接播放。
+                locomotionAction = continuousAction;
+                if (continuousAction == null)
+                    fallbackReason = "LegacyContinuousClip";
             }
             else
             {
-                discreteAction = locomotionAction;
-                ownerHint = ControlOwner.Action;
+                // Profile Action 未勾选 Is Continuous 时不接管，允许表现层回落 AnimLibrary。
+                locomotionAction = null;
+                fallbackReason = "IsContinuousNotOptedIn";
             }
         }
-        else if (resolvedBinding.TryGetContinuousPresentation(
-                     out continuousClip,
-                     out transitionDuration,
-                     out clipSpeed,
-                     out _,
-                     out _))
+        else if (policy == LocomotionExecutionPolicy.DiscreteActionTimeline)
         {
-            isContinuous = true;
-            ownerHint = ControlOwner.Locomotion;
+            discreteAction = locomotionAction;
+            ownerHint = ControlOwner.Action;
         }
         else
         {
@@ -123,12 +126,13 @@ public static class LocomotionResolver
             ResolvedState = state,
             LocomotionAction = locomotionAction,
             DiscreteAction = discreteAction,
-            IsContinuousLocomotion = isContinuous,
+            ExecutionPolicy = policy,
             ContinuousClip = continuousClip,
             TransitionDuration = transitionDuration,
             ClipSpeed = clipSpeed,
             ControlOwnerHint = ownerHint,
             DowngradedFromLogicLayer = downgraded,
+            FallbackReason = fallbackReason,
         };
     }
 }
@@ -194,14 +198,14 @@ public struct LocomotionDecision
     /// <summary>最终解析到的状态（经一级降级后）。</summary>
     public LocomotionStateId ResolvedState;
 
-    /// <summary>164.1：Binding 解析到的统一 Locomotion Action（可为连续或离散）。</summary>
+    /// <summary>Binding 解析到的 Action；连续路径仅在 IsContinuousLocomotion 已显式接管时非空。</summary>
     public ActionDataSO LocomotionAction;
 
     /// <summary>离散 Action 路径（非空时调用方应 ArmPendingAction + Change&lt;ActionState&gt;）。</summary>
     public ActionDataSO DiscreteAction;
 
-    /// <summary>连续 Locomotion 路径（由 LocomotionAction.MainClip 或 Binding.ContinuousClip 填充）。</summary>
-    public bool IsContinuousLocomotion;
+    /// <summary>227.5.1：由最终 State 语义决定的执行拓扑（连续槽 / 离散 Timeline）。</summary>
+    public LocomotionExecutionPolicy ExecutionPolicy;
 
     /// <summary>连续 Clip 路径（非空时由 PlayerAnimController CrossFade）。</summary>
     public AnimationClip ContinuousClip;
@@ -217,6 +221,9 @@ public struct LocomotionDecision
 
     /// <summary>是否经过了一级降级（用于 DryRun 阶段比对调试）。</summary>
     public bool DowngradedFromLogicLayer;
+
+    /// <summary>227.5.1 诊断：连续路径是否走了旧 ContinuousClip 回落。</summary>
+    public string FallbackReason;
 }
 
 /// <summary>
@@ -241,7 +248,9 @@ public struct LocomotionPresentationSnapshot
             ResolvedState = decision.ResolvedState,
             StrafeDirection = intent.StrafeDirection,
             ContinuousClip = decision.ContinuousClip,
-            ContinuousAction = decision.IsContinuousLocomotion ? decision.LocomotionAction : null,
+            ContinuousAction = decision.ExecutionPolicy == LocomotionExecutionPolicy.ContinuousPresentation
+                ? decision.LocomotionAction
+                : null,
             TransitionDuration = decision.TransitionDuration,
             ClipSpeed = decision.ClipSpeed,
             ReferenceLocomotionSpeed = 0f,

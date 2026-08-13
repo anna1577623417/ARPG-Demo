@@ -82,6 +82,7 @@ public sealed class PlayerActionState : PlayerState
 
         var normalizedStart = lease.NormalizedStart;
         m_motionPlayback.ApplyDriverPolicy(player, m_action);
+        ApplyStationaryEntryPolicy(player);
         ApplyStopAuthoring(player, m_action, ref normalizedStart);
         m_baseDuration = ResolveDurationSeconds();
         m_elapsed = m_baseDuration * normalizedStart;
@@ -132,7 +133,10 @@ public sealed class PlayerActionState : PlayerState
             normalizedStart,
             presentationSpeed);
 
-        SyncInPlaceBonePresenter(player, m_motionPlayback.UseMotionProfile, m_action);
+        SyncInPlaceBonePresenter(
+            player,
+            m_motionPlayback.UseMotionProfile || m_motionPlayback.DriverPlan.RequiresBaseMotorTick,
+            m_action);
 
         // 182.3 — Tick 探针重置 + 缓存当前 presentationSpeed（用于每帧重设 / 防漂移）
         StopProbe.NotifyEnter(m_action);
@@ -142,6 +146,15 @@ public sealed class PlayerActionState : PlayerState
         {
             MotionGrammarProbe.LogTransitionEnter(player, m_action);
         }
+
+        LocomotionTransition227BugProbe.LogTrackedActionEnter(
+            player,
+            m_action,
+            m_kind,
+            m_baseDuration,
+            m_motionPlayback.HasActiveExecutor,
+            m_motionPlayback.DriverPlan,
+            m_leaseVersion);
     }
 
     // 182.3 — 缓存最近一次写入 Animator 的 speed，仅在变化时下发，避免每帧事件刷屏
@@ -266,6 +279,7 @@ public sealed class PlayerActionState : PlayerState
         EnsureMotionPlumbing(player);
         m_baseDuration = m_motionPlayback.ResolveActionDuration(player, action, m_kind);
         m_motionPlayback.ApplyDriverPolicy(player, action);
+        ApplyStationaryEntryPolicy(player);
         var normalizedStart = 0f;
         ApplyStopAuthoring(player, action, ref normalizedStart);
         m_baseDuration = ResolveDurationSeconds();
@@ -296,7 +310,10 @@ public sealed class PlayerActionState : PlayerState
             normalizedStartForPresentation,
             presentationSpeed);
 
-        SyncInPlaceBonePresenter(player, m_motionPlayback.UseMotionProfile, action);
+        SyncInPlaceBonePresenter(
+            player,
+            m_motionPlayback.UseMotionProfile || m_motionPlayback.DriverPlan.RequiresBaseMotorTick,
+            action);
     }
 
     float ResolveStopPresentationAnimSpeed(ActionDataSO action, float motionNormalizedTime)
@@ -337,7 +354,8 @@ public sealed class PlayerActionState : PlayerState
                 m_prevNormalizedTime,
                 nt,
                 m_burstFaceDir,
-                m_timelineState);
+                m_timelineState,
+                m_leaseVersion);
         }
 
         // 推进 SkillEntries.ActiveRoute（Stage Transition / Charge 状态机等）
@@ -360,6 +378,32 @@ public sealed class PlayerActionState : PlayerState
             chargePlayback,
             hasChargePlayback);
 
+        if (m_motionPlayback.LastFrameAppliedMotor)
+        {
+            LocomotionTransition227BugProbe.LogMotorCommit(
+                player,
+                m_action,
+                m_motionPlayback.DriverPlan,
+                "MotionProfile");
+        }
+
+        TickResolvedBaseMotor(player);
+
+        // 227.4.3：Profile JumpStart 的 Gameplay 所有权只覆盖上升段。
+        // 物理越过顶点后立即交还 Airborne，让其发布 JumpLoop 并持有 touchdown。
+        // 若极端帧率/低顶导致本帧已接地，则走共享 Landing 路由，禁止 ExitToBaseline 直达 Locomotion。
+        if (TryExitLocomotionJumpStartPhase(player, nt))
+        {
+            return;
+        }
+
+        LocomotionTransition227BugProbe.ObserveTrackedAction(
+            player,
+            m_action,
+            nt,
+            m_motionPlayback.HasActiveExecutor,
+            m_motionPlayback.DriverPlan);
+
         // 182.3 — 每帧重设 Animator.speed：让 AnimSpeedCurve（ProfileFactor(nt)）真正按 nt 生效
         //   * 旧 BUG：presentationSpeed 仅 OnEnter 设一次，整个 Action 期间 Animator.speed 不更新
         //   * 现状：每帧基于当前 nt 重算；仅在数值显著变化时下发事件，避免每帧刷屏
@@ -381,14 +425,6 @@ public sealed class PlayerActionState : PlayerState
 
         // 196.x：帧末清除 swap 标志，下一帧从 prevNt=0 正常 Tick。
         m_actionSwappedThisFrame = false;
-
-        if (m_action != null
-            && m_action.IntentCategory == ActionIntentCategory.Locomotion
-            && !player.IsGrounded)
-        {
-            player.MoveByLocomotionIntent(player.AirMoveMultiplier * 0.5f, player.WantsRun);
-            Locomotion165Diagnostics.LogAirLocoMove(player, m_action, ref m_nextAirLocoMoveLogTime);
-        }
 
         // 结束条件（收敛）：Action 已播完 + Route 已退出。
         // 若 Route 先退出，保持到当前 Action 播放完成，避免出现中途硬切状态。
@@ -455,6 +491,108 @@ public sealed class PlayerActionState : PlayerState
                 exitReason);
             ExitToBaseline(player);
         }
+    }
+
+    /// <summary>227.4：显式 Stationary 只清一次平面速度，不冻结垂直物理。</summary>
+    void ApplyStationaryEntryPolicy(Player player)
+    {
+        if (player != null
+            && m_motionPlayback.DriverPlan.IsValid
+            && m_motionPlayback.DriverPlan.EffectiveMode == ActionMotionDriverMode.Stationary)
+        {
+            player.ClearPlanarVelocity();
+        }
+    }
+
+    /// <summary>
+    /// 227.4：ActionState 的基础 Motor 单一提交点。
+    /// MotionProfile 已在 ActionMotionPlayback 内提交；ClipRootMotion/Legacy 无驱动保持旧路径。
+    /// </summary>
+    void TickResolvedBaseMotor(Player player)
+    {
+        var plan = m_motionPlayback.DriverPlan;
+        if (player == null || m_action == null || !plan.IsValid || !plan.RequiresBaseMotorTick)
+        {
+            return;
+        }
+
+        if (plan.AllowsPlanarIntent && m_action.CanMoveDuringLocomotion)
+        {
+            if (player.IsGrounded)
+            {
+                if (player.HasMovementIntent)
+                {
+                    player.MoveByLocomotionIntent(1f, player.WantsRun);
+                }
+                else
+                {
+                    player.StopMove();
+                }
+            }
+            else
+            {
+                // 保持本类改造前的 Action 空中操控倍率，仅补上缺失的 Motor 提交。
+                player.MoveByLocomotionIntent(player.AirMoveMultiplier * 0.5f, player.WantsRun);
+                Locomotion165Diagnostics.LogAirLocoMove(player, m_action, ref m_nextAirLocoMoveLogTime);
+            }
+        }
+
+        var source = player.IsGrounded
+            ? (plan.EffectiveMode == ActionMotionDriverMode.Stationary
+                ? "StationaryActionPhysics"
+                : "LocomotionActionInherited")
+            : (plan.EffectiveMode == ActionMotionDriverMode.Stationary
+                ? "StationaryActionPhysics"
+                : "AirborneActionInherited");
+
+        player.ApplyMotor(player.IsGrounded ? MotorSolveContext.Locomotion : MotorSolveContext.Airborne);
+        LocomotionTransition227BugProbe.LogMotorCommit(player, m_action, plan, source);
+    }
+
+    bool TryExitLocomotionJumpStartPhase(Player player, float normalizedTime)
+    {
+        if (player == null
+            || m_action == null
+            || m_kind != GameplayIntentKind.Jump
+            || !IsProfileJumpStart(player, m_action))
+        {
+            return false;
+        }
+
+        if (player.IsGrounded)
+        {
+            LocomotionTransition227BugProbe.LogJumpStartPhaseExit(
+                player,
+                m_action,
+                normalizedTime,
+                "GroundedBeforeAirborneReturn");
+            m_exitDispatched = true;
+            PlayerAirborneState.RouteLanding(player, fallHeight: 0f, forceActionReentry: true);
+            return true;
+        }
+
+        if (player.VerticalSpeed > 0f)
+        {
+            return false;
+        }
+
+        LocomotionTransition227BugProbe.LogJumpStartPhaseExit(
+            player,
+            m_action,
+            normalizedTime,
+            "ApexCrossed");
+        m_exitDispatched = true;
+        player.States.Change<PlayerAirborneState>();
+        return true;
+    }
+
+    static bool IsProfileJumpStart(Player player, ActionDataSO action)
+    {
+        var profile = player != null ? player.LocomotionProfile : null;
+        return profile != null
+               && action != null
+               && profile.HasState(LocomotionStateId.JumpStart)
+               && profile.GetBinding(LocomotionStateId.JumpStart).ResolveLocomotionAction() == action;
     }
 
     protected override void OnExit(Player player)
@@ -635,15 +773,15 @@ public sealed class PlayerActionState : PlayerState
 
     void EnsureMotionPlumbing(Player player) => m_motionPlayback.EnsurePlumbing(player);
 
-    /// <summary>197.3 — MotionProfile 动作期剥离 Clip Hips 平面位移，与 Timeline MotionDriven 预览同口径。</summary>
-    static void SyncInPlaceBonePresenter(Player player, bool useMotionProfile, ActionDataSO action)
+    /// <summary>197.3 / 227.4 — 程序 Motor 动作期剥离 Clip Hips 平面位移，避免与基础 Motor 双重视觉推进。</summary>
+    static void SyncInPlaceBonePresenter(Player player, bool usesScriptedMotor, ActionDataSO action)
     {
         if (player == null)
         {
             return;
         }
 
-        var shouldEnable = useMotionProfile
+        var shouldEnable = usesScriptedMotor
                            && action != null
                            && !action.UseClipRootMotion;
 
@@ -726,9 +864,9 @@ public sealed class PlayerActionState : PlayerState
 
     void ExitToBaseline(Player player)
     {
-        // 169.1 系统性修复：Action 退出层一律回 Locomotion。
-        //   后续接地判定 → Idle / Airborne / JumpLand 全部由 FSM 标准链处理：
-        //     · Locomotion.OnLogicUpdate 见 !IsGrounded → Change<PlayerAirborneState>
+        // 227.5.1.1：Action 结束后按物理接地事实直接回基础状态。
+        //   空中先回 Locomotion 会让表现层播放一帧 Idle/Run，下一帧再切 Airborne，形成可见卡壳。
+        //   因此未接地直接进入 Airborne；接地仍回 Locomotion，JumpLand 仍只由 Airborne 落地链触发。
         //     · PlayerAirborneState.TryExitToLandOrLocomotion 是 JumpLand 唯一合法触发点
         //   "Graph 游标到 End = 回 Idle" 的语义不再在 Action 退出层被隐式注入打断。
         //   旧 takeJumpLandBranch 强插 JumpLand 已删除（详见 169.1 蓝图）；
@@ -739,7 +877,7 @@ public sealed class PlayerActionState : PlayerState
                 $"[Jump][ActionExit] action={(m_action != null ? m_action.name : "NULL")} " +
                 $"intentCategory={(m_action != null ? m_action.IntentCategory.ToString() : "NULL")} " +
                 $"startedWhileAirborne={m_startedWhileAirborne} grounded={player.IsGrounded} " +
-                $"branch=Locomotion frame={Time.frameCount}",
+                $"branch={(player.IsGrounded ? "Locomotion" : "Airborne")} frame={Time.frameCount}",
                 player);
         }
 
@@ -772,7 +910,21 @@ public sealed class PlayerActionState : PlayerState
         }
 
         InputActionProbe.LogActionExit(player, m_action, "natural-exit", m_elapsed, m_baseDuration);
-        player.States.Change<PlayerLocomotionState>();
+        LocomotionTransition227BugProbe.LogTrackedActionExit(player, m_action, m_elapsed, m_baseDuration);
+        var returnToLocomotion = player.IsGrounded;
+        AnimTransition227BugProbe.LogBaselineRoute(
+            player.GetInstanceID(),
+            m_action,
+            returnToLocomotion,
+            returnToLocomotion ? nameof(PlayerLocomotionState) : nameof(PlayerAirborneState));
+        if (returnToLocomotion)
+        {
+            player.States.Change<PlayerLocomotionState>();
+        }
+        else
+        {
+            player.States.Change<PlayerAirborneState>();
+        }
     }
 
     static LocomotionStateId ResolveLocomotionEndStateHint(Player player, ActionDataSO action)

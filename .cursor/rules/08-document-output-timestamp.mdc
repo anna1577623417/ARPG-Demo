@@ -5,9 +5,9 @@ alwaysApply: true
 
 # 文档产出时间戳（正文首行）
 
-凡由 AI **新建或实质性更新**并写入仓库的 Markdown / 施工日志 / 蓝图 / 分析报告，**正文第一行**必须是时间戳（精确到**小时:分钟**），不得从第二行或标题之后才开始写时间。
+凡由 AI **新建或实质性更新**并写入仓库的 Markdown / 施工日志 / 蓝图 / 分析报告，必须记录精确到分钟的本地时间。
 
-## 格式（强制）
+## 普通 Markdown 格式
 
 ```markdown
 > 产出时间：YYYY-MM-DD HH:mm
@@ -17,12 +17,24 @@ alwaysApply: true
 - `HH:mm`：24 小时制，补零（例 `09:05`、`18:30`）
 - 使用编写者所在**本地时区**的墙钟时间；若上下文已给出时区（如 UTC+8），与该时区一致即可，**不必**在首行写时区后缀
 
+## Obsidian Properties 结构化文档
+
+`225+` 的蓝图、Landing、Output、验收指南和验收结论需要 YAML Properties，因此第一行使用 `---`，并在属性区填写：
+
+```yaml
+created: 2026-08-09 00:05
+updated: 2026-08-09 00:05
+```
+
+YAML 结束后第一行正文继续写可见的 `> 产出时间：...` 或 `> 最后更新：...`。`001–224` 的历史文档不批量改格式。
+
 ## 适用范围
 
-- `Assets/AI Agent/Output/**`
-- `Assets/GameMain/Scripts/6.AI/Cursor/Output/**`
-- `Assets/GameMain/Scripts/6.AI/Cursor/BluePrint/**`
-- `Assets/GameMain/Scripts/6.AI/Cursor/Log/Record/Output/**`（AI 落盘；`Log/Test/**` 为用户只读原始 Log，不适用本规则）
+- `F:/Code/Note/3.Core-Drive_Action/3D ARPG/05_代码落位蓝图/**`
+- `F:/Code/Note/3.Core-Drive_Action/3D ARPG/06_开发记录/01_开发记录_225起/**`
+- `F:/Code/Note/3.Core-Drive_Action/3D ARPG/07_模块开发记录/**`
+- `F:/Code/Note/3.Core-Drive_Action/3D ARPG/08_AI输出管理/**`
+- `F:/Code/Note/3.Core-Drive_Action/3D ARPG/11_测试与验收/**`（用户手动原始 Log 只读，不适用 AI 改写）
 - 其它由任务明确要求落盘的 `.md` 分析 / 评审 / 版本总结 / 施工日志
 
 **不适用**：源码（`.cs` 等）、Unity 资产（`.asset`）、仅对话内回复不落盘的文字。
@@ -34,7 +46,7 @@ alwaysApply: true
 | **新建** | `> 产出时间：YYYY-MM-DD HH:mm` |
 | **实质性更新**（增删章节、改结论、改施工记录） | 第一行改为 `> 最后更新：YYYY-MM-DD HH:mm`；若需保留首次产出，第二行写 `> 产出时间：…`（原文时间） |
 
-标题（`# …`）从**第二行**起；首行只能是时间戳一行，前面不要空行、不要 YAML front matter 挡在时间戳前。
+普通 Markdown 的标题从第二行起；结构化 Obsidian 文档按上一节使用 YAML Properties。
 
 ## 示例
 
@@ -48,4 +60,4 @@ alwaysApply: true
 
 ## 自检
 
-落盘前确认：打开文件 → 第 1 行匹配 `> 产出时间：` 或 `> 最后更新：` + 合法日期时间。
+落盘前确认：普通文档第 1 行匹配可见时间戳；结构化文档第 1 行是 `---`，属性含 `created`、`updated`，正文首行含可见时间戳。

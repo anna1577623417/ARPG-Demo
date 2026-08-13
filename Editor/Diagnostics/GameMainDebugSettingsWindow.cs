@@ -98,6 +98,17 @@ public sealed class GameMainDebugSettingsWindow : EditorWindow
                 "Rotation Gate", "[RotGate]");
             Toggle(() => GameMainDebugSettings.TurnSubState, v => GameMainDebugSettings.TurnSubState = v,
                 "Turn Sub-State", "[Turn][Sub]");
+            Toggle(() => GameMainDebugSettings.AnimSpeed226Log, v => GameMainDebugSettings.AnimSpeed226Log = v,
+                "Anim Speed 226", "[AnimSpeed226] BEGIN/END 积分与 profileFactor");
+            Toggle(() => GameMainDebugSettings.AnimSpeed228Log, v => GameMainDebugSettings.AnimSpeed228Log = v,
+                "Anim Speed 228", "[AnimSpeed228] FreeFrontAutoTail SOLVE/BEGIN/END/REJECT");
+            Toggle(() => GameMainDebugSettings.AnimTransition227Log, v => GameMainDebugSettings.AnimTransition227Log = v,
+                "Anim Transition 227", "[AnimTransition227] 边沿核心事件：RESOLVE/REQUEST/BEGIN/50%/END/SUPERSEDE");
+            Toggle(() => GameMainDebugSettings.AnimTransition227BugLog, v => GameMainDebugSettings.AnimTransition227BugLog = v,
+                "Anim Transition 227 Bug", "[AnimTransition227Bug] 同 Clip 拦截/过渡抢占/空中基线分流");
+            Toggle(() => GameMainDebugSettings.LocomotionTransition227BugLog,
+                v => GameMainDebugSettings.LocomotionTransition227BugLog = v,
+                "Locomotion 227 Bug", "[Locomotion227Bug] Jump/RunStart + WASD 位置结算、Motor 后二次写入与显式 Teleport");
         });
 
         DrawSection("Combat / Intent", () =>
@@ -134,6 +145,12 @@ public sealed class GameMainDebugSettingsWindow : EditorWindow
                 "Action Timeline Preview", "[ActTimelineDiag]");
             Toggle(() => GameMainDebugSettings.MirrorDiagLog, v => GameMainDebugSettings.MirrorDiagLog = v,
                 "Mirror Diag", "[MirrorDiag]");
+            Toggle(() => GameMainDebugSettings.CombatSceneDrawSource,
+                v => GameMainDebugSettings.CombatSceneDrawSource = v,
+                "224.0 Scene Draw Source", "[224.0][DrawSource] Scene 主 Shape source/owner 标签");
+            Toggle(() => GameMainDebugSettings.CombatContactBaseline,
+                v => GameMainDebugSettings.CombatContactBaseline = v,
+                "224.0 Contact Baseline", "[224.0][Baseline] Preview/Runtime Pose·Geometry 单次快照");
             Toggle(() => GameMainDebugSettings.SimulateLockOnLocomotion,
                 v => GameMainDebugSettings.SimulateLockOnLocomotion = v,
                 "Simulate LockOn (非 Log)", "Play 验收 Strafe；非 Console Log");

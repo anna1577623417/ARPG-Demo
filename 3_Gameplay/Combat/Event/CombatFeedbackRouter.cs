@@ -137,6 +137,7 @@ public sealed class CombatFeedbackRouter : MonoBehaviour
     static void ApplyHit(in CombatResolvedEvent evt)
     {
         ApplyDamage(in evt);
+        ApplyHeal(in evt);
         ApplyOnHitEffect(in evt);
 
         var hasImpulse = TryBuildImpulseRequest(in evt, out var impulse);
@@ -163,6 +164,27 @@ public sealed class CombatFeedbackRouter : MonoBehaviour
 
         ApplyHitStop(in evt);
         ApplyCameraShake(in evt);
+    }
+
+    static void ApplyHeal(in CombatResolvedEvent evt)
+    {
+        var amount = evt.Outcome.HealAmount;
+        if (amount <= 0f || evt.Target == null)
+        {
+            return;
+        }
+
+        var resources = evt.Target.Resources;
+        var current = resources.GetCurrent(ResourceType.HP);
+        var maximum = resources.GetMax(ResourceType.HP);
+        resources.SetCurrent(ResourceType.HP, Mathf.Min(maximum, current + amount));
+
+        if (GameMainDebugSettings.CombatHit)
+        {
+            Debug.Log(
+                $"[Feedback] channel=Heal result=Applied eventId={evt.EventId} " +
+                $"target={evt.Target.name} amount={amount:F1}");
+        }
     }
 
     static void ApplyDamage(in CombatResolvedEvent evt)
@@ -193,7 +215,7 @@ public sealed class CombatFeedbackRouter : MonoBehaviour
 
     static void ApplyOnHitEffect(in CombatResolvedEvent evt)
     {
-        var effect = evt.Reaction.OnHitEffect;
+        var effect = evt.Outcome.Effect;
         if (effect == null || evt.Target == null)
         {
             return;

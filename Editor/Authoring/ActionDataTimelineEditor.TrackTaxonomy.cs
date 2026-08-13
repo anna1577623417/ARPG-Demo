@@ -44,19 +44,21 @@ public sealed partial class ActionDataTimelineEditor
 
     static readonly Color ColGray = new Color(0.5f, 0.5f, 0.5f, 1f);
 
+    // ActionContact 是唯一的攻击盒作者来源；高饱和红色用于与防御/受击/生成轨道形成稳定区分。
+    internal static readonly Color ContactHitboxColor = new Color(1f, 0.04f, 0.02f, 0.98f);
+
     /// <summary>轨道注册表（单点）。新增轨在此加一行即可。</summary>
     static readonly Dictionary<TrackId, TrackDescriptor> TrackRegistry = new()
     {
         // ── Tier A · 战斗核心（上移：打断 / 伤害判定 / 受击 / 无敌） ──
-        [TrackId.Interrupt]     = new(CombatTrackTier.CombatCore, 0, true,  false, "Cancel / Interrupt", new Color(0.95f, 0.45f, 0.2f, 0.88f)),
-        // 216.3 M1 L3：Attack(HitClip) 判定轨可拖 Active 起止；未来将合并旧 Hitbox/Combat（M7）。
-        [TrackId.Attack]        = new(CombatTrackTier.CombatCore, 1, true,  false, "Attack (HitClip)",   new Color(0.98f, 0.35f, 0.28f, 0.92f)),
+        [TrackId.WindowContainer] = new(CombatTrackTier.CombatCore, 0, true, false, "Window Container", new Color(0.55f, 0.75f, 0.95f, 0.75f)),
+        [TrackId.Interrupt]     = new(CombatTrackTier.CombatCore, 1, true,  false, "Cancel / Interrupt", new Color(0.95f, 0.45f, 0.2f, 0.88f)),
+        [TrackId.Contact]       = new(CombatTrackTier.CombatCore, 2, true,  false, "Hitbox",             ContactHitboxColor),
         // 216.3 M5 L1：DefenseClip 防御轨（Guard Volume / Parry / Invincible 窗）。
-        [TrackId.Guard]         = new(CombatTrackTier.CombatCore, 2, true,  false, "Guard (Defense)",    new Color(0.35f, 0.72f, 0.98f, 0.92f)),
-        [TrackId.Hitbox]        = new(CombatTrackTier.CombatCore, 3, true,  false, "Hitbox ★",           new Color(0.95f, 0.22f, 0.22f, 0.9f)),
-        [TrackId.Combat]        = new(CombatTrackTier.CombatCore, 4, true,  false, "Combat ◆",           new Color(0.95f, 0.45f, 0.15f, 0.92f)),
-        [TrackId.Hurtbox]       = new(CombatTrackTier.CombatCore, 5, true,  false, "Hurtbox ★",          new Color(0.85f, 0.35f, 0.95f, 0.88f)),
-        [TrackId.Invincible]    = new(CombatTrackTier.CombatCore, 6, true,  false, "Invincible ★",       new Color(0.95f, 0.88f, 0.15f, 0.88f)),
+        [TrackId.Guard]         = new(CombatTrackTier.CombatCore, 4, true,  false, "Guard (Defense)",    new Color(0.35f, 0.72f, 0.98f, 0.92f)),
+        [TrackId.Combat]        = new(CombatTrackTier.CombatCore, 5, true,  false, "Combat Spawn ◆",     new Color(0.95f, 0.45f, 0.15f, 0.92f)),
+        [TrackId.Hurtbox]       = new(CombatTrackTier.CombatCore, 6, true,  false, "Hurtbox ★",          new Color(0.85f, 0.35f, 0.95f, 0.88f)),
+        [TrackId.Invincible]    = new(CombatTrackTier.CombatCore, 7, true,  false, "Invincible ★",       new Color(0.95f, 0.88f, 0.15f, 0.88f)),
 
         // ── Tier B · 输入 / 连段 ──
         [TrackId.ComboInput]    = new(CombatTrackTier.Input, 0, true, false, "Combo Input",            new Color(0.3f, 0.85f, 0.9f, 0.75f)),

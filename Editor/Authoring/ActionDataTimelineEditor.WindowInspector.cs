@@ -36,7 +36,7 @@ public sealed partial class ActionDataTimelineEditor
             new GUIContent("允许自打断", "允许同一 Action 类自打断本窗"));
         GUILayout.Space(ActionTimelineEditorUI.VerticalFieldSpacing);
 
-        ActionTimelineEditorUI.SectionSeparator("战斗状态（Hitbox / Hurtbox / …）");
+        ActionTimelineEditorUI.SectionSeparator("战斗状态（Hurtbox / Invuln / …）");
         var pSlots = elem.FindPropertyRelative(nameof(ActionWindow.WindowSlotMask));
         EditorGUILayout.LabelField(new GUIContent("状态标签", "写入 GameplayTag 时间轨"), EditorStyles.miniLabel);
         GUILayout.Space(ActionTimelineEditorUI.LabelToControlSpacing);

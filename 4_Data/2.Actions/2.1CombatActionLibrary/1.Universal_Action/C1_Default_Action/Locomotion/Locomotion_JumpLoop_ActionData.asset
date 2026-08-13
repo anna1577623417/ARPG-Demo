@@ -37,7 +37,7 @@ MonoBehaviour:
   InterruptPriority: 5
   InterruptStability: 5
   AllowSelfInterrupt: 0
-  IsContinuousLocomotion: 0
+  IsContinuousLocomotion: 1
   IsLocomotionRecovery: 0
   RecoveryMoveLockSeconds: -1
   RecoveryJumpLockSeconds: -1

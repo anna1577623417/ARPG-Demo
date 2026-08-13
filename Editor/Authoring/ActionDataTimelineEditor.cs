@@ -10,12 +10,12 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
 {
     enum TrackId
     {
+        WindowContainer,  // 224.1 L4：所有 Window（含空窗）可见可选
         Interrupt,
         RotationInput,    // 198.3 — 玩家输入触发的转向/移动窗口
         PhaseRibbon,      // 216.3 M0 L2/L3：衍生只读带（前摇/判定/后摇），取代旧 3 条手工 Phase 轨
-        Attack,           // 216.3 M1：HitClip 判定轨（Active 区间 + Shape），运行时 AttackInstance 驱动
+        Contact,          // ActionContact 唯一主 Hitbox 作者轨
         Guard,            // 216.3 M5：DefenseClip 防御轨（Guard/Parry/Invincible），运行时 GuardVolumeProvider
-        Hitbox,
         Combat,
         Hurtbox,
         Invincible,
@@ -67,7 +67,7 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
 
     Rect _laneRect;
     float _firstRowY;
-    TrackId _lastClickedTrack = TrackId.Hitbox;
+    TrackId _lastClickedTrack = TrackId.Contact;
     ActionTimelineMarkerKind _preferredCameraKind = ActionTimelineMarkerKind.CameraShake;
 
     DragMode _dragMode;
@@ -145,6 +145,7 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
         RestoreGizmoAnchorReference();
         SyncPreviewControllerSettings();
         SceneView.duringSceneGui += OnSceneGUI;
+        CombatSceneEditCoordinator.RequestTimelineReadOnly(_action != null ? _action.name : null);
     }
 
     void OnDisable()
@@ -155,6 +156,8 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
         TeardownPlayback();
         _previewController?.Stop();
         ActionDataTimelineSceneBridge.Clear();
+        ContactAuthoringSelectionContext.Clear();
+        CombatSceneEditCoordinator.Release("TimelineOnDisable");
         if (s_activeEditor == this)
         {
             s_activeEditor = null;
@@ -176,7 +179,7 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
         _selectedMarker = -1;
         _selectedCombatEvent = -1;
         _dragCombatEventIndex = -1;
-        ClearAttackSelection();
+        ClearContactSelection();
         ClearGuardSelection();
         _dragMode = DragMode.None;
         ActionTimelineRootMotionSampler.InvalidateCache();
@@ -227,6 +230,7 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
         }
 
         SyncSceneBridge();
+        PublishContactSelection();
         SceneView.RepaintAll();
     }
 
@@ -278,15 +282,15 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
         _previewTimeMarkers = _so?.FindProperty(nameof(ActionDataSO.PreviewTimeMarkers));
         _timeBinding = ActionTimeAuthorityBinding.Create(_so);
         RefreshCombatTrackProperties();
-        RefreshAttackTrackProperties();
+        RefreshContactTrackProperties();
         RefreshGuardTrackProperties();
     }
 
     partial void RefreshCombatTrackProperties();
     partial void HandleCombatTrackInput(TrackId track, float norm, Event e, Rect barRect);
     partial void ApplyCombatMarkerDragIfNeeded();
-    partial void RefreshAttackTrackProperties();
-    partial void HandleAttackTrackInput(TrackId track, float norm, Event e, Rect barRect);
+    partial void RefreshContactTrackProperties();
+    partial void HandleContactTrackInput(TrackId track, float norm, Event e, Rect barRect);
     partial void RefreshGuardTrackProperties();
     partial void HandleGuardTrackInput(TrackId track, float norm, Event e, Rect barRect);
     int _dragCombatEventIndex;
@@ -316,7 +320,7 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
             return;
         }
 
-        if (TryDrawAttackTrackInspector())
+        if (TryDrawContactTrackInspector())
         {
             return;
         }
@@ -342,7 +346,6 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
         using (new EditorGUILayout.HorizontalScope())
         {
             GUILayout.Space(pad);
-            DrawTagToggle(windowElem, StateTag.HitboxActive_Window, "Hitbox");
             DrawTagToggle(windowElem, StateTag.HurtboxActive_Window, "Hurtbox");
             DrawTagToggle(windowElem, StateTag.Invulnerable, "Invuln");
             DrawInterruptToggle(windowElem);
@@ -400,7 +403,7 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
 
         return _selectedMarker >= 0 && _markers != null && _selectedMarker < _markers.arraySize
                || HasSelectedCombatEvent()
-               || HasSelectedAttackClip();
+               || HasSelectedContact();
     }
 
     bool TryDeleteSelection()
@@ -440,7 +443,7 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
             return true;
         }
 
-        if (TryDeleteSelectedAttackClip())
+        if (TryDeleteSelectedContact())
         {
             return true;
         }
@@ -455,6 +458,18 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
 
     static void ClearWindowElement(SerializedProperty elem, float start, float end)
     {
+        var idProp = elem.FindPropertyRelative("_windowId");
+        if (idProp != null && string.IsNullOrEmpty(idProp.stringValue))
+        {
+            idProp.stringValue = ActionWindowIdentity.NewId();
+        }
+
+        var nameProp = elem.FindPropertyRelative(nameof(ActionWindow.DisplayName));
+        if (nameProp != null && string.IsNullOrEmpty(nameProp.stringValue))
+        {
+            nameProp.stringValue = "Empty Window";
+        }
+
         elem.FindPropertyRelative(nameof(ActionWindow.NormalizedStart)).floatValue = start;
         elem.FindPropertyRelative(nameof(ActionWindow.NormalizedEnd)).floatValue = end;
         elem.FindPropertyRelative(nameof(ActionWindow.WindowSlotMask)).longValue = 0L;
@@ -640,9 +655,9 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
             return;
         }
 
-        if (track == TrackId.Attack)
+        if (track == TrackId.Contact)
         {
-            DrawAttackTrack(barRect);
+            DrawContactTrack(barRect);
             return;
         }
 
@@ -687,7 +702,24 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
             var start = TimeToX(barRect, w.NormalizedStart);
             var end = TimeToX(barRect, w.NormalizedEnd);
             var seg = new Rect(start, barRect.y + 2f, Mathf.Max(2f, end - start), barRect.height - 4f);
-            EditorGUI.DrawRect(seg, GetTrackColor(track));
+            var color = GetTrackColor(track);
+            if (track == TrackId.WindowContainer && w.WindowSlotMask == 0UL
+                && w.InterruptibleByCategories == ActionCategory.None)
+            {
+                color = new Color(color.r, color.g, color.b, 0.35f);
+            }
+
+            EditorGUI.DrawRect(seg, color);
+            if (track == TrackId.WindowContainer)
+            {
+                var label = string.IsNullOrEmpty(w.DisplayName) ? "Window" : w.DisplayName;
+                if (!ActionWindowIdentity.IsValid(w.WindowId))
+                {
+                    label += " (no id)";
+                }
+
+                GUI.Label(seg, label, EditorStyles.miniLabel);
+            }
 
             if (_selectedWindow == i)
             {
@@ -763,9 +795,9 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
             return;
         }
 
-        if (e.type == EventType.MouseDrag && _dragMode != DragMode.None && _dragAttackClipIndex >= 0)
+        if (e.type == EventType.MouseDrag && _dragMode != DragMode.None && _dragContactIndex >= 0)
         {
-            ApplyAttackClipDrag(e);
+            ApplyContactDrag(e);
             e.Use();
             Repaint();
             return;
@@ -785,7 +817,7 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
             _dragWindowIndex = -1;
             _dragMarkerIndex = -1;
             _dragCombatEventIndex = -1;
-            _dragAttackClipIndex = -1;
+            _dragContactIndex = -1;
             _dragDefenseClipIndex = -1;
             return;
         }
@@ -826,16 +858,17 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
             _selectedWindow = -1;
             _selectedTeleport = -1;
             _selectedMarker = -1;
-            ClearAttackSelection();
+            ClearContactSelection();
+            ClearContactSelection();
             ClearGuardSelection();
             e.Use();
             Repaint();
             return;
         }
 
-        if (track == TrackId.Attack)
+        if (track == TrackId.Contact)
         {
-            HandleAttackTrackInput(track, norm, e, barRect);
+            HandleContactTrackInput(track, norm, e, barRect);
             return;
         }
 
@@ -902,7 +935,8 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
 
         _selectedWindow = -1;
         _selectedTeleport = -1;
-        ClearAttackSelection();
+        ClearContactSelection();
+        ClearContactSelection();
         ClearGuardSelection();
         e.Use();
         Repaint();
@@ -981,7 +1015,7 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
             _selectedWindow = i;
             _selectedTeleport = -1;
             _selectedMarker = -1;
-            ClearAttackSelection();
+            ClearContactSelection();
             ClearGuardSelection();
             _dragWindowIndex = i;
             _dragAnchorNorm = norm;
@@ -1088,7 +1122,7 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
         _selectedWindow = _windows.arraySize - 1;
         _selectedTeleport = -1;
         _selectedMarker = -1;
-        ClearAttackSelection();
+        ClearContactSelection();
         ClearGuardSelection();
     }
 
@@ -1101,7 +1135,7 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
         _selectedWindow = _windows.arraySize - 1;
         _selectedTeleport = -1;
         _selectedMarker = -1;
-        ClearAttackSelection();
+        ClearContactSelection();
         ClearGuardSelection();
     }
 
@@ -1109,10 +1143,6 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
     {
         switch (track)
         {
-            case TrackId.Hitbox:
-                // 216.3 M0 L3：不再手工写 PhaseActive —— Phase 由 PhaseDerivation 从 Hitbox 判定窗衍生。
-                ActionDataTimelineSlots.SetTag(windowElem, StateTag.HitboxActive_Window, true);
-                break;
             case TrackId.Hurtbox:
                 ActionDataTimelineSlots.SetTag(windowElem, StateTag.HurtboxActive_Window, true);
                 break;
@@ -1157,6 +1187,8 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
 
     static ActionWindow ReadWindow(SerializedProperty elem) => new ActionWindow
     {
+        WindowId = elem.FindPropertyRelative("_windowId")?.stringValue,
+        DisplayName = elem.FindPropertyRelative(nameof(ActionWindow.DisplayName))?.stringValue,
         NormalizedStart = elem.FindPropertyRelative(nameof(ActionWindow.NormalizedStart)).floatValue,
         NormalizedEnd = elem.FindPropertyRelative(nameof(ActionWindow.NormalizedEnd)).floatValue,
         WindowSlotMask = (ulong)elem.FindPropertyRelative(nameof(ActionWindow.WindowSlotMask)).longValue,
@@ -1173,6 +1205,11 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
 
     static bool WindowContributesToTrack(ActionWindow w, TrackId track)
     {
+        if (track == TrackId.WindowContainer)
+        {
+            return true;
+        }
+
         var mask = w.ToInternalTagMask() & ActionWindowTimelineMask.AllContributableBits;
         switch (track)
         {
@@ -1183,8 +1220,6 @@ public sealed partial class ActionDataTimelineEditor : EditorWindow
             // 216.3 M0 L3：Phase 轨已折叠为 PhaseRibbon（衍生只读），不再由窗口手工贡献。
             case TrackId.Invincible:
                 return (mask & (ulong)StateTag.Invulnerable) != 0;
-            case TrackId.Hitbox:
-                return (mask & (ulong)StateTag.HitboxActive_Window) != 0;
             case TrackId.Hurtbox:
                 return (mask & (ulong)StateTag.HurtboxActive_Window) != 0;
             case TrackId.ComboInput:

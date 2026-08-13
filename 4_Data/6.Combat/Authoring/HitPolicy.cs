@@ -12,7 +12,7 @@ public enum HitPolicyKind : byte
     /// <summary>整个 Active 只命中一次（任意目标命中后整窗锁定）。</summary>
     Single = 1,
 
-    /// <summary>每次挥击每目标一次；连段间 <c>HitRegistry.ResetSwing</c> 重置。</summary>
+    /// <summary>每次挥击每目标一次；Contact 窗口重开时由 <c>HitRegistry.ResetSwing</c> 重置。</summary>
     PerSwing = 2,
 
     /// <summary>每 <see cref="HitPolicyParams.IntervalSeconds"/> 秒开一窗，窗内每目标一次。</summary>
@@ -26,7 +26,7 @@ public enum HitPolicyKind : byte
 }
 
 /// <summary>
-/// 216.3 M2 — HitPolicy 参数（挂在 <see cref="HitClip.Policy"/>）。
+/// Contact 命中策略参数。
 /// </summary>
 [Serializable]
 public struct HitPolicyParams

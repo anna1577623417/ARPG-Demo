@@ -10,17 +10,14 @@ public static class ActionTimelineRuntime
     static readonly List<TeleportTrigger> s_teleportScratch = new List<TeleportTrigger>(4);
     static readonly List<ActionWindowEvent> s_eventScratch = new List<ActionWindowEvent>(16);
 
-    // 216.3 M1 L2 — 攻击判定物理查询复用缓冲（无堆分配）。
-    static readonly Collider[] s_attackOverlap = new Collider[32];
-    static readonly RaycastHit[] s_attackSweep = new RaycastHit[32];
-
     public static void Tick(
         IActionContext context,
         ActionDataSO action,
         float prevNormalized,
         float nextNormalized,
         Vector3 planarForward,
-        ActionTimelinePlaybackState state)
+        ActionTimelinePlaybackState state,
+        uint actionLeaseVersion = 0u)
     {
         if (context == null || context.Entity == null || action == null || state == null)
         {
@@ -29,59 +26,161 @@ public static class ActionTimelineRuntime
 
         FireCrossingMarkers(context, action, prevNormalized, nextNormalized, state);
         FireCrossingWindowEvents(context, action, prevNormalized, nextNormalized, state);
-        FireCrossingCombatEvents(context, action, prevNormalized, nextNormalized, state); // 188.3 W9
-        FireAttackClips(context, action, nextNormalized, state);                          // 216.3 M1 L2
+        FireCrossingCombatEvents(
+            context,
+            action,
+            prevNormalized,
+            nextNormalized,
+            state,
+            actionLeaseVersion);
+        FirePrimaryAttackTrack(context, action, nextNormalized, state, actionLeaseVersion);
         FireDefenseClips(context, action, nextNormalized, state);                         // 216.3 M5 L1
         FireCrossingTeleports(context, action, prevNormalized, nextNormalized, planarForward, state);
         UpdateZones(action, nextNormalized, state);
     }
 
-    /// <summary>
-    /// 216.3 M1 L2 — HitClip Active 区间驱动 AttackInstance：进入区间 Begin、区间内每帧 Sweep、离开区间 End。
-    /// <para>单一真相：Active 区间即判定窗口；不读旧 CombatTrack、不做 <c>if (legacy)</c> 兜底。</para>
-    /// </summary>
-    static void FireAttackClips(
+    static void FirePrimaryAttackTrack(
         IActionContext context,
         ActionDataSO action,
-        float nextNt,
-        ActionTimelinePlaybackState state)
+        float nextNormalized,
+        ActionTimelinePlaybackState state,
+        uint actionLeaseVersion)
     {
-        var clips = action.AttackClips;
-        if (clips == null || clips.Count == 0)
+        switch (ActionAttackTrackRuntimePolicy.Select(action))
+        {
+            case ActionAttackTrackKind.Contact:
+                FireContactEvents(
+                    context,
+                    action,
+                    nextNormalized,
+                    state,
+                    actionLeaseVersion);
+                break;
+
+        }
+    }
+
+    /// <summary>ContactEvents 是 Action 攻击单轨；Active 区间驱动 ContactRuntime。</summary>
+    static void FireContactEvents(
+        IActionContext context,
+        ActionDataSO action,
+        float nextNormalized,
+        ActionTimelinePlaybackState state,
+        uint actionLeaseVersion)
+    {
+        var events = action.ContactEvents;
+        if (events == null || events.Count == 0)
         {
             return;
         }
 
-        for (var i = 0; i < clips.Count; i++)
+        for (var i = 0; i < events.Count; i++)
         {
-            var clip = clips[i];
-            var hasProvider = clip.ShapeMode == HitShapeMode.WeaponTrace
-                ? clip.WeaponSockets != null && clip.WeaponSockets.Count > 0
-                : clip.Shape != null;
-            if (!hasProvider)
+            var contactEvent = events[i];
+            var runtimeId = ContactEventId.IsValid(contactEvent.EventId)
+                ? contactEvent.EventId
+                : $"invalid:{i}";
+
+            if (!ActionWindowResolver.TryResolveContactWindow(
+                    action,
+                    in contactEvent,
+                    out var resolvedWindow,
+                    out var windowInfo))
+            {
+                if (ContactEventId.IsValid(contactEvent.EventId) && state.RejectContactOnce(runtimeId))
+                {
+                    Debug.LogError(
+                        $"[Contact] REJECT action={action.name} eventId={runtimeId} " +
+                        $"reason=WindowResolve:{windowInfo.Message}",
+                        action);
+                }
+
+                continue;
+            }
+
+            var start = resolvedWindow.NormalizedStart;
+            var end = resolvedWindow.NormalizedEnd;
+            var inside = nextNormalized >= start && nextNormalized <= end;
+
+            if (!inside)
+            {
+                if (ContactEventId.IsValid(contactEvent.EventId))
+                {
+                    if (state.TryGetContact(runtimeId, out var inactive) && inactive.Active)
+                    {
+                        inactive.End();
+                    }
+                }
+
+                continue;
+            }
+
+            if (!ContactEventId.IsValid(contactEvent.EventId))
+            {
+                if (state.RejectContactOnce(runtimeId))
+                {
+                    Debug.LogError(
+                        $"[Contact] REJECT action={action.name} index={i} reason=InvalidEventId",
+                        action);
+                }
+
+                continue;
+            }
+
+            if (state.IsContactRejected(runtimeId))
             {
                 continue;
             }
 
-            var s = Mathf.Min(clip.ActiveStart, clip.ActiveEnd);
-            var e = Mathf.Max(clip.ActiveStart, clip.ActiveEnd);
-            var inside = nextNt >= s && nextNt <= e;
-            var inst = state.GetOrCreateAttack(i);
-
-            if (inside)
+            var instance = state.GetOrCreateContact(runtimeId);
+            if (!instance.Active)
             {
-                HitClipOriginResolver.Resolve(context.Entity, in clip, out var pos, out var rot);
-                if (!inst.Active)
+                if (!CombatObjectSpecResolver.TryResolveContact(
+                        contactEvent.Definition,
+                        in contactEvent.Override,
+                        out var spec,
+                        out var validation))
                 {
-                    inst.Begin(in clip, context.Entity, pos, rot);
+                    state.RejectContactOnce(runtimeId);
+                    Debug.LogError(
+                        $"[Contact] REJECT action={action.name} eventId={runtimeId} " +
+                        $"reason={validation.FirstErrorOrNull()}",
+                        action);
+                    continue;
                 }
 
-                inst.TickSweep(pos, rot, s_attackSweep, s_attackOverlap);
+                var windowStartAnchor = ContactOriginResolver.ResolveAnchor(context.Entity, in spec);
+                var beginPose = ContactPoseResolver.ResolveForBegin(
+                    in spec,
+                    in windowStartAnchor,
+                    start);
+                instance.BeginContact(
+                    in spec,
+                    context.Entity,
+                    action,
+                    runtimeId,
+                    contactEvent.DebugName,
+                    actionLeaseVersion,
+                    in beginPose);
             }
-            else if (inst.Active)
+
+            var activeSpec = instance.ContactRuntime.Spec;
+            ResolvedContactPose tickPose;
+            if (instance.ContactRuntime.HasFrozenPose)
             {
-                inst.End();
+                tickPose = instance.ContactRuntime.FrozenPose;
             }
+            else
+            {
+                var currentAnchor = ContactOriginResolver.ResolveAnchor(context.Entity, in activeSpec);
+                tickPose = ContactPoseResolver.ResolveForTick(
+                    in activeSpec,
+                    null,
+                    in currentAnchor,
+                    nextNormalized);
+            }
+
+            instance.TickContact(in tickPose);
         }
     }
 
@@ -160,17 +259,18 @@ public static class ActionTimelineRuntime
         DefenseRuntimeRegistry.SetWindowFlags(context.Entity, anyParry, anyInvincible);
     }
 
-    /// <summary>188.3 W9 — Combat Track 时间轴穿越触发 CombatObjectSpawner.Spawn。</summary>
+    /// <summary>223.4-5 — Combat Track 只提交值类型请求，不持有或 Tick Spawned Runtime。</summary>
     static void FireCrossingCombatEvents(
         IActionContext context,
         ActionDataSO action,
         float prevNt,
         float nextNt,
-        ActionTimelinePlaybackState state)
+        ActionTimelinePlaybackState state,
+        uint actionLeaseVersion)
     {
         if (action.CombatTrack == null || action.CombatTrack.Length == 0) return;
-        var spawner = context.CombatObjectSpawner;
-        if (spawner == null) return; // Player 还未注入 Spawner（W9 接入前）
+        var spawnPort = context.CombatSpawnPort;
+        if (spawnPort == null) return;
 
         for (var i = 0; i < action.CombatTrack.Length; i++)
         {
@@ -180,7 +280,38 @@ public static class ActionTimelineRuntime
             if (!state.TryFireCombatEventOnce(i)) continue;
 
             CombatSpawnResolver.Resolve(context.Entity, ev.Definition, in ev, out var pos, out var rot);
-            spawner.Spawn(ev.Definition, context.Entity, pos, rot);
+            var lineage = default(SpawnLineageContext);
+            var eventId = $"combat:{i}:{ev.DebugLabel}";
+            var useV2Spawned = ev.Definition.SchemaVersion >= CombatObjectSchemaVersion.ArchetypeV2
+                && ev.Definition.Archetype != CombatObjectArchetype.ActionContact
+                && ev.Definition.SpawnedData.UseExplicitData;
+            var placementSource = ev.OverrideSpawn
+                ? ev.SpawnSourceOverride
+                : useV2Spawned
+                    ? ev.Definition.SpawnedData.Origin
+                    : ev.Definition.SpawnSource;
+            var request = new CombatSpawnRequest(
+                ev.Definition,
+                context.Entity,
+                null,
+                placementSource,
+                pos,
+                rot,
+                context.Transform.forward,
+                action,
+                eventId,
+                actionLeaseVersion,
+                in lineage,
+                CombatSpawnCause.ActionTimeline,
+                ev.DebugLabel);
+            var result = spawnPort.Submit(in request);
+            if (!result.Accepted)
+            {
+                Debug.LogWarning(
+                    $"[SpawnedCombat] REJECT action={action.name} event={eventId} " +
+                    $"code={result.RejectCode} reason={result.Message}",
+                    action);
+            }
         }
     }
 

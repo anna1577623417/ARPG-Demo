@@ -15,6 +15,10 @@ public readonly struct HitResult
     public readonly string ClipDebugName;
     public readonly int HitCountOnTarget;
     public readonly float ElapsedSec;
+    public readonly bool HasContactFact;
+    public readonly ContactFact ContactFact;
+    public readonly bool HasCombatContactFact;
+    public readonly CombatContactFact CombatContactFact;
 
     public HitResult(
         Entity source,
@@ -34,6 +38,72 @@ public readonly struct HitResult
         ClipDebugName = clipDebugName ?? "(unnamed)";
         HitCountOnTarget = hitCountOnTarget;
         ElapsedSec = elapsedSec;
+        HasContactFact = false;
+        ContactFact = default;
+        HasCombatContactFact = false;
+        CombatContactFact = default;
+    }
+
+    public HitResult(
+        Entity source,
+        Entity target,
+        Vector3 point,
+        Vector3 normal,
+        string boneName,
+        string clipDebugName,
+        int hitCountOnTarget,
+        float elapsedSec,
+        in ContactFact contactFact)
+    {
+        Source = source;
+        Target = target;
+        Point = point;
+        Normal = normal;
+        BoneName = boneName ?? "Body";
+        ClipDebugName = clipDebugName ?? "(unnamed)";
+        HitCountOnTarget = hitCountOnTarget;
+        ElapsedSec = elapsedSec;
+        HasContactFact = true;
+        ContactFact = contactFact;
+        HasCombatContactFact = false;
+        CombatContactFact = default;
+    }
+
+    public HitResult(
+        in CombatContactFact fact,
+        string debugName)
+    {
+        Source = fact.Source;
+        Target = fact.Target;
+        Point = fact.Point;
+        Normal = fact.Normal;
+        BoneName = fact.BoneName;
+        ClipDebugName = debugName ?? fact.EventId;
+        HitCountOnTarget = fact.HitCountOnTarget;
+        ElapsedSec = fact.ElapsedSeconds;
+        HasContactFact = false;
+        ContactFact = default;
+        HasCombatContactFact = true;
+        CombatContactFact = fact;
+    }
+
+    public HitResult(
+        in CombatContactFact fact,
+        in ContactFact legacyContactFact,
+        string debugName)
+    {
+        Source = fact.Source;
+        Target = fact.Target;
+        Point = fact.Point;
+        Normal = fact.Normal;
+        BoneName = fact.BoneName;
+        ClipDebugName = debugName ?? fact.EventId;
+        HitCountOnTarget = fact.HitCountOnTarget;
+        ElapsedSec = fact.ElapsedSeconds;
+        HasContactFact = true;
+        ContactFact = legacyContactFact;
+        HasCombatContactFact = true;
+        CombatContactFact = fact;
     }
 
     public bool IsValid => Target != null;

@@ -18,6 +18,8 @@ MonoBehaviour:
   LockRotateDuringPlay: 1
   AuthorityPriorityOverride: -1
   CombatTrack: []
+  ContactEvents: []
+  WindowAuthoringVersion: 1
   MainClip: {fileID: 7400002, guid: 456d4b7964b93e34fa6b5e1b42972829, type: 3}
   CrossfadeTime: 0.08
   AnimSpeed: 1
@@ -36,7 +38,7 @@ MonoBehaviour:
   InterruptPriority: 10
   InterruptStability: 10
   AllowSelfInterrupt: 0
-  IsContinuousLocomotion: 1
+  IsContinuousLocomotion: 0
   IsLocomotionRecovery: 0
   RecoveryMoveLockSeconds: -1
   RecoveryJumpLockSeconds: -1
@@ -80,7 +82,6 @@ MonoBehaviour:
   SlideMaxResidualSpeed: 0
   MotionProfile: {fileID: 11400000, guid: e9c1fcbb2a59ec848abe4500ca81521e, type: 2}
   Windows: []
-  AttackClips: []
   DefenseClips: []
   TeleportTriggers: []
   TimelineMarkers: []

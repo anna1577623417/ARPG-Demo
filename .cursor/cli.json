@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Shell(python**)",
+      "Shell(py **)",
+      "Shell(powershell**)",
+      "Shell(pwsh**)",
+      "Shell(**/*.py**)",
+      "Shell(**/*.ps1**)"
+    ],
+    "deny": []
+  }
+}

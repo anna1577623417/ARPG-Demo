@@ -21,7 +21,19 @@ public static class CombatEventBus
     /// <summary>
     /// 裁决 + 组事件 + 发布。AttackInstance 命中后的唯一出口。
     /// </summary>
-    public static void PublishResolved(in HitResult hit, in HitReaction reaction)
+    public static CombatOutcomeSummary PublishResolved(
+        in HitResult hit,
+        in HitReaction reaction)
+    {
+        var normalized = NormalizeReaction(in reaction);
+        var outcome = CombatOutcomeBuilder.FromHitReaction(in normalized);
+        return PublishResolved(in hit, in outcome);
+    }
+
+    /// <summary>所有执行模型的唯一 Resolver + Outcome 发布入口。</summary>
+    public static CombatOutcomeSummary PublishResolved(
+        in HitResult hit,
+        in CombatOutcomeSet outcome)
     {
         var eventId = ++s_nextEventId;
         var interaction = CombatResolver.Resolve(in hit);
@@ -49,7 +61,7 @@ public static class CombatEventBus
             }
         }
 
-        var reactionNorm = NormalizeReaction(in reaction);
+        var reactionNorm = outcome.Reaction;
 
         var finalDamage = 0f;
         var isCrit = false;
@@ -59,7 +71,7 @@ public static class CombatEventBus
         {
             ctx = BuildContext(in hit);
             var hitCtx = new HitContext(
-                baseDamage: Mathf.Max(0f, reactionNorm.BaseDamage),
+                baseDamage: Mathf.Max(0f, outcome.BaseDamage),
                 isCritical: false,
                 criticalMultiplier: 1.5f,
                 hitPoint: hit.Point);
@@ -73,6 +85,7 @@ public static class CombatEventBus
             interaction,
             in hit,
             in reactionNorm,
+            in outcome,
             finalDamage,
             isCrit,
             in ctx);
@@ -94,6 +107,11 @@ public static class CombatEventBus
         }
 
         Resolved?.Invoke(evt);
+        return new CombatOutcomeSummary(
+            interaction,
+            applicationAccepted: interaction == CombatInteraction.Hit,
+            consumedHitBudget: hit.IsValid,
+            requestsTermination: false);
     }
 
     /// <summary>216.3 M3 L3 — Source/Target Stats + Tags 进 CombatContext。</summary>

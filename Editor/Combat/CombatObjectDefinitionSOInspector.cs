@@ -3,200 +3,230 @@ using UnityEditor;
 using UnityEngine;
 
 /// <summary>
-/// 188.3 W17 — CombatObjectDefinitionSO Inspector：按 enum 选择条件显示对应字段。
-/// <para>避免策划在 Static Movement 看到 Speed/MaxDistance 等无关字段。</para>
+/// 223.6 M2：Schema Projection 驱动的 CombatObject 作者入口。
+/// 这里不重新解释 Archetype；所有区块由 Central Schema Projection 决定。
 /// </summary>
 [CustomEditor(typeof(CombatObjectDefinitionSO))]
 public sealed class CombatObjectDefinitionSOInspector : Editor
 {
-    SerializedProperty m_Id;
-    SerializedProperty m_DisplayName;
-    SerializedProperty m_Description;
-    SerializedProperty m_Shape;
-    SerializedProperty m_Movement;
-    SerializedProperty m_Damage;
-    SerializedProperty m_Lifecycle;
-    SerializedProperty m_TargetFilter;
-    SerializedProperty m_SpawnSource;
-    SerializedProperty m_LocalOffset;
-    SerializedProperty m_LocalEulerOffset;
-    SerializedProperty m_QueryLayerMask;
+    SerializedProperty _id;
+    SerializedProperty _displayName;
+    SerializedProperty _description;
+    SerializedProperty _archetype;
+    SerializedProperty _schemaVersion;
+    SerializedProperty _migrationState;
+    SerializedProperty _revision;
+    SerializedProperty _shapePreset;
+    SerializedProperty _actionContactAuthoring;
+    SerializedProperty _attackProfile;
+    SerializedProperty _queryPolicy;
+    SerializedProperty _hitPolicy;
+    SerializedProperty _spawnedData;
+    SerializedProperty _shape;
+    SerializedProperty _movement;
+    SerializedProperty _damage;
+    SerializedProperty _lifecycle;
+    SerializedProperty _targetFilter;
+    SerializedProperty _spawnSource;
+    SerializedProperty _localOffset;
+    SerializedProperty _localEulerOffset;
+    SerializedProperty _queryLayerMask;
 
     void OnEnable()
     {
-        m_Id = serializedObject.FindProperty("Id");
-        m_DisplayName = serializedObject.FindProperty("DisplayName");
-        m_Description = serializedObject.FindProperty("Description");
-        m_Shape = serializedObject.FindProperty("Shape");
-        m_Movement = serializedObject.FindProperty("Movement");
-        m_Damage = serializedObject.FindProperty("Damage");
-        m_Lifecycle = serializedObject.FindProperty("Lifecycle");
-        m_TargetFilter = serializedObject.FindProperty("TargetFilter");
-        m_SpawnSource = serializedObject.FindProperty("SpawnSource");
-        m_LocalOffset = serializedObject.FindProperty("LocalOffset");
-        m_LocalEulerOffset = serializedObject.FindProperty("LocalEulerOffset");
-        m_QueryLayerMask = serializedObject.FindProperty("QueryLayerMask");
+        _id = serializedObject.FindProperty(nameof(CombatObjectDefinitionSO.Id));
+        _displayName = serializedObject.FindProperty(nameof(CombatObjectDefinitionSO.DisplayName));
+        _description = serializedObject.FindProperty(nameof(CombatObjectDefinitionSO.Description));
+        _archetype = serializedObject.FindProperty(nameof(CombatObjectDefinitionSO.Archetype));
+        _schemaVersion = serializedObject.FindProperty(nameof(CombatObjectDefinitionSO.SchemaVersion));
+        _migrationState = serializedObject.FindProperty(nameof(CombatObjectDefinitionSO.MigrationState));
+        _revision = serializedObject.FindProperty(nameof(CombatObjectDefinitionSO.DefinitionRevision));
+        _shapePreset = serializedObject.FindProperty(nameof(CombatObjectDefinitionSO.ShapePreset));
+        _actionContactAuthoring = serializedObject.FindProperty(nameof(CombatObjectDefinitionSO.ActionContactAuthoring));
+        _attackProfile = serializedObject.FindProperty(nameof(CombatObjectDefinitionSO.AttackProfile));
+        _queryPolicy = serializedObject.FindProperty(nameof(CombatObjectDefinitionSO.QueryPolicy));
+        _hitPolicy = serializedObject.FindProperty(nameof(CombatObjectDefinitionSO.HitPolicy));
+        _spawnedData = serializedObject.FindProperty(nameof(CombatObjectDefinitionSO.SpawnedData));
+        _shape = serializedObject.FindProperty(nameof(CombatObjectDefinitionSO.Shape));
+        _movement = serializedObject.FindProperty(nameof(CombatObjectDefinitionSO.Movement));
+        _damage = serializedObject.FindProperty(nameof(CombatObjectDefinitionSO.Damage));
+        _lifecycle = serializedObject.FindProperty(nameof(CombatObjectDefinitionSO.Lifecycle));
+        _targetFilter = serializedObject.FindProperty(nameof(CombatObjectDefinitionSO.TargetFilter));
+        _spawnSource = serializedObject.FindProperty(nameof(CombatObjectDefinitionSO.SpawnSource));
+        _localOffset = serializedObject.FindProperty(nameof(CombatObjectDefinitionSO.LocalOffset));
+        _localEulerOffset = serializedObject.FindProperty(nameof(CombatObjectDefinitionSO.LocalEulerOffset));
+        _queryLayerMask = serializedObject.FindProperty(nameof(CombatObjectDefinitionSO.QueryLayerMask));
     }
 
     public override void OnInspectorGUI()
     {
         serializedObject.Update();
+        var definition = (CombatObjectDefinitionSO)target;
+        var projection = CombatObjectInspectorProjectionResolver.Resolve(definition);
 
-        // Identity
-        EditorGUILayout.LabelField("Identity", EditorStyles.boldLabel);
-        EditorGUILayout.PropertyField(m_Id);
-        EditorGUILayout.PropertyField(m_DisplayName);
-        EditorGUILayout.PropertyField(m_Description);
-
-        EditorGUILayout.Space();
-        EditorGUILayout.LabelField("Shape", EditorStyles.boldLabel);
-        EditorGUILayout.PropertyField(m_Shape);
-        if (m_Shape.objectReferenceValue is HitShapeSO shape)
+        DrawIdentity(projection);
+        if (projection.IsLegacy)
         {
-            EditorGUILayout.HelpBox($"Shape 类型：{shape.GetType().Name}", MessageType.None);
-        }
-        else
-        {
-            EditorGUILayout.HelpBox("Shape 未设置 → 不会命中任何目标。", MessageType.Warning);
+            DrawLegacyGate();
+            DrawLegacySnapshot();
+            DrawValidation(definition);
+            serializedObject.ApplyModifiedProperties();
+            return;
         }
 
-        EditorGUILayout.Space();
-        DrawMovement();
-
-        EditorGUILayout.Space();
-        EditorGUILayout.LabelField("Damage", EditorStyles.boldLabel);
-        EditorGUILayout.PropertyField(m_Damage);
-
-        EditorGUILayout.Space();
-        EditorGUILayout.LabelField("Lifecycle", EditorStyles.boldLabel);
-        EditorGUILayout.PropertyField(m_Lifecycle);
-        DrawLifecycleHint();
-        DrawLifecycleActions();
-
-        EditorGUILayout.Space();
-        EditorGUILayout.LabelField("Target Filter", EditorStyles.boldLabel);
-        EditorGUILayout.PropertyField(m_TargetFilter, includeChildren: true);
-        var kind = (TargetFilterKind)m_TargetFilter.FindPropertyRelative(nameof(TargetFilterParams.Kind)).enumValueIndex;
-        switch (kind)
+        if (projection.Allows(CombatFeatureBlock.AttackProfile))
         {
-            case TargetFilterKind.AnyExceptSelf:
-                EditorGUILayout.HelpBox("命中任意 Entity（除施法者）。静态 Player 互殴靶适用。", MessageType.None);
-                break;
-            case TargetFilterKind.HostileOnly:
-                EditorGUILayout.HelpBox("仅命中阵营敌对（Faction 轨或 TeamId 不同）。", MessageType.None);
-                break;
-            case TargetFilterKind.FriendlyOnly:
-                EditorGUILayout.HelpBox("仅命中友方（治疗/增益）。", MessageType.None);
-                break;
-            case TargetFilterKind.SelfOnly:
-                EditorGUILayout.HelpBox("仅命中施法者自己。", MessageType.None);
-                break;
+            DrawPayload(projection);
         }
 
-        EditorGUILayout.Space();
-        EditorGUILayout.LabelField("Spawn", EditorStyles.boldLabel);
-        EditorGUILayout.PropertyField(m_SpawnSource);
-        EditorGUILayout.PropertyField(m_LocalOffset);
-        EditorGUILayout.PropertyField(m_LocalEulerOffset);
+        if (projection.Allows(CombatFeatureBlock.ActionWindow))
+        {
+            DrawActionContact();
+        }
 
-        EditorGUILayout.Space();
-        EditorGUILayout.LabelField("Physics Query", EditorStyles.boldLabel);
-        EditorGUILayout.PropertyField(m_QueryLayerMask);
+        if (definition.SchemaVersion >= CombatObjectSchemaVersion.ArchetypeV2
+            && definition.Archetype != CombatObjectArchetype.ActionContact)
+        {
+            DrawSpawnedV2(projection);
+        }
+        else if (definition.Archetype != CombatObjectArchetype.ActionContact)
+        {
+            DrawLegacyGate();
+            DrawLegacySnapshot();
+        }
 
-        EditorGUILayout.Space();
-        DrawValidationStatus();
-
+        DrawValidation(definition);
         serializedObject.ApplyModifiedProperties();
     }
 
-    void DrawMovement()
+    void DrawIdentity(CombatObjectInspectorProjection projection)
     {
-        EditorGUILayout.LabelField("Movement", EditorStyles.boldLabel);
-        var kindProp = m_Movement.FindPropertyRelative("Kind");
-        EditorGUILayout.PropertyField(kindProp);
-        var kind = (MovementKind)kindProp.enumValueIndex;
+        EditorGUILayout.LabelField("Identity / Archetype / Schema", EditorStyles.boldLabel);
+        EditorGUILayout.PropertyField(_id);
+        EditorGUILayout.PropertyField(_displayName);
+        EditorGUILayout.PropertyField(_description);
+        EditorGUILayout.PropertyField(_archetype);
 
-        // 按 Kind 条件显示
-        switch (kind)
+        using (new EditorGUI.DisabledScope(true))
         {
-            case MovementKind.Static:
-                EditorGUILayout.HelpBox("Static：CombatObject 不动；近战 / 火焰地板用。", MessageType.None);
-                break;
-            case MovementKind.Linear:
-                EditorGUILayout.PropertyField(m_Movement.FindPropertyRelative("Speed"));
-                EditorGUILayout.PropertyField(m_Movement.FindPropertyRelative("MaxDistance"));
-                EditorGUILayout.HelpBox("Linear：直线匀速；飞弹 / 滑刀用。沿 Spawn 朝向 forward 方向。", MessageType.None);
-                break;
-            case MovementKind.Curve:
-                EditorGUILayout.PropertyField(m_Movement.FindPropertyRelative("LocalOffsetXOverTime"));
-                EditorGUILayout.PropertyField(m_Movement.FindPropertyRelative("LocalOffsetYOverTime"));
-                EditorGUILayout.PropertyField(m_Movement.FindPropertyRelative("LocalOffsetZOverTime"));
-                EditorGUILayout.HelpBox("Curve：三轴 AnimationCurve 控制局部偏移；弧线 / S 形用。", MessageType.None);
-                break;
-            case MovementKind.Expand:
-                EditorGUILayout.PropertyField(m_Movement.FindPropertyRelative("StartRadius"));
-                EditorGUILayout.PropertyField(m_Movement.FindPropertyRelative("EndRadius"));
-                EditorGUILayout.PropertyField(m_Movement.FindPropertyRelative("ExpandCurve"));
-                EditorGUILayout.HelpBox("Expand：判定半径随 Lifecycle.Duration 变化；冲击波用。注意 Shape 字段被忽略，用 Sphere 查询。", MessageType.Info);
-                break;
-            case MovementKind.Homing:
-                EditorGUILayout.PropertyField(m_Movement.FindPropertyRelative("Speed"));
-                EditorGUILayout.PropertyField(m_Movement.FindPropertyRelative("MaxDistance"));
-                EditorGUILayout.PropertyField(m_Movement.FindPropertyRelative("TurnRateDegPerSec"));
-                EditorGUILayout.HelpBox("Homing：跟踪导弹；需调用方在 Spawn 后设置 HomingTarget。", MessageType.Info);
-                break;
-        }
-    }
-
-    void DrawLifecycleHint()
-    {
-        var lifeProp = m_Lifecycle;
-        var duration = lifeProp.FindPropertyRelative("Duration").floatValue;
-        var tick = lifeProp.FindPropertyRelative("TickInterval").floatValue;
-        var maxHits = lifeProp.FindPropertyRelative("MaxHitsPerTarget").intValue;
-        var maxTargets = lifeProp.FindPropertyRelative("MaxTargets").intValue;
-
-        if (maxHits < 1 || maxTargets < 1)
-        {
-            EditorGUILayout.HelpBox(
-                "MaxHitsPerTarget / MaxTargets 不能为 0 → Spawn 将被拒绝。",
-                MessageType.Error);
+            EditorGUILayout.PropertyField(_schemaVersion);
+            EditorGUILayout.PropertyField(_migrationState);
         }
 
-        string mode;
-        if (duration <= 0f) mode = "单帧瞬时";
-        else if (tick > 0f) mode = $"DOT：{duration:F1}s 内每 {tick:F2}s 一次（最多每目标 {maxHits} 次）";
-        else if (maxHits == 1) mode = $"单次命中（持续 {duration:F1}s）";
-        else mode = $"多段命中（{duration:F1}s 内最多 {maxHits} 次/目标）";
-
-        EditorGUILayout.HelpBox(mode, MessageType.None);
+        EditorGUILayout.PropertyField(_revision);
+        EditorGUILayout.HelpBox(
+            $"Execution Model: {projection.Schema.ExecutionModel}\n" +
+            $"Required Features: {projection.Schema.RequiredFeatures}\n" +
+            $"Allowed Use Sites: " +
+            $"{UseSiteSummary(projection.Schema)}",
+            projection.IsLegacy ? MessageType.Warning : MessageType.Info);
     }
 
-    void DrawLifecycleActions()
+    void DrawPayload(CombatObjectInspectorProjection projection)
     {
-        using (new EditorGUILayout.HorizontalScope())
+        EditorGUILayout.Space();
+        EditorGUILayout.LabelField("Payload / Query / Hit", EditorStyles.boldLabel);
+        EditorGUILayout.PropertyField(_attackProfile, includeChildren: true);
+        EditorGUILayout.PropertyField(_queryPolicy, includeChildren: true);
+        EditorGUILayout.HelpBox(
+            "目标语义唯一入口：QueryPolicy.Target（TargetProfile）。TargetFilter 已淘汰，不可再作为写入入口。",
+            MessageType.Info);
+        EditorGUILayout.PropertyField(_hitPolicy, includeChildren: true);
+    }
+
+    void DrawActionContact()
+    {
+        EditorGUILayout.Space();
+        EditorGUILayout.LabelField("Action Contact Definition", EditorStyles.boldLabel);
+        var definition = (CombatObjectDefinitionSO)target;
+        ContactAnchorAuthoringDrawer.Draw(definition);
+        EditorGUILayout.Space();
+        EditorGUILayout.PropertyField(_shapePreset);
+        EditorGUILayout.HelpBox(
+            "Geometry Bundle：ShapePreset 只提供 ShapeMode/Geometry/Layout；" +
+            "Binding/Origin/LocalPose 只写在本 CO。Preset Default Placement 与 Event Override 为 Legacy 只读。",
+            MessageType.Info);
+        ContactAuthoringSharedImpactUI.Draw(definition);
+
+        if (_actionContactAuthoring != null)
         {
-            if (GUILayout.Button("填充 DefaultMeleeOneShot"))
+            EditorGUILayout.Space();
+            using (new EditorGUI.DisabledScope(true))
             {
-                Undo.RecordObject(target, "Fill DefaultMeleeOneShot");
-                var def = (CombatObjectDefinitionSO)target;
-                def.Lifecycle = LifecycleParams.DefaultMeleeOneShot;
-                EditorUtility.SetDirty(def);
+                EditorGUILayout.PropertyField(_actionContactAuthoring, new GUIContent("Authoring Snapshot"), true);
             }
         }
     }
 
-    void DrawValidationStatus()
+    void DrawSpawnedV2(CombatObjectInspectorProjection projection)
     {
-        var def = (CombatObjectDefinitionSO)target;
-        if (def.IsValid(out var reason))
+        EditorGUILayout.Space();
+        EditorGUILayout.LabelField("Spawned V2 Feature Data", EditorStyles.boldLabel);
+        EditorGUILayout.PropertyField(_spawnedData, includeChildren: true);
+        if (!projection.Allows(CombatFeatureBlock.Motion))
         {
-            EditorGUILayout.HelpBox("✓ 配置有效，可在 CombatTrack 中使用。", MessageType.Info);
+            EditorGUILayout.HelpBox(
+                "当前 Archetype Schema 不允许 Motion；请通过 Schema 投影检查配置。",
+                MessageType.Warning);
         }
-        else
+    }
+
+    void DrawLegacyGate()
+    {
+        EditorGUILayout.Space();
+        EditorGUILayout.HelpBox(
+            "此 Definition 仍是 Legacy/未分类资产。Legacy 数据只用于迁移对照，" +
+            "不会作为新版生产入口；请创建迁移副本或使用受控新建入口。",
+            MessageType.Error);
+    }
+
+    void DrawLegacySnapshot()
+    {
+        EditorGUILayout.LabelField("Legacy Snapshot (Read Only)", EditorStyles.boldLabel);
+        using (new EditorGUI.DisabledScope(true))
         {
-            EditorGUILayout.HelpBox($"✗ 配置无效：{reason}", MessageType.Error);
+            EditorGUILayout.PropertyField(_shape);
+            EditorGUILayout.PropertyField(_movement, includeChildren: true);
+            EditorGUILayout.PropertyField(_damage);
+            EditorGUILayout.PropertyField(_lifecycle, includeChildren: true);
+            EditorGUILayout.PropertyField(_targetFilter, includeChildren: true);
+            EditorGUILayout.PropertyField(_spawnSource);
+            EditorGUILayout.PropertyField(_localOffset);
+            EditorGUILayout.PropertyField(_localEulerOffset);
+            EditorGUILayout.PropertyField(_queryLayerMask);
         }
+    }
+
+    void DrawValidation(CombatObjectDefinitionSO definition)
+    {
+        EditorGUILayout.Space();
+        var validation = CombatObjectDefinitionValidator.Validate(
+            definition,
+            CombatDefinitionUseSite.Intrinsic);
+        if (validation.IsValid)
+        {
+            EditorGUILayout.HelpBox("Definition Intrinsic Validation: PASS", MessageType.Info);
+            return;
+        }
+
+        for (var i = 0; i < validation.Issues.Count; i++)
+        {
+            var issue = validation.Issues[i];
+            EditorGUILayout.HelpBox(
+                $"{issue.Code} [{issue.FieldPath}] {issue.Message}",
+                issue.Severity >= CombatValidationSeverity.Error
+                    ? MessageType.Error
+                    : MessageType.Warning);
+        }
+    }
+
+    static string UseSiteSummary(CombatArchetypeSchema schema)
+    {
+        var result = "Intrinsic";
+        if (schema.AllowsContactEvent) result += ", ContactEvent";
+        if (schema.AllowsSpawnRequest) result += ", SpawnRequest";
+        if (schema.AllowsTerminationChild) result += ", TerminationChild";
+        return result;
     }
 }
 #endif

@@ -1,5 +1,5 @@
 /// <summary>
-/// 216.3 M4 L3 — HitClip 判定 Provider 选择（单一真相，禁止 Volume+Trace 双跑）。
+/// Contact 判定 Provider 选择（单一真相，禁止 Volume+Trace 双跑）。
 /// </summary>
 public enum HitShapeMode : byte
 {
