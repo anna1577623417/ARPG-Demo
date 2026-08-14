@@ -39,6 +39,10 @@ public sealed class ActionMotionPlayback
 
         _executor != null ? _executor.LastWorldDelta : Vector3.zero;
 
+    public float StopRemainingSpeed => _executor != null ? _executor.StopRemainingSpeed : 0f;
+
+    public bool StopPhysicsComplete => _executor != null && _executor.StopPhysicsComplete;
+
 
 
     public void ResetDriverFlags()

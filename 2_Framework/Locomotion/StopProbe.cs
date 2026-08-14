@@ -19,11 +19,13 @@ public static class StopProbe
         }
 
         var segWall = ActionTimeAuthority.ResolveSegmentWallSeconds(action);
-        Debug.Log(
-            $"{Prefix} action={action.name} strategy={ctx.Strategy} entrySpeed={ctx.EntrySpeed:F2}\n" +
-            $"       runtimeDuration={ctx.RuntimeDuration:F3}s runtimeDistance={ctx.RuntimeDistance:F2}m " +
-            $"segWall={segWall:F3}s ref={action.ReferenceDuration:F3} → baseAnim={ctx.BaseAnimSpeed:F3}",
-            player);
+        var tPhys = StopIntegrator.PredictDuration(ctx.EntrySpeed, ctx.BrakeDeceleration);
+        var message =
+            $"{Prefix} BEGIN action={action.name} strategy={ctx.Strategy} entrySpeed={ctx.EntrySpeed:F2} " +
+            $"integrateDist={ctx.RuntimeDistance:F3} tPhys={tPhys:F3} runtimeDuration={ctx.RuntimeDuration:F3} " +
+            $"clearedVelocity=false a={ctx.BrakeDeceleration:F3} vRef={ctx.ReferenceGaitSpeed:F2} tier={ctx.SessionTier} " +
+            $"segWall={segWall:F3} baseAnim={ctx.BaseAnimSpeed:F3} dRefFallback={ctx.DerivedFromLegacyMaxDistance}";
+        Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, player, "{0}", message);
     }
 
     public static void LogExit(
@@ -49,12 +51,13 @@ public static class StopProbe
         var prefix = maxDrift > 0.05f ? WarnPrefix : Prefix;
         var tailTag = expectedWallDuration < ctx.RuntimeDuration - 0.001f ? " tail" : string.Empty;
 
-        Debug.Log(
-            $"{prefix} EXIT{tailTag} action={action.name}\n" +
-            $"       actualElapsed={actualWallElapsed:F3}s expectedDur={expectedWallDuration:F3}s\n" +
-            $"       actualDistance={actualDistance:F2}m expectedDistance={expectedDistance:F2}m\n" +
-            $"       drift={maxDrift * 100f:F1}%",
-            player);
+        Debug.LogFormat(
+            LogType.Log,
+            LogOption.NoStacktrace,
+            player,
+            "{0}",
+            $"{prefix} EXIT{tailTag} action={action.name} actualElapsed={actualWallElapsed:F3} expectedDur={expectedWallDuration:F3} " +
+            $"actualDistance={actualDistance:F2} expectedDistance={expectedDistance:F2} drift={maxDrift * 100f:F1}%");
     }
 
     // ═══ 182.3 每帧 Tick 探针 ═══ —— 仅在 nt 跨越 [0.25/0.5/0.75/1.0] 桶时打，整个 Action 期间最多 4 行
@@ -91,10 +94,13 @@ public static class StopProbe
         var warn = clipNT >= 0f && Mathf.Abs(drift) > 0.10f;
         var pfx = warn ? WarnPrefix : Prefix;
 
-        Debug.Log(
+        Debug.LogFormat(
+            LogType.Log,
+            LogOption.NoStacktrace,
+            player,
+            "{0}",
             $"{pfx} TICK action={action.name} nt={nt:F3} liveSpeed={liveSpeed:F3} " +
-            $"clipNT={(clipNT >= 0f ? clipNT.ToString("F3") : "n/a")} drift={drift:+0.00;-0.00;0.00}",
-            player);
+            $"clipNT={(clipNT >= 0f ? clipNT.ToString("F3") : "n/a")} drift={drift:+0.00;-0.00;0.00}");
     }
 
     /// <summary>Action 末尾若 clipNT 还远 < 1，自动告警"动画未播完就退出"或反之"动画先播完位移还在"。</summary>
@@ -110,12 +116,12 @@ public static class StopProbe
         var diff = clipNTAtExit - ntAtExit;
         if (Mathf.Abs(diff) < 0.05f) return;
 
-        var sym = diff > 0f
-            ? "动画播完早于 Action 退出（先动画后位移收尾）"
-            : "Action 退出时动画未播完（位移先停动画还在）";
-        Debug.LogWarning(
+        Debug.LogFormat(
+            LogType.Warning,
+            LogOption.NoStacktrace,
+            player,
+            "{0}",
             $"{WarnPrefix} EXIT-MISMATCH action={action.name} ntAtExit={ntAtExit:F3} " +
-            $"clipNTAtExit={clipNTAtExit:F3} diff={diff:+0.00;-0.00;0.00}  ⇒ {sym}",
-            player);
+            $"clipNTAtExit={clipNTAtExit:F3} diff={diff:+0.00;-0.00;0.00}");
     }
 }

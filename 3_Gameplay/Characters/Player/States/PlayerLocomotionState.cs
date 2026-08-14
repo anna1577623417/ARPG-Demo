@@ -44,6 +44,7 @@ public sealed class PlayerLocomotionState : PlayerState
 
     // 182.1 W4：press→release 按住时长（Tail Segment Tap 判定）
     private float m_movePressStartTime = -1f;
+    private int m_movePressStartFrame;
 
     public PlayerLocomotionState(ActionCategory allowedCategories, in TurnSettings turnSettings)
     {
@@ -266,6 +267,7 @@ public sealed class PlayerLocomotionState : PlayerState
         var profile = player.LocomotionProfile;
         var hasInput = player.HasMovementIntent;
 
+        var priorResolved = m_lastResolvedState;
         var requested = DetectRequestedState(player, hasInput, out var strafeDir);
 
         var intent = new LocomotionIntent(
@@ -299,6 +301,7 @@ public sealed class PlayerLocomotionState : PlayerState
         if (!wasHadInput && hasInput)
         {
             m_movePressStartTime = Time.time;
+            m_movePressStartFrame = Time.frameCount;
         }
 
         m_lastHadInput = hasInput;
@@ -348,6 +351,12 @@ public sealed class PlayerLocomotionState : PlayerState
         }
 
         LocomotionTransition227BugProbe.BeginRunStartFlow(player, decision.DiscreteAction);
+
+        if (decision.ResolvedState == LocomotionStateId.WalkEnd
+            || decision.ResolvedState == LocomotionStateId.RunEnd)
+        {
+            CaptureStopSessionSnapshot(player, priorResolved);
+        }
 
         // 198.x — Tail Segment 退役；统一从 0 进入。短按手感由 RecoveryMoveLockSeconds 软屏蔽承担。
         player.ArmPendingAction(GameplayIntentKind.Move, decision.DiscreteAction, 0f);
@@ -586,6 +595,29 @@ public sealed class PlayerLocomotionState : PlayerState
             $"clip={clipName} owner={decision.ControlOwnerHint} downgraded={decision.DowngradedFromLogicLayer}");
         m_lastResolvedState = decision.ResolvedState;
         m_lastOwnerHint = decision.ControlOwnerHint;
+    }
+
+    void CaptureStopSessionSnapshot(Player player, LocomotionStateId priorResolved)
+    {
+        var reachedLoop = priorResolved == LocomotionStateId.Walk
+            || priorResolved == LocomotionStateId.Run
+            || priorResolved == LocomotionStateId.StrafeLocomotion;
+        var phase = reachedLoop ? StopPhaseAtRelease.Loop : StopPhaseAtRelease.Start;
+        var heldSeconds = m_movePressStartTime >= 0f ? Mathf.Max(0f, Time.time - m_movePressStartTime) : 0f;
+        var heldTicks = m_movePressStartFrame > 0
+            ? Mathf.Max(0, Time.frameCount - m_movePressStartFrame)
+            : 0;
+        var wantsRun = m_lastWantsRun;
+        var gait = wantsRun ? player.RuntimeStats.RunSpeed : player.RuntimeStats.WalkSpeed;
+        var planar = new Vector3(player.PlanarVelocity.x, 0f, player.PlanarVelocity.z);
+        player.LastStopSessionSnapshot = new StopSessionSnapshot(
+            heldTicks,
+            heldSeconds,
+            reachedLoop,
+            wantsRun,
+            gait,
+            planar.magnitude,
+            phase);
     }
 
     private static void RefreshLocomotionTags(Player player)

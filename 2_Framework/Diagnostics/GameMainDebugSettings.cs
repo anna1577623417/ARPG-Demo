@@ -51,6 +51,9 @@ public static class GameMainDebugSettings
     /// <summary>233.5 — Walk/Run 点按、Start/Loop/End 与 MotionProfile 有效位移来源专项探针。</summary>
     public static bool LocomotionMotion233Log { get; set; }
 
+    /// <summary>234.6 — Run 点按 Stop 位移：v_entry vs RunSpeed、积分 D、转向重叠。</summary>
+    public static bool StopTap234Log { get; set; }
+
     /// <summary>235 — 即时逻辑转向后的 90/180 补偿性 Turn 表现时机、选片与播放专项探针。</summary>
     public static bool LocomotionTurnPresentation235Log { get; set; }
 
@@ -116,6 +119,7 @@ public static class GameMainDebugSettings
         CameraTurn233Log = EditorPrefsGetBool(nameof(CameraTurn233Log));
         CharacterTurnDisplacement233Log = EditorPrefsGetBool(nameof(CharacterTurnDisplacement233Log));
         LocomotionMotion233Log = EditorPrefsGetBool(nameof(LocomotionMotion233Log));
+        StopTap234Log = EditorPrefsGetBool(nameof(StopTap234Log));
         LocomotionTurnPresentation235Log = EditorPrefsGetBool(nameof(LocomotionTurnPresentation235Log));
         InterruptFlow = EditorPrefsGetBool(nameof(InterruptFlow));
         ComboAirGate = EditorPrefsGetBool(nameof(ComboAirGate));
@@ -157,6 +161,7 @@ public static class GameMainDebugSettings
         EditorPrefsSetBool(nameof(CameraTurn233Log), CameraTurn233Log);
         EditorPrefsSetBool(nameof(CharacterTurnDisplacement233Log), CharacterTurnDisplacement233Log);
         EditorPrefsSetBool(nameof(LocomotionMotion233Log), LocomotionMotion233Log);
+        EditorPrefsSetBool(nameof(StopTap234Log), StopTap234Log);
         EditorPrefsSetBool(nameof(LocomotionTurnPresentation235Log), LocomotionTurnPresentation235Log);
         EditorPrefsSetBool(nameof(InterruptFlow), InterruptFlow);
         EditorPrefsSetBool(nameof(ComboAirGate), ComboAirGate);
@@ -196,6 +201,7 @@ public static class GameMainDebugSettings
         CameraTurn233Log = true;
         CharacterTurnDisplacement233Log = true;
         LocomotionMotion233Log = true;
+        StopTap234Log = true;
         LocomotionTurnPresentation235Log = true;
         InterruptFlow = true;
         ComboAirGate = true;
@@ -236,6 +242,7 @@ public static class GameMainDebugSettings
         CameraTurn233Log = false;
         CharacterTurnDisplacement233Log = false;
         LocomotionMotion233Log = false;
+        StopTap234Log = false;
         LocomotionTurnPresentation235Log = false;
         InterruptFlow = false;
         ComboAirGate = false;
@@ -285,6 +292,7 @@ public static class GameMainDebugSettings
         CameraTurn233Log = false;
         CharacterTurnDisplacement233Log = false;
         LocomotionMotion233Log = false;
+        StopTap234Log = false;
         LocomotionTurnPresentation235Log = false;
         InterruptFlow = false;
         ComboAirGate = false;

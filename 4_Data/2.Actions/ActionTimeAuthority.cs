@@ -53,6 +53,28 @@ public static class ActionTimeAuthority
         return Mathf.Lerp(start, end, t);
     }
 
+    /// <summary>
+    /// Clip 归一化进度 → Action nt。Stop 点按尾段按 Clip 空间 authoring，
+    /// Presentation 仍走 MapActionTimeToClipNormalized，所以这里先反解。
+    /// </summary>
+    public static float MapClipNormalizedToActionTime(float clipNormalized, ActionDataSO action)
+    {
+        if (action == null)
+        {
+            return Mathf.Clamp01(clipNormalized);
+        }
+
+        var start = ResolveSegmentStart(action);
+        var end = ResolveSegmentEnd(action);
+        var span = end - start;
+        if (span < MinSegmentSpan)
+        {
+            return 0f;
+        }
+
+        return Mathf.Clamp01((Mathf.Clamp01(clipNormalized) - start) / span);
+    }
+
     public static float MapActionTimeToClipSeconds(float actionNormalizedTime, ActionDataSO action)
     {
         if (action?.MainClip == null)

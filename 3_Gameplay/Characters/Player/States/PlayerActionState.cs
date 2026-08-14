@@ -35,6 +35,11 @@ public sealed class PlayerActionState : PlayerState
     bool m_logicForwardLockedForStop;
     Vector3 m_actionEnterPlanarPos;
     Vector3 m_burstFaceDir;
+    int m_tapChainIndex;
+    bool m_tapChainWatching;
+    float m_tapChainPressStartTime;
+    int m_tapChainPressStartFrame;
+    Vector3 m_tapChainCommandDir;
 
     readonly ActionTimelinePlaybackState m_timelineState = new ActionTimelinePlaybackState();
     readonly ActionMotionPlayback m_motionPlayback = new ActionMotionPlayback();
@@ -77,6 +82,8 @@ public sealed class PlayerActionState : PlayerState
         m_stopCtx = default;
         m_stopActive = false;
         m_logicForwardLockedForStop = false;
+        m_tapChainIndex = 0;
+        ResetTapChainWatch();
         EnsureMotionPlumbing(player);
         m_baseDuration = m_motionPlayback.ResolveActionDuration(player, m_action, m_kind);
 
@@ -94,6 +101,10 @@ public sealed class PlayerActionState : PlayerState
             player,
             m_action.MotionProfile,
             ResolveActiveOwnerGroup(player));
+        if (m_stopCtx.UseIntegratedBrake && m_stopCtx.StopDirection.sqrMagnitude > 0.0001f)
+        {
+            m_burstFaceDir = m_stopCtx.StopDirection;
+        }
         m_motionPlayback.SetBurstFaceDir(m_burstFaceDir);
 
         // 216.3 M0 L3：Phase 单一真相 —— 不再手工 Add PhaseStartup；由 EvaluatePhaseTags 衍生。
@@ -125,12 +136,13 @@ public sealed class PlayerActionState : PlayerState
         player.BeginAttackWithManualCompletion();
         var presentationClip = ResolvePresentationClip(player, m_action);
         Locomotion165Diagnostics.LogAnimSync(player, m_action);
-        var presentationSpeed = ResolveStopPresentationAnimSpeed(m_action, normalizedStart);
+        var clipStart = ResolveStopClipStart(normalizedStart);
+        var presentationSpeed = ResolveStopPresentationAnimSpeed(m_action, clipStart);
         player.RequestActionPresentation(
             m_kind,
             m_action,
             presentationClip,
-            normalizedStart,
+            clipStart,
             presentationSpeed,
             m_leaseVersion);
 
@@ -183,8 +195,32 @@ public sealed class PlayerActionState : PlayerState
             return;
         }
 
-        var entrySpeed = new Vector3(player.PlanarVelocity.x, 0f, player.PlanarVelocity.z).magnitude;
-        m_stopCtx = StopMotionRuntime.Build(action, action.MotionProfile, entrySpeed);
+        var planar = new Vector3(player.PlanarVelocity.x, 0f, player.PlanarVelocity.z);
+        var entrySpeed = planar.magnitude;
+        var stopDirection = planar.sqrMagnitude > 0.0001f ? planar.normalized : player.LogicForward;
+        var snapshot = player.LastStopSessionSnapshot;
+        var gaitSpeed = snapshot.IsValid && snapshot.GaitTargetSpeed > 0.01f
+            ? snapshot.GaitTargetSpeed
+            : (snapshot.WantsRunAtRelease ? player.RuntimeStats.RunSpeed : player.RuntimeStats.WalkSpeed);
+        var tapWindow = StopTierResolver.ResolveTapWindow(action.InheritPhysics);
+        var chained = m_tapChainIndex > 0;
+        var tier = chained
+            ? StopSessionTier.TapChain
+            : StopTierResolver.Resolve(in snapshot, entrySpeed, tapWindow);
+        if (chained && m_tapChainCommandDir.sqrMagnitude > 0.0001f)
+        {
+            stopDirection = m_tapChainCommandDir.normalized;
+        }
+
+        m_stopCtx = StopMotionRuntime.Build(
+            action,
+            action.MotionProfile,
+            entrySpeed,
+            gaitSpeed,
+            stopDirection,
+            tier,
+            m_tapChainIndex,
+            chained);
         m_stopActive = action.EnableStopFeature && m_stopCtx.IsActive;
         // 184.3 W6 — Recovery 表现 Action 不锁 LogicForward；Stop 优先级高于 Recovery 标记
         if (m_stopActive && !action.IsLocomotionRecovery)
@@ -201,13 +237,15 @@ public sealed class PlayerActionState : PlayerState
                 Locomotion165Diagnostics.LogStopOpen(
                     player,
                     action,
-                    $"Build inactive strategy={action.StopStrategy} mfReady={mfReady}");
+                    $"Build inactive strategy={action.StopStrategy} mfReady={mfReady} gait={gaitSpeed:F2} entry={entrySpeed:F2}");
             }
 
             return;
         }
 
         StopProbe.LogBegin(player, in m_stopCtx, action);
+        LocomotionMotion233Probe.ObserveStopBaseline(player, action, in m_stopCtx, clearedVelocity: false);
+        StopTap234Probe.ObserveBegin(player, action, in m_stopCtx);
 
         switch (m_stopCtx.Strategy)
         {
@@ -215,8 +253,7 @@ public sealed class PlayerActionState : PlayerState
                 m_motionPlayback.SetUseMotionProfile(false);
                 break;
             case StopStrategy.InheritPhysics:
-                normalizedStart = Mathf.Clamp01(normalizedStart);
-                player.ClearPlanarVelocity();
+                // Action 时钟保持 lease 起点（通常 0）。Clip 尾由 PresentationStartNormalized 单独驱动。
                 if (action.MotionProfile == null || !action.MotionProfile.EnableStopAuthoring)
                 {
                     m_motionPlayback.SetUseMotionProfile(false);
@@ -259,6 +296,8 @@ public sealed class PlayerActionState : PlayerState
         m_stopActive = false;
         m_logicForwardLockedForStop = false;
         m_actionEnterElapsed = 0f;
+        m_tapChainIndex = 0;
+        ResetTapChainWatch();
         m_motionPlayback.ResetDriverFlags();
     }
 
@@ -300,13 +339,13 @@ public sealed class PlayerActionState : PlayerState
             m_burstFaceDir,
             ResolveDurationSeconds());
 
-        var normalizedStartForPresentation = 0f;
-        var presentationSpeed = ResolveStopPresentationAnimSpeed(action, normalizedStartForPresentation);
+        var clipStart = ResolveStopClipStart(normalizedStart);
+        var presentationSpeed = ResolveStopPresentationAnimSpeed(action, clipStart);
         player.RequestActionPresentation(
             m_kind,
             action,
             ResolvePresentationClip(player, action),
-            normalizedStartForPresentation,
+            clipStart,
             presentationSpeed,
             m_leaseVersion);
 
@@ -314,6 +353,18 @@ public sealed class PlayerActionState : PlayerState
             player,
             m_motionPlayback.UseMotionProfile || m_motionPlayback.DriverPlan.RequiresBaseMotorTick,
             action);
+    }
+
+    float ResolveStopClipStart(float actionNormalizedStart)
+    {
+        if (!m_stopActive || !m_stopCtx.IsActive)
+        {
+            return actionNormalizedStart;
+        }
+
+        return ActionTimeAuthority.MapClipNormalizedToActionTime(
+            m_stopCtx.PresentationStartNormalized,
+            m_action);
     }
 
     float ResolveStopPresentationAnimSpeed(ActionDataSO action, float motionNormalizedTime)
@@ -326,8 +377,188 @@ public sealed class PlayerActionState : PlayerState
         return StopMotionRuntime.ResolvePresentationAnimSpeed(action, in m_stopCtx, motionNormalizedTime);
     }
 
+    bool IsTapChainEligible()
+    {
+        return m_stopActive
+               && m_stopCtx.IsActive
+               && m_stopCtx.Strategy == StopStrategy.InheritPhysics
+               && StopTierResolver.IsTapTier(m_stopCtx.SessionTier)
+               && m_action != null
+               && m_action.EnableStopFeature;
+    }
+
+    void ResetTapChainWatch()
+    {
+        m_tapChainWatching = false;
+        m_tapChainPressStartTime = -1f;
+        m_tapChainPressStartFrame = 0;
+        m_tapChainCommandDir = Vector3.zero;
+    }
+
+    /// <summary>
+    /// 234.6.3 — Tap Stop 中的连点：先不要进 WalkStart/RunStart。
+    /// 松开≤窗 → 再发 D_tap 蠕动铺满尾段；按住超过窗 → 升级 Locomotion。
+    /// 无限连点开启时不因 chain-max 升级。
+    /// 返回 true 表示本帧已切状态或已重开 Stop，调用方应立刻 return。
+    /// </summary>
+    bool TickTapChain(Player player)
+    {
+        if (player == null || m_action == null || !IsTapChainEligible())
+        {
+            if (!IsTapChainEligible())
+            {
+                ResetTapChainWatch();
+            }
+
+            return false;
+        }
+
+        var hasInput = player.HasMovementIntent;
+        var tapWindow = StopTierResolver.ResolveTapWindow(m_action.InheritPhysics);
+        if (hasInput)
+        {
+            var planarIntent = player.MovementIntent;
+            planarIntent.y = 0f;
+            if (planarIntent.sqrMagnitude > 0.0001f)
+            {
+                m_tapChainCommandDir = planarIntent.normalized;
+            }
+
+            if (!m_tapChainWatching)
+            {
+                m_tapChainWatching = true;
+                m_tapChainPressStartTime = Time.time;
+                m_tapChainPressStartFrame = Time.frameCount;
+            }
+
+            if (Time.time - m_tapChainPressStartTime > tapWindow)
+            {
+                PromoteTapChainToStart(player, "held-over-window");
+                return true;
+            }
+
+            return false;
+        }
+
+        if (!m_tapChainWatching)
+        {
+            return false;
+        }
+
+        var heldSeconds = m_tapChainPressStartTime >= 0f
+            ? Mathf.Max(0f, Time.time - m_tapChainPressStartTime)
+            : 0f;
+        var heldTicks = m_tapChainPressStartFrame > 0
+            ? Mathf.Max(0, Time.frameCount - m_tapChainPressStartFrame)
+            : 0;
+        var commandDir = m_tapChainCommandDir;
+        ResetTapChainWatch();
+        m_tapChainCommandDir = commandDir;
+        if (heldSeconds > tapWindow)
+        {
+            PromoteTapChainToStart(player, "held-over-window");
+            return true;
+        }
+
+        var nextIndex = m_tapChainIndex + 1;
+        if (StopTierResolver.ShouldPromoteForChainMax(m_action.InheritPhysics, nextIndex))
+        {
+            PromoteTapChainToStart(player, "chain-max");
+            return true;
+        }
+
+        RestartTapChain(player, heldTicks, heldSeconds, nextIndex);
+        return true;
+    }
+
+    void PromoteTapChainToStart(Player player, string reason)
+    {
+        StopTap234Probe.ObservePromote(player, m_action, in m_stopCtx, reason);
+        ResetTapChainWatch();
+        var intent = GameplayIntent.ForMove(Time.time, 0.12f, default, false);
+        IntentRouter.Route(player, in intent, forceActionReentry: false);
+    }
+
+    void RestartTapChain(Player player, int heldTicks, float heldSeconds, int nextIndex)
+    {
+        var planarTravel = ResolvePlanarDistance(m_actionEnterPlanarPos, player.transform.position);
+        var wallElapsed = m_elapsed - m_actionEnterElapsed;
+        StopTap234Probe.ObserveEnd(player, m_action, in m_stopCtx, wallElapsed, planarTravel);
+
+        m_tapChainIndex = nextIndex;
+        var wantsRun = player.WantsRun;
+        var gait = wantsRun ? player.RuntimeStats.RunSpeed : player.RuntimeStats.WalkSpeed;
+        var planar = new Vector3(player.PlanarVelocity.x, 0f, player.PlanarVelocity.z);
+        player.LastStopSessionSnapshot = new StopSessionSnapshot(
+            heldTicks,
+            heldSeconds,
+            reachedLoop: false,
+            wantsRun,
+            gait,
+            planar.magnitude,
+            StopPhaseAtRelease.Start);
+
+        m_actionSwappedThisFrame = true;
+        m_elapsed = 0f;
+        m_prevNormalizedTime = 0f;
+        m_timelineState.Reset(player);
+        EnsureMotionPlumbing(player);
+        m_baseDuration = m_motionPlayback.ResolveActionDuration(player, m_action, m_kind);
+        m_motionPlayback.ApplyDriverPolicy(player, m_action);
+        ApplyStationaryEntryPolicy(player);
+        var normalizedStart = 0f;
+        ApplyStopAuthoring(player, m_action, ref normalizedStart);
+        m_baseDuration = ResolveDurationSeconds();
+        m_elapsed = 0f;
+        m_prevNormalizedTime = 0f;
+        m_actionEnterElapsed = 0f;
+        m_actionEnterPlanarPos = player.transform.position;
+        m_burstFaceDir = m_tapChainCommandDir.sqrMagnitude > 0.0001f
+            ? m_tapChainCommandDir
+            : (m_stopCtx.StopDirection.sqrMagnitude > 0.0001f ? m_stopCtx.StopDirection : player.LogicForward);
+        m_motionPlayback.SetBurstFaceDir(m_burstFaceDir);
+        m_motionPlayback.RestartForSwap(
+            player,
+            m_action,
+            normalizedStart,
+            in m_stopCtx,
+            m_burstFaceDir,
+            ResolveDurationSeconds());
+        if (!m_motionPlayback.HasActiveExecutor)
+        {
+            m_motionPlayback.BeginSession(
+                player,
+                m_action,
+                normalizedStart,
+                in m_stopCtx,
+                m_burstFaceDir,
+                ResolveDurationSeconds());
+        }
+
+        var clipStart = ResolveStopClipStart(normalizedStart);
+        var presentationSpeed = ResolveStopPresentationAnimSpeed(m_action, clipStart);
+        player.RequestActionPresentation(
+            m_kind,
+            m_action,
+            ResolvePresentationClip(player, m_action),
+            clipStart,
+            presentationSpeed,
+            m_leaseVersion);
+        m_lastPresentationSpeed = presentationSpeed;
+        StopProbe.NotifyEnter(m_action);
+        SyncInPlaceBonePresenter(
+            player,
+            m_motionPlayback.UseMotionProfile || m_motionPlayback.DriverPlan.RequiresBaseMotorTick,
+            m_action);
+    }
+
     protected override void OnLogicUpdate(Player player)
     {
+        if (TickTapChain(player))
+        {
+            return;
+        }
+
         var dt = Time.deltaTime;
         var characterTurn233PositionBefore = player.transform.position;
 
@@ -411,6 +642,27 @@ public sealed class PlayerActionState : PlayerState
             m_motionPlayback.LastFrameAppliedMotor,
             characterTurn233PositionBefore,
             player.transform.position);
+
+        if (m_stopActive && m_stopCtx.UseIntegratedBrake)
+        {
+            var remain = m_motionPlayback.StopRemainingSpeed;
+            var complete = m_motionPlayback.StopPhysicsComplete || remain <= StopIntegrator.DefaultSpeedEpsilon;
+            m_stopCtx = m_stopCtx.WithBrakeTick(remain, complete);
+            var dir = m_stopCtx.StopDirection;
+            player.SetPlanarVelocity(complete || remain <= 0.0001f ? Vector3.zero : dir * remain);
+            StopTap234Probe.ObserveFrame(
+                player,
+                m_action,
+                m_leaseVersion,
+                nt,
+                in m_stopCtx,
+                complete,
+                remain,
+                m_motionPlayback.LastWorldDelta,
+                m_motionPlayback.LastFrameAppliedMotor,
+                characterTurn233PositionBefore,
+                player.transform.position);
+        }
 
         // 227.4.3：Profile JumpStart 的 Gameplay 所有权只覆盖上升段。
         // 物理越过顶点后立即交还 Airborne，让其发布 JumpLoop 并持有 touchdown。
@@ -499,6 +751,7 @@ public sealed class PlayerActionState : PlayerState
                     planarTravel,
                     expectedWallDuration,
                     expectedDistance);
+                StopTap234Probe.ObserveEnd(player, m_action, in m_stopCtx, wallElapsed, planarTravel);
 
                 var playableNtAtExit = StopProbePresentationAdapter.ResolveNormalizedTime(
                     player, m_action, m_leaseVersion);
@@ -707,11 +960,16 @@ public sealed class PlayerActionState : PlayerState
                 return false;
             }
 
-            // 184.3 §9.2 + 184.4：Move/Tap Facing 默认不走 Recovery 旁路，由 Grammar 缓存 PendingFacing
-            // 196.x：按 ActionData.RecoveryInterrupt 做"时序软屏蔽"——
-            //   · LockSec < 0          → 永不放行（沿用 184.3）
-            //   · elapsed < LockSec    → 保护动画过渡的锁定窗口
-            //   · elapsed ≥ LockSec    → 放行到 ActionInterruptResolver 正常仲裁
+            if (intent.Kind == GameplayIntentKind.Move && IsTapChainEligible())
+            {
+                InputActionProbe.LogIntentDropped(
+                    player,
+                    intent.Kind.ToString(),
+                    "PlayerActionState.TapChain",
+                    $"action={m_action.name} chainIndex={m_tapChainIndex} (hold-watch, no Start)");
+                return true;
+            }
+
             if (intent.Kind == GameplayIntentKind.Move
                 || intent.Kind == GameplayIntentKind.Jump
                 || incomingCategory == ActionCategory.Locomotion)
@@ -1002,8 +1260,8 @@ public sealed class PlayerActionState : PlayerState
                     cleared = true;
                     break;
                 case StopStrategy.InheritPhysics:
-                    player.ClearPlanarVelocity();
-                    cleared = true;
+                    // 234.6 L3/L5：剩余速度已由积分器写入 PlanarVelocity；自然结束约为 0，中断继承 v_remain。
+                    cleared = false;
                     break;
                 case StopStrategy.MotionProfile:
                 {

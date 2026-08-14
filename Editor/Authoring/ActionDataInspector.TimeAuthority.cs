@@ -31,7 +31,7 @@ public sealed partial class ActionDataInspector
         if (inheritPhysicsDuration)
         {
             EditorGUILayout.HelpBox(
-                "InheritPhysics：运行时 Duration 由 speed→Duration 插值覆盖；Action 上 Duration 仍作动画基准/ReferenceDuration 来源。",
+                "InheritPhysics：Action 寿命=积分租约。点按/StartAbort 从 Clip 尾以倍率 1 起播；Loop 对齐满段 Clip。Action.Duration 仍作动画基准。",
                 MessageType.Info);
         }
 

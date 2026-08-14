@@ -226,4 +226,16 @@ MonoBehaviour:
     TurnDirection: 4
     RunRequirement: 0
   tuning: {fileID: 11400000, guid: 0f4033e947c16734c98d7f186915063e, type: 2}
-  validationSummary: "OK \u2014 Authority \u4E0E Bindings \u4E00\u81F4\u3002"
+  validationSummary: "ContentWarnings: Idle: Idle_Universal_ActionData \u4ECD\u4E3A
+    LegacyAuto\uFF08effective=LegacyAuto\uFF09\uFF0C\u5F85\u663E\u5F0F\u8FC1\u79FB;
+    Dead: Die02_ActionData \u4ECD\u4E3A LegacyAuto\uFF08effective=MotionProfile\uFF09\uFF0C\u5F85\u663E\u5F0F\u8FC1\u79FB;
+    Walk: GhostSamurai_Common_Walk_Loop_ActionData \u4ECD\u4E3A LegacyAuto\uFF08effective=MotionProfile\uFF09\uFF0C\u5F85\u663E\u5F0F\u8FC1\u79FB;
+    WalkStart: GhostSamurai_Common_Walk_Start_ActionData \u4ECD\u4E3A LegacyAuto\uFF08effective=MotionProfile\uFF09\uFF0C\u5F85\u663E\u5F0F\u8FC1\u79FB;
+    WalkEnd: GhostSamurai_Common_Walk_End_ActionData \u4ECD\u4E3A LegacyAuto\uFF08effective=MotionProfile\uFF09\uFF0C\u5F85\u663E\u5F0F\u8FC1\u79FB;
+    Run: GhostSamurai_Common_Run_Loop_ActionData \u4ECD\u4E3A LegacyAuto\uFF08effective=MotionProfile\uFF09\uFF0C\u5F85\u663E\u5F0F\u8FC1\u79FB;
+    AirJumpLoop: Locomotion_JumpLoop_ActionData \u4ECD\u4E3A LegacyAuto\uFF08effective=LegacyAuto\uFF09\uFF0C\u5F85\u663E\u5F0F\u8FC1\u79FB;
+    JumpLand: Locomotion_JumpLand_ActionData \u4ECD\u4E3A LegacyAuto\uFF08effective=LegacyAuto\uFF09\uFF0C\u5F85\u663E\u5F0F\u8FC1\u79FB;
+    TurnInPlaceDirected: GhostSamurai_APose_TurnL90_ActionData \u4ECD\u4E3A LegacyAuto\uFF08effective=MotionProfile\uFF09\uFF0C\u5F85\u663E\u5F0F\u8FC1\u79FB;
+    TurnInPlaceDirected: GhostSamurai_APose_TurnR90_ActionData \u4ECD\u4E3A LegacyAuto\uFF08effective=MotionProfile\uFF09\uFF0C\u5F85\u663E\u5F0F\u8FC1\u79FB;
+    TurnInPlaceDirected: GhostSamurai_APose_TurnL180_ActionData \u4ECD\u4E3A LegacyAuto\uFF08effective=MotionProfile\uFF09\uFF0C\u5F85\u663E\u5F0F\u8FC1\u79FB;
+    TurnInPlaceDirected: GhostSamurai_APose_TurnR180_ActionData \u4ECD\u4E3A LegacyAuto\uFF08effective=MotionProfile\uFF09\uFF0C\u5F85\u663E\u5F0F\u8FC1\u79FB"

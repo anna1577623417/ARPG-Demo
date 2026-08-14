@@ -77,7 +77,7 @@ public sealed partial class ActionDataInspector
                 if (!mfReady)
                 {
                     EditorGUILayout.HelpBox(
-                        "需在 MotionProfile 上勾选 EnableStopAuthoring；曲线仅表节奏，米数由速度→Distance 运行时决定。",
+                        "需在 MotionProfile 上勾选 EnableStopAuthoring。曲线只表表现节奏，米数由 v_entry 与制动积分决定。",
                         MessageType.Warning);
                 }
 
@@ -133,6 +133,57 @@ public sealed partial class ActionDataInspector
         }
     }
 
+    /// <summary>
+    /// ActionData 制作页上的 MotionProfile 只读预览。引用可改，曲线与 EnableStopAuthoring 不可在此改写。
+    /// </summary>
+    void DrawMotionProfileReadOnlyPreview(ActionDataSO action)
+    {
+        var profile = action != null ? action.MotionProfile : null;
+        if (profile == null)
+        {
+            return;
+        }
+
+        EditorGUILayout.Space(4f);
+        using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
+        {
+            EditorGUILayout.LabelField("MotionProfile 只读预览", EditorStyles.miniBoldLabel);
+            var lockMeters = action.EnableStopFeature
+                && (action.StopStrategy == StopStrategy.InheritPhysics
+                    || action.StopStrategy == StopStrategy.Snap);
+            EditorGUILayout.HelpBox(
+                lockMeters
+                    ? "InheritPhysics / Snap：ZXY 与 Scale 只作节奏预览。停止米数在本 Action 的 D_ref / 积分，不在 MP Scale。"
+                    : "此处灰显，避免在 Action 页改写 MotionProfile。要改曲线请打开 MP 资产。",
+                MessageType.None);
+
+            var profileSo = new SerializedObject(profile);
+            profileSo.Update();
+            var oldColor = GUI.color;
+            GUI.color = new Color(1f, 1f, 1f, 0.55f);
+            using (new EditorGUI.DisabledScope(true))
+            {
+                EditorGUILayout.Toggle("Enable Stop Authoring", profile.EnableStopAuthoring);
+                var axisProp = profileSo.FindProperty(nameof(MotionProfileSO.AxisCurves));
+                if (axisProp != null)
+                {
+                    EditorGUILayout.PropertyField(
+                        axisProp,
+                        new GUIContent("XYZ 局部空间位置曲线"),
+                        true);
+                }
+            }
+
+            GUI.color = oldColor;
+
+            if (GUILayout.Button("打开 MotionProfile 资产", EditorStyles.miniButton))
+            {
+                Selection.activeObject = profile;
+                EditorGUIUtility.PingObject(profile);
+            }
+        }
+    }
+
     void DrawInheritPhysicsSettings()
     {
         var inheritProp = serializedObject.FindProperty(nameof(ActionDataSO.InheritPhysics));
@@ -142,31 +193,30 @@ public sealed partial class ActionDataInspector
         }
 
         EditorGUILayout.HelpBox(
-            "速度参考（与 StatType 系统对齐，单位 m/s）：\n" +
-            "  · StatType.WalkSpeed 默认 5 m/s\n" +
-            "  · StatType.RunSpeed  默认 8 m/s\n" +
-            "入场速度处于 MinSpeed→MaxSpeed 之间时，距离/时长按线性插值。",
+            "234.6.3：Loop 封顶积分，v0=min(v,V_max)。点按丢掉入场速度，用 D_tap 铺满尾段（v0=2D/T）。连点默认不进 RunStart。\n" +
+            "点按起播/尾部用下方 Segment 拖条。两端 0 = Auto（最后 T_tap 秒）。与 Timeline Time Authority 的 Clip Segment 互不影响。",
             MessageType.None);
 
-        EditorGUILayout.LabelField("入场速度区间 (m/s)", EditorStyles.miniBoldLabel);
-        EditorGUILayout.PropertyField(inheritProp.FindPropertyRelative(nameof(InheritPhysicsSettings.MinSpeed)),
-            new GUIContent("最小入场速度", "玩家速度 ≤ 此值 → 按最短滑行；参考 WalkSpeed × 0.2 ≈ 1"));
+        EditorGUILayout.LabelField("输入字段", EditorStyles.miniBoldLabel);
+        EditorGUILayout.PropertyField(inheritProp.FindPropertyRelative(nameof(InheritPhysicsSettings.FullSpeedStopDistance)),
+            new GUIContent("满速停止距离 D_ref", "积分标定。0 = 未填，运行时回退 MaxDistance"));
         EditorGUILayout.PropertyField(inheritProp.FindPropertyRelative(nameof(InheritPhysicsSettings.MaxSpeed)),
-            new GUIContent("最大入场速度", "玩家速度 ≥ 此值 → 按最长滑行；参考 RunSpeed ≈ 8"));
-
-        EditorGUILayout.Space(2f);
-        EditorGUILayout.LabelField("滑行距离区间 (m)", EditorStyles.miniBoldLabel);
-        EditorGUILayout.PropertyField(inheritProp.FindPropertyRelative(nameof(InheritPhysicsSettings.MinDistance)),
-            new GUIContent("最短滑行距离", "约 1/3 步 ≈ 0.2m"));
+            new GUIContent("参考满速 V_max 回退", "Play 使用松开时的 WalkSpeed/RunSpeed；此处仅 Editor 未传 gait 时回退"));
         EditorGUILayout.PropertyField(inheritProp.FindPropertyRelative(nameof(InheritPhysicsSettings.MaxDistance)),
-            new GUIContent("最长滑行距离", "约 4 步 ≈ 2.5m"));
+            new GUIContent("D_ref 回退 MaxDistance", "仅 FullSpeedStopDistance 未填时使用"));
+        EditorGUILayout.PropertyField(inheritProp.FindPropertyRelative(nameof(InheritPhysicsSettings.MaxBrakeSeconds)),
+            new GUIContent("最大刹车时间 T_max", "0 = 运行时用 2·D_ref/V_max。只约束 Loop 物理段"));
 
         EditorGUILayout.Space(2f);
-        EditorGUILayout.LabelField("滑行时长区间 (s)", EditorStyles.miniBoldLabel);
-        EditorGUILayout.PropertyField(inheritProp.FindPropertyRelative(nameof(InheritPhysicsSettings.MinDuration)),
-            new GUIContent("最短滑行时长"));
-        EditorGUILayout.PropertyField(inheritProp.FindPropertyRelative(nameof(InheritPhysicsSettings.MaxDuration)),
-            new GUIContent("最长滑行时长", "典型急停 0.3~0.6 秒"));
+        EditorGUILayout.LabelField("点按离散配方", EditorStyles.miniBoldLabel);
+        EditorGUILayout.PropertyField(inheritProp.FindPropertyRelative(nameof(InheritPhysicsSettings.TapWindowSeconds)),
+            new GUIContent("点按判定窗", "heldSec≤此值走 Tap。0 = 0.15"));
+        EditorGUILayout.PropertyField(inheritProp.FindPropertyRelative(nameof(InheritPhysicsSettings.TapPresentationSeconds)),
+            new GUIContent("点按表现租约 T_tap", "Tap 不吃满段 Clip 墙钟。0 = 0.15"));
+        EditorGUILayout.PropertyField(inheritProp.FindPropertyRelative(nameof(InheritPhysicsSettings.TapStopDistance)),
+            new GUIContent("点按固定位移", "与入场速度无关。0 = 运行时 0.1m"));
+        StopTapTailSegmentEditor.Draw(serializedObject, inheritProp, serializedObject.targetObject as ActionDataSO);
+        DrawTapChainUnlimitedToggle(inheritProp);
 
         EditorGUILayout.Space(2f);
         EditorGUILayout.LabelField("位移轴向", EditorStyles.miniBoldLabel);
@@ -178,6 +228,39 @@ public sealed partial class ActionDataInspector
             new GUIContent("Z · 前后", "Run/Walk 急停默认勾选"));
     }
 
+    static void DrawTapChainUnlimitedToggle(SerializedProperty inheritProp)
+    {
+        var unlimitedProp = inheritProp.FindPropertyRelative(nameof(InheritPhysicsSettings.TapChainUnlimited));
+        var maxProp = inheritProp.FindPropertyRelative(nameof(InheritPhysicsSettings.TapChainMax));
+        if (unlimitedProp == null || maxProp == null)
+        {
+            return;
+        }
+
+        var displayUnlimited = unlimitedProp.boolValue || maxProp.intValue <= 0;
+        EditorGUI.BeginChangeCheck();
+        var nextUnlimited = EditorGUILayout.Toggle(
+            new GUIContent(
+                "无限连点",
+                "开启后忽略连点最大发。关闭后采用最大发：1 = 仅首发。旧资产 max=0 且未写本字段时运行时仍无限。"),
+            displayUnlimited);
+        if (EditorGUI.EndChangeCheck())
+        {
+            unlimitedProp.boolValue = nextUnlimited;
+            if (!nextUnlimited && maxProp.intValue <= 0)
+            {
+                maxProp.intValue = 1;
+            }
+        }
+
+        using (new EditorGUI.DisabledScope(unlimitedProp.boolValue || maxProp.intValue <= 0))
+        {
+            EditorGUILayout.PropertyField(
+                maxProp,
+                new GUIContent("连点最大发数", "仅无限连点关闭时采用。1 = 仅首发。0 对既有资产仍视为无限。"));
+        }
+    }
+
     static void DrawInheritPhysicsRuntimePreview(ActionDataSO action)
     {
         if (action == null || !action.EnableStopFeature)
@@ -186,19 +269,66 @@ public sealed partial class ActionDataInspector
         }
 
         const float previewSpeed = 6f;
-        var ctx = StopMotionRuntime.Build(action, action.MotionProfile, previewSpeed);
+        var inherit = action.InheritPhysics;
+        var vRef = inherit.MaxSpeed > 0.01f ? inherit.MaxSpeed : 8f;
+        var ctx = StopMotionRuntime.Build(action, action.MotionProfile, previewSpeed, vRef);
         if (!ctx.IsActive)
         {
             return;
         }
 
+        EditorGUILayout.LabelField("积分推导（只读，不写进资产）", EditorStyles.miniBoldLabel);
         using (new EditorGUI.DisabledScope(true))
         {
-            EditorGUILayout.FloatField("Preview Entry Speed (m/s)", previewSpeed);
-            EditorGUILayout.FloatField("runtimeDuration @ preview", ctx.RuntimeDuration);
-            EditorGUILayout.FloatField("runtimeDistance @ preview", ctx.RuntimeDistance);
+            EditorGUILayout.FloatField("Preview Entry Speed (Editor only)", previewSpeed);
+            EditorGUILayout.FloatField("a (m/s²)", ctx.BrakeDeceleration);
+            EditorGUILayout.FloatField("predictedDistance", ctx.RuntimeDistance);
+            EditorGUILayout.FloatField("runtimeDuration (presentation lease)", ctx.RuntimeDuration);
             EditorGUILayout.FloatField("baseAnimSpeed @ preview", ctx.BaseAnimSpeed);
+            EditorGUILayout.Toggle("D_ref 来自 MaxDistance 回退", ctx.DerivedFromLegacyMaxDistance);
+            var tapCtx = StopMotionRuntime.Build(
+                action,
+                action.MotionProfile,
+                previewSpeed,
+                vRef,
+                default,
+                StopSessionTier.MicroTap);
+            EditorGUILayout.FloatField("Tap D (runtime default 0.1)", tapCtx.RuntimeDistance);
+            EditorGUILayout.FloatField("Tap v0 = 2D/T", tapCtx.RemainingSpeed);
+            EditorGUILayout.FloatField("Tap T_lease", tapCtx.RuntimeDuration);
+            EditorGUILayout.FloatField("Tap AnimSpeed", tapCtx.BaseAnimSpeed);
+            EditorGUILayout.FloatField("Tap Clip startNt", tapCtx.PresentationStartNormalized);
+            EditorGUILayout.TextField("Tap tailMode", tapCtx.AuthorTail ? "Author" : "Auto");
         }
+
+        DrawInheritPhysicsGaitTable(action, vRef);
+    }
+
+    static void DrawInheritPhysicsGaitTable(ActionDataSO action, float vRef)
+    {
+        if (action == null || vRef <= 0.01f)
+        {
+            return;
+        }
+
+        EditorGUILayout.LabelField("gait 比例推导 D/T（只读）", EditorStyles.miniBoldLabel);
+        using (new EditorGUI.DisabledScope(true))
+        {
+            DrawGaitRow(action, vRef, 0.25f);
+            DrawGaitRow(action, vRef, 0.50f);
+            DrawGaitRow(action, vRef, 0.75f);
+            DrawGaitRow(action, vRef, 1.00f);
+        }
+    }
+
+    static void DrawGaitRow(ActionDataSO action, float vRef, float ratio)
+    {
+        var speed = vRef * ratio;
+        var ctx = StopMotionRuntime.Build(action, action.MotionProfile, speed, vRef);
+        var physT = StopIntegrator.PredictDuration(speed, ctx.BrakeDeceleration);
+        EditorGUILayout.LabelField(
+            $"{ratio:0.00}×gait  v={speed:F2}",
+            ctx.IsActive ? $"D={ctx.RuntimeDistance:F3}m  Tphys={physT:F3}s" : "inactive");
     }
 
     static void DrawStopStrategyHelpBox(StopStrategy strategy)
@@ -207,7 +337,7 @@ public sealed partial class ActionDataInspector
         {
             StopStrategy.Snap => "立即清零位移；动画照常播完，不跳过 Clip。",
             StopStrategy.InheritPhysics =>
-                "速度→Distance/Duration 动态映射；MotionProfile 曲线表节奏；baseAnimSpeed = ReferenceDuration/runtimeDuration。",
+                "234.6.3：Loop 封顶积分；点按丢掉余速，D_tap 铺满尾段；无限连点 Toggle 开则忽略最大发。",
             StopStrategy.MotionProfile => "固定作者位移：MotionProfile 完整接管 ZXY 米数与节奏（旧默认）。",
             _ => string.Empty,
         };

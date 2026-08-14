@@ -203,7 +203,7 @@ public partial class ActionDataSO : ScriptableObject
     [Tooltip("仅 EnableStopFeature=true 且 MotionProfile.EnableStopAuthoring=true 时生效（Snap 除外）。")]
     public StopStrategy StopStrategy = StopStrategy.InheritPhysics;
 
-    [Tooltip("InheritPhysics：速度→Distance/Duration 映射。")]
+    [Tooltip("InheritPhysics：入场速度恒定减速度积分。D=v²/(2a)。")]
     public InheritPhysicsSettings InheritPhysics = InheritPhysicsSettings.Default;
 
     [Tooltip("InheritPhysics：baseAnimSpeed = ReferenceDuration / runtimeDuration。")]

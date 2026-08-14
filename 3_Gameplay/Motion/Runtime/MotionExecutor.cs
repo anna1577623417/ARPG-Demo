@@ -31,6 +31,11 @@ public sealed class MotionExecutor
     private float _groundPrevWorldY;
     private AnimationCurve _landingCurve;
     private StopRuntimeContext _stopContext;
+    private float _stopRemainingSpeed;
+    private bool _stopPhysicsComplete;
+
+    public bool StopPhysicsComplete => _stopPhysicsComplete;
+    public float StopRemainingSpeed => _stopRemainingSpeed;
 
     public MotionExecutor(IMotorAdapter motor, IAnimSpeedControl animSpeed, IStatsProvider stats, Player debugOwner = null)
     {
@@ -79,6 +84,14 @@ public sealed class MotionExecutor
         _loggedMissingAxisCurves = false;
         _groundTargetedActive = false;
         _stopContext = stopContext;
+        _stopRemainingSpeed = stopContext.UseIntegratedBrake ? Mathf.Max(0f, stopContext.RemainingSpeed) : 0f;
+        _stopPhysicsComplete = stopContext.UseIntegratedBrake
+            && _stopRemainingSpeed <= StopIntegrator.DefaultSpeedEpsilon;
+        if (stopContext.UseIntegratedBrake && stopContext.StopDirection.sqrMagnitude > 0.0001f)
+        {
+            _direction = stopContext.StopDirection.normalized;
+            _initialDirection = _direction;
+        }
         _motionScale = _active && _stats != null ? Mathf.Max(0f, _stats.GetMotionScale(profile.ScaleType)) : 1f;
         LastContribution = MotionContribution.Inactive;
         LastWorldDelta = Vector3.zero;
@@ -93,7 +106,7 @@ public sealed class MotionExecutor
                 $"GroundTargeted startY={_groundStartY:F2} endY={_groundEndY:F2} dist={(_groundStartY - _groundEndY):F2}m dur={_baseDuration:F2}s");
         }
 
-        if (_active && !_profile.UsesAxisCurves && !_groundTargetedActive)
+        if (_active && !_profile.UsesAxisCurves && !_groundTargetedActive && !stopContext.UseIntegratedBrake)
         {
             MotionXYZDebug.Log(_debugOwner, MotionXYZDebug.CatMotion,
                 $"OPEN axisCurves missing on profile={_profile.name} — no displacement (run Tools/Motion XYZ/Migrate All)");
@@ -128,7 +141,7 @@ public sealed class MotionExecutor
             out var prevT,
             out var currT);
 
-        if (!_profile.UsesAxisCurves && !_groundTargetedActive)
+        if (!_profile.UsesAxisCurves && !_groundTargetedActive && !_stopContext.UseIntegratedBrake)
         {
             if (!_loggedMissingAxisCurves)
             {
@@ -207,6 +220,10 @@ public sealed class MotionExecutor
             else if (_stopContext.UseAuthorFixed)
             {
                 localDelta = _profile.AxisCurves.SampleLocalDelta(prevT, currT, _motionScale);
+            }
+            else if (_stopContext.UseIntegratedBrake)
+            {
+                localDelta = SampleIntegratedBrakeLocalDelta(deltaTime);
             }
             else
             {
@@ -328,6 +345,36 @@ public sealed class MotionExecutor
         _animSpeed?.SetSpeed(finalSpeed);
     }
 
+    Vector3 SampleIntegratedBrakeLocalDelta(float deltaTime)
+    {
+        if (_stopPhysicsComplete || _stopRemainingSpeed <= StopIntegrator.DefaultSpeedEpsilon)
+        {
+            _stopPhysicsComplete = true;
+            _stopRemainingSpeed = 0f;
+            return Vector3.zero;
+        }
+
+        var step = StopIntegrator.Advance(
+            _stopRemainingSpeed,
+            _stopContext.BrakeDeceleration,
+            deltaTime,
+            StopIntegrator.DefaultSpeedEpsilon);
+        _stopRemainingSpeed = step.NewSpeed;
+        _stopPhysicsComplete = step.PhysicsComplete;
+        var worldDelta = _direction * step.Distance;
+        var local = WorldDeltaToLocal(worldDelta);
+        return Vector3.Scale(local, _stopContext.ApplyMask);
+    }
+
+    Vector3 WorldDeltaToLocal(Vector3 worldDelta)
+    {
+        var right = GetCharacterRight();
+        return new Vector3(
+            Vector3.Dot(worldDelta, right),
+            worldDelta.y,
+            Vector3.Dot(worldDelta, _direction));
+    }
+
     Vector3 LocalDeltaToWorld(Vector3 localDelta)
     {
         var right = GetCharacterRight();
@@ -361,6 +408,8 @@ public sealed class MotionExecutor
         _active = false;
         LastContribution = MotionContribution.Inactive;
         LastWorldDelta = Vector3.zero;
+        _stopRemainingSpeed = 0f;
+        _stopPhysicsComplete = false;
         _motor?.SetDesiredVelocity(Vector3.zero);
         _motor?.SetMotionComposeContext(MotionYAxisConfig.DefaultLocomotion);
         _animSpeed?.SetSpeed(1f);

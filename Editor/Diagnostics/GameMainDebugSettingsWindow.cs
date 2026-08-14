@@ -118,6 +118,9 @@ public sealed class GameMainDebugSettingsWindow : EditorWindow
             Toggle(() => GameMainDebugSettings.LocomotionMotion233Log,
                 v => GameMainDebugSettings.LocomotionMotion233Log = v,
                 "Locomotion Motion 233.5", "[LocomotionMotion233] 点按→Start/Loop/End + MP作者/Stop有效/Executor/KCC 位移对账");
+            Toggle(() => GameMainDebugSettings.StopTap234Log,
+                v => GameMainDebugSettings.StopTap234Log = v,
+                "Stop Tap 234.6", "[StopTap234] 终态：点按丢掉余速 v0=2D/T 铺满尾段、无限连点 Toggle，边沿最多3行");
             Toggle(() => GameMainDebugSettings.LocomotionTurnPresentation235Log,
                 v => GameMainDebugSettings.LocomotionTurnPresentation235Log = v,
                 "Locomotion Turn Presentation 235", "[LocoTurn235] INPUT→DECIDE→SELECT→PLAY→END，有限边沿、无堆栈");

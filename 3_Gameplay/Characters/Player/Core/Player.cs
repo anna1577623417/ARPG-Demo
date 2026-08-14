@@ -149,6 +149,8 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
     public InputContextResolver InputContext => m_inputContext;
 
     public Vector3 PlanarVelocity => m_motor != null ? m_motor.PlanarVelocity : Vector3.zero;
+    /// <summary>234.6 — 松开 WalkEnd/RunEnd 当帧快照。Stop 只读，不由 Action 回写。</summary>
+    public StopSessionSnapshot LastStopSessionSnapshot { get; internal set; }
     public float VerticalSpeed => m_motor != null ? m_motor.VerticalSpeed : 0f;
     public bool IsGrounded => m_motor != null && m_motor.IsGrounded;
     public bool IsAttacking => m_attackTimer > 0f;

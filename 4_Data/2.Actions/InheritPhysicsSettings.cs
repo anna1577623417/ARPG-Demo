@@ -2,53 +2,65 @@ using System;
 using UnityEngine;
 
 /// <summary>
-/// 182.1 — InheritPhysics 运行时映射：入场速度 → 滑行距离 / 滑行时长。
-///
-/// 单位与策划语言（与 StatType 系统对齐）：
-///   · 速度 m/s：参考 StatType.WalkSpeed (默认 5)、StatType.RunSpeed (默认 8)
-///   · 距离 m  ：玩家角色尺度约 1.8m 高，1 步 ≈ 0.6m
-///   · 时长 s  ：典型急停动画 0.3~0.6s
-///
-/// 推荐配置（紧贴角色移速曲线）：
-///   · 走路停止：MinSpeed≈WalkSpeed*0.5  / MaxSpeed≈WalkSpeed*1.1
-///   · 跑步停止：MinSpeed≈RunSpeed*0.5   / MaxSpeed≈RunSpeed*1.2
+/// InheritPhysics 积分停止标定。Loop 走封顶积分；Tap 走离散配方。
 /// </summary>
 [Serializable]
 public struct InheritPhysicsSettings
 {
-    [Tooltip("入场速度下限（米/秒）。\n" +
-             "玩家入场速度 ≤ 此值时，按 (MinDistance, MinDuration) 滑行。\n" +
-             "参考：StatType.WalkSpeed 默认 5 m/s；StatType.RunSpeed 默认 8 m/s。")]
-    [Min(0f)]
+    [HideInInspector]
     public float MinSpeed;
 
-    [Tooltip("入场速度上限（米/秒）。\n" +
-             "玩家入场速度 ≥ 此值时，按 (MaxDistance, MaxDuration) 滑行。\n" +
-             "之间速度按线性插值。")]
+    [Tooltip("最大滑行速度 V_max 回退（米/秒）。Play 优先用松开时的 WalkSpeed/RunSpeed。")]
     [Min(0.01f)]
     public float MaxSpeed;
 
-    [Tooltip("最短滑行距离（米）。\n" +
-             "入场速度处于 MinSpeed 时的滑行米数。\n" +
-             "参考：1 步 ≈ 0.6m；角色身高 ≈ 1.8m。")]
-    [Min(0f)]
+    [HideInInspector]
     public float MinDistance;
 
-    [Tooltip("最长滑行距离（米）。\n" +
-             "入场速度处于 MaxSpeed 时的滑行米数。")]
+    [Tooltip("满速停止标定回退（米）。FullSpeedStopDistance 未填时作为 D_ref。")]
     [Min(0f)]
     public float MaxDistance;
 
-    [Tooltip("最短滑行时长（秒）。\n" +
-             "入场速度处于 MinSpeed 时的减速时间。")]
-    [Min(0.01f)]
+    [Tooltip("满速停止距离 D_ref（米）。>0 时作为积分标定；0 = 未填，回退 MaxDistance。")]
+    [Min(0f)]
+    public float FullSpeedStopDistance;
+
+    [HideInInspector]
     public float MinDuration;
 
-    [Tooltip("最长滑行时长（秒）。\n" +
-             "入场速度处于 MaxSpeed 时的减速时间。\n" +
-             "典型急停动画 0.3~0.6 秒。")]
-    [Min(0.01f)]
+    [HideInInspector]
     public float MaxDuration;
+
+    [Tooltip("最大物理刹车时间 T_max（秒）。0 = 用 2·D_ref/V_max。")]
+    [Min(0f)]
+    public float MaxBrakeSeconds;
+
+    [Tooltip("点按判定窗（秒）。heldSec≤此值走 Tap 配方。0 = 0.15。")]
+    [Min(0f)]
+    public float TapWindowSeconds;
+
+    [Tooltip("点按表现租约 T_tap（秒）。0 = 0.15。Tap 租约不吃满段 Clip 墙钟。")]
+    [Min(0f)]
+    public float TapPresentationSeconds;
+
+    [Tooltip("点按固定位移（米）。与入场速度无关。0 = 运行时按 0.1。")]
+    [Min(0f)]
+    public float TapStopDistance;
+
+    [Tooltip("点按 Clip 起播归一化。与 TapTailSeconds 同为 0 = Auto（最后 T_tap 秒）。拖 Segment 左柄写入。")]
+    [Range(0f, 1f)]
+    public float TapTailStartNormalized;
+
+    [Tooltip("点按尾段墙钟（秒）。0 且起播也为 0 = Auto。拖 Segment 左右柄跨度写入，同时抬租约下限。")]
+    [Min(0f)]
+    public float TapTailSeconds;
+
+    [Tooltip("连点最大发数。仅无限连点关闭时采用。1 = 仅首发；大于 1 为最多发数。0 对既有资产仍视为无限。")]
+    [Min(0)]
+    public int TapChainMax;
+
+    [Tooltip("无限连点。开启后忽略连点最大发，字段只读灰显。")]
+    public bool TapChainUnlimited;
 
     [Tooltip("是否在 X 轴（左右）施加滑行位移。")]
     public bool AffectX;
@@ -59,20 +71,25 @@ public struct InheritPhysicsSettings
     [Tooltip("是否在 Z 轴（前后）施加滑行位移。Run/Walk 急停默认勾选。")]
     public bool AffectZ;
 
-    /// <summary>
-    /// 默认值贴近玩家 RunSpeed (8 m/s) 配置（与 PlayerStats_General.asset 对齐）。
-    /// 策划新建 Action 时即可获得合理的初始急停手感。
-    /// </summary>
     public static InheritPhysicsSettings Default => new()
     {
-        MinSpeed = 1f,    // ≈ WalkSpeed (5) × 0.2，缓步时几乎不滑
-        MaxSpeed = 8f,    // = RunSpeed 上限
-        MinDistance = 0.2f,  // ~1/3 步
-        MaxDistance = 2.5f,  // ~4 步
+        MinSpeed = 1f,
+        MaxSpeed = 8f,
+        MinDistance = 0.2f,
+        MaxDistance = 2.5f,
+        FullSpeedStopDistance = 0f,
         MinDuration = 0.10f,
-        MaxDuration = 0.45f, // 典型 RunEnd 时长
+        MaxDuration = 0.45f,
+        MaxBrakeSeconds = 0f,
+        TapWindowSeconds = 0.15f,
+        TapPresentationSeconds = 0.15f,
+        TapStopDistance = 0.1f,
+        TapTailStartNormalized = 0f,
+        TapTailSeconds = 0f,
+        TapChainMax = 0,
+        TapChainUnlimited = true,
         AffectX = false,
         AffectY = false,
-        AffectZ = true,      // 默认仅前后向滑行
+        AffectZ = true,
     };
 }

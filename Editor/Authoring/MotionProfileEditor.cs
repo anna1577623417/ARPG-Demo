@@ -46,6 +46,9 @@ public sealed partial class MotionProfileEditor : Editor
         "legacyYPolicyRaw",
         "AnimSpeedMode",
         "SpeedOverTime",
+        // 234.6 Inspector：Stop 区与 XYZ 曲线由自定义绘制，避免 Header「Stop Authoring」与 EnableStopAuthoring 被默认 Inspector 再画一遍。
+        nameof(MotionProfileSO.EnableStopAuthoring),
+        nameof(MotionProfileSO.AxisCurves),
         nameof(MotionProfileSO.AnimSpeedAuthoringMode),
         nameof(MotionProfileSO.AnimSpeedSolveTarget),
         nameof(MotionProfileSO.AnimSpeedMidTime),
@@ -189,12 +192,14 @@ public sealed partial class MotionProfileEditor : Editor
         // 204.1 W8：反向跳转 — Action ⇄ MotionProfile 双向导航
         DrawActionNavigationSection(profile);
 
-        EditorGUILayout.HelpBox(
-            "【三轴位置曲线】局部空间：Evaluate(t)×Scale=米。\n" +
-            "逻辑时长 / Clip 对齐 → Action Time Authority；本页 SpeedOverTime 仅作 motionT 局部节奏（先慢后快等）。",
-            MessageType.Info);
-
         DrawStopAuthoringSection(profile);
+
+        var axisHelp = ShouldLockAxisCurvesForStopPreview(profile)
+            ? "【三轴位置曲线】InheritPhysics / Snap 下 Scale 只是节奏幅度，不是停止米数。逻辑时长 / Clip 对齐 → Action Time Authority。"
+            : "【三轴位置曲线】局部空间：Evaluate(t)×Scale=米。\n逻辑时长 / Clip 对齐 → Action Time Authority；本页 SpeedOverTime 仅作 motionT 局部节奏（先慢后快等）。";
+        EditorGUILayout.HelpBox(axisHelp, MessageType.Info);
+
+        DrawAxisCurvesPreviewSection(profile);
 
         if (!profile.UsesAxisCurves && !profile.UsesGroundTargetedLanding)
         {
@@ -217,7 +222,7 @@ public sealed partial class MotionProfileEditor : Editor
         DrawLandingSettingsSection(profile);
         DrawAnimationSpeedSection(profile);
         DrawClipExtractSection(profile);
-        using (new EditorGUI.DisabledScope(ShouldLockAxisCurvesForStopPreview(profile)))
+        using (new EditorGUI.DisabledScope(IsStopCurvePreviewLocked(profile)))
         {
             DrawManualCurveSection(profile);
         }

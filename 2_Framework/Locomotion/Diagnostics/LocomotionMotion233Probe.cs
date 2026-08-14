@@ -232,7 +232,35 @@ public static class LocomotionMotion233Probe
             $"entrySpeed={stop.EntrySpeed:F3} requestedDriver={plan.RequestedMode} effectiveDriver={plan.EffectiveMode} valid={plan.IsValid} " +
             $"effectiveSource={s_effectiveSource} expectedDistance={Expected(s_effectiveExpectedDistance)} " +
             $"stop={stop.IsActive}/{stop.Strategy} disable={stop.DisableStopMotion} authorFixed={stop.UseAuthorFixed} " +
+            $"integrated={stop.UseIntegratedBrake} a={stop.BrakeDeceleration:F3} vRef={stop.ReferenceGaitSpeed:F2} tier={stop.SessionTier} " +
             $"runtimeDist={stop.RuntimeDistance:F4} runtimeDur={stop.RuntimeDuration:F4} mask={V3(stop.ApplyMask)} " + AssetInline(player, action),
+            player);
+    }
+
+    public static void ObserveStopBaseline(
+        Player player,
+        ActionDataSO action,
+        in StopRuntimeContext stop,
+        bool clearedVelocity)
+    {
+        if (!Enabled || !EnsureSession(player) || action == null || !stop.IsActive)
+        {
+            return;
+        }
+
+        var walk = player.RuntimeStats.WalkSpeed;
+        var run = player.RuntimeStats.RunSpeed;
+        var snapshot = player.LastStopSessionSnapshot;
+        var tPhys = StopIntegrator.PredictDuration(stop.EntrySpeed, stop.BrakeDeceleration);
+        var vRatio = run > 0.01f ? stop.EntrySpeed / run : 0f;
+        Log(
+            "STOP_BASELINE",
+            $"action={Name(action)} strategy={stop.Strategy} entrySpeed={stop.EntrySpeed:F3} " +
+            $"integrateDist={stop.RuntimeDistance:F4} tPhys={tPhys:F4} tLease={stop.RuntimeDuration:F4} " +
+            $"clearedVelocity={clearedVelocity} a={stop.BrakeDeceleration:F3} vRef={stop.ReferenceGaitSpeed:F2} " +
+            $"walkSpeed={walk:F2} runSpeed={run:F2} vRunRatio={vRatio:F2} gaitUnchanged=true " +
+            $"tier={stop.SessionTier} heldTicks={(snapshot.IsValid ? snapshot.HeldTicks : -1)} reachedLoop={(snapshot.IsValid && snapshot.ReachedLoop)} " +
+            $"dRefFallback={stop.DerivedFromLegacyMaxDistance} physicsComplete={stop.PhysicsComplete}",
             player);
     }
 
@@ -351,9 +379,8 @@ public static class LocomotionMotion233Probe
         return
             $"movement={action.MovementMode} transition={action.TransitionType} recovery={action.IsLocomotionRecovery} " +
             $"driverCfg={action.MotionDriverMode} stopCfg={action.EnableStopFeature}/{action.StopStrategy} " +
-            $"inheritSpeed={action.InheritPhysics.MinSpeed:F2}>{action.InheritPhysics.MaxSpeed:F2} " +
-            $"inheritDist={action.InheritPhysics.MinDistance:F3}>{action.InheritPhysics.MaxDistance:F3} " +
-            $"inheritDur={action.InheritPhysics.MinDuration:F3}>{action.InheritPhysics.MaxDuration:F3} " +
+            $"dRef={action.InheritPhysics.FullSpeedStopDistance:F3} dRefFallback={action.InheritPhysics.MaxDistance:F3} " +
+            $"vRefFallback={action.InheritPhysics.MaxSpeed:F2} " +
             $"mp={Name(profile)} mpId={(profile != null ? profile.GetInstanceID() : 0)} axes={(profile != null && profile.UsesAxisCurves)} " +
             $"stopAuthor={(profile != null && profile.EnableStopAuthoring)} scaleType={(profile != null ? profile.ScaleType.ToString() : "none")} " +
             $"motionScale={scale:F3} axisScale={V3(new Vector3(curves.XScale, curves.YScale, curves.ZScale))} authoredDelta={V3(authored)}";

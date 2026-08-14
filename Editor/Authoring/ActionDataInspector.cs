@@ -220,6 +220,8 @@ public sealed partial class ActionDataInspector : Editor
             EditorGUILayout.PropertyField(profileProp, new GUIContent("MotionProfile"));
         }
 
+        DrawMotionProfileReadOnlyPreview(action);
+
         EditorGUILayout.Space(2f);
 
         var canPass = action.MainClip != null && action.MotionProfile != null;
