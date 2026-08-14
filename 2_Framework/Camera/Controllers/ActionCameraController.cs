@@ -47,19 +47,6 @@ public class ActionCameraController : CameraController
     [SerializeField] private float verticalMinAngle = -30f;
     [SerializeField] private float verticalMaxAngle = 70f;
 
-    [Header("227.4.3 Chase Assist")]
-    [Tooltip("玩家停止主动 Look 后，让相机水平轨道平滑回到角色运动朝向后方。")]
-    [SerializeField] private bool enableChaseAssist = true;
-
-    [Tooltip("最后一次主动 Look 后等待多少秒才开始回正。")]
-    [SerializeField, Min(0f)] private float chaseRecenterDelay = 0.25f;
-
-    [Tooltip("相机水平轨道向角色朝向回正的最大角速度（度/秒）。")]
-    [SerializeField, Min(0f)] private float chaseRecenterAngularSpeed = 180f;
-
-    [Tooltip("水平角误差小于此值时不再回正，避免微抖。")]
-    [SerializeField, Range(0f, 20f)] private float chaseYawDeadzone = 2f;
-
     [Header("Self-occlusion guard")]
     [Tooltip("从相机防遮挡 LayerMask 中【剔除】的层（玩家自身 / 武器 / Hitbox / IgnoreRaycast 等）。\n空旷场景跳跃时若相机贴脸，把'Player' 层勾入此处即可——相机的防穿墙射线将忽略玩家自身碰撞体，恢复正常距离。\nRebindFollowAndLookAt 时一次性注入到 VCam 的 Cinemachine3rdPersonFollow.CameraCollisionFilter。")]
     [SerializeField] private LayerMask cameraIgnoreLayers;
@@ -69,7 +56,6 @@ public class ActionCameraController : CameraController
 
     private float _yaw;
     private float _pitch;
-    private float _lastLookInputTime = -999f;
 
     float _shakeTimer;
     float _shakeDuration;
@@ -130,27 +116,64 @@ public class ActionCameraController : CameraController
     {
         if (followTarget == null) return;
 
+        var probePlayer = GameMainDebugSettings.CameraTurn233Log
+            ? followTarget.GetComponentInParent<Player>()
+            : null;
+        var probeLook = inputReader.LookInput;
+        var probeYawBefore = _yaw;
+        var probeFollowWorldYawBefore = followTarget.eulerAngles.y;
+        var probeFollowLocalYawBefore = followTarget.localEulerAngles.y;
+
         if (!_lookInputLocked)
         {
-            var look = inputReader.LookInput;
+            var look = probeLook;
             if (look.sqrMagnitude > 0.0001f)
             {
-                _lastLookInputTime = Time.unscaledTime;
                 _yaw += look.x * horizontalSensitivity * Time.deltaTime;
                 _pitch -= look.y * verticalSensitivity * Time.deltaTime;
                 _pitch = Mathf.Clamp(_pitch, verticalMinAngle, verticalMaxAngle);
             }
         }
 
-        ApplyChaseAssist();
+        var probeYawAfterLook = _yaw;
 
         ApplyImpulseOffsets();
+        var probeYawAfterImpulse = _yaw;
 
         // ❗ 每帧都必须写 followTarget.rotation（世界旋转），
         // 否则 Player.LookAtDirection 旋转父物体时，
         // 子物体 followTarget 的世界朝向会被"拖走"，
         // 导致 Cinemachine 读到被污染的旋转 → 反馈死循环 → 原地转圈。
         followTarget.rotation = Quaternion.Euler(_pitch + _pushPitchOffset, _yaw, 0f);
+
+        if (GameMainDebugSettings.CameraTurn233Log)
+        {
+            var parentYaw = followTarget.parent != null
+                ? followTarget.parent.eulerAngles.y
+                : float.NaN;
+            var mainCamera = Camera.main;
+            CameraTurn233Probe.ObserveCameraController(
+                probePlayer,
+                this,
+                probeLook,
+                _lookInputLocked,
+                false,
+                0f,
+                0f,
+                0f,
+                0f,
+                parentYaw,
+                probeYawBefore,
+                probeYawAfterLook,
+                probeYawAfterLook,
+                probeYawAfterImpulse,
+                _pitch + _pushPitchOffset,
+                probeFollowWorldYawBefore,
+                probeFollowLocalYawBefore,
+                followTarget.eulerAngles.y,
+                followTarget.localEulerAngles.y,
+                mainCamera != null ? mainCamera.transform.eulerAngles.y : float.NaN);
+        }
     }
 
     public void AddImpulseShake(float intensity, float durationSeconds)
@@ -168,35 +191,6 @@ public class ActionCameraController : CameraController
     }
 
     public void SetLookInputLocked(bool locked) => _lookInputLocked = locked;
-
-    void ApplyChaseAssist()
-    {
-        if (!enableChaseAssist
-            || _lookInputLocked
-            || followTarget == null
-            || followTarget.parent == null
-            || Time.unscaledTime - _lastLookInputTime < chaseRecenterDelay)
-        {
-            return;
-        }
-
-        var forward = Vector3.ProjectOnPlane(followTarget.parent.forward, Vector3.up);
-        if (forward.sqrMagnitude < 0.0001f)
-        {
-            return;
-        }
-
-        var targetYaw = Mathf.Atan2(forward.x, forward.z) * Mathf.Rad2Deg;
-        if (Mathf.Abs(Mathf.DeltaAngle(_yaw, targetYaw)) <= chaseYawDeadzone)
-        {
-            return;
-        }
-
-        _yaw = Mathf.MoveTowardsAngle(
-            _yaw,
-            targetYaw,
-            chaseRecenterAngularSpeed * Time.unscaledDeltaTime);
-    }
 
     void ApplyImpulseOffsets()
     {
@@ -270,7 +264,6 @@ public class ActionCameraController : CameraController
         var euler = follow.eulerAngles;
         _yaw = euler.y;
         _pitch = euler.x;
-        _lastLookInputTime = Time.unscaledTime;
         if (_pitch > 180f)
         {
             _pitch -= 360f;
@@ -281,6 +274,16 @@ public class ActionCameraController : CameraController
         //         会被 3rdPersonFollow 的肩部射线击中，相机被误判为"被遮挡"而拉近到玩家面前。
         //   解药：把玩家所在层从过滤器里剔除——相机只会被【真实环境】阻挡，不再被自身遮挡。
         ApplyCameraSelfOcclusionFilter(follow);
+
+        if (GameMainDebugSettings.CameraTurn233Log)
+        {
+            CameraTurn233Probe.ObserveBinding(
+                follow.GetComponentInParent<Player>(),
+                this,
+                follow,
+                deadzoneProxy != null ? deadzoneProxy.transform : null,
+                virtualCamera.LookAt);
+        }
     }
 
     /// <summary>

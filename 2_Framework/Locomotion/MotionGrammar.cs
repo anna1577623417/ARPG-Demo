@@ -1,5 +1,5 @@
 /// <summary>
-/// 184.4 — Motion Grammar 决议：Transition 互斥 + Tap Facing 三分支。
+/// 234.5 — Motion Grammar 只描述 Transition 所有权；WASD Tap Facing 三分支已退役。
 /// </summary>
 public static class MotionGrammar
 {
@@ -63,50 +63,13 @@ public static class MotionGrammar
     public static string GetDocumentation(TransitionType type) => type switch
     {
         TransitionType.Start =>
-            "起步负责解释起步。消费方向 + 动量。阻止 Turn / Pivot。\n" +
-            "Tap Facing 期间 → Ignore（起步方向已锁定）。",
+            "起步负责表现起步。消费表现方向/动量语义，阻止重复 Turn / Pivot。",
         TransitionType.End =>
-            "急停负责解释停止与方向变化，不再追加 Turn 补偿。\n" +
-            "Tap Facing 期间 → CachePendingFacing → End 结束时直接修正 LogicForward。",
+            "急停负责表现停止；新的移动输入按显式打断合同处理，不追加 Tap Turn。",
         TransitionType.Turn =>
-            "静止转向。消费方向，不消费动量。阻止 Pivot。\n" +
-            "Turn 期间再来 Tap Facing → 替换为新 Turn。",
+            "静止转向表现。消费方向，不消费动量；有移动会话时不得触发。",
         TransitionType.Pivot =>
-            "运动重定向。消费方向 + 动量。阻止 Turn。\n" +
-            "Pivot 期间 Tap Facing → CachePendingFacing，Pivot 结束后应用。",
+            "运动重定向表现。消费表现方向 + 动量语义；不得改变 FreeLocomotion 世界方向。",
         _ => "非 Transition Action；不参与 Motion Grammar 决议。",
     };
-
-    public static TapFacingDecision DecideTapFacing(ActionDataSO currentTransition)
-    {
-        if (currentTransition == null || currentTransition.TransitionType == TransitionType.None)
-        {
-            return TapFacingDecision.PlayTurnImmediately;
-        }
-
-        var grammar = ResolveGrammar(currentTransition);
-        if (grammar.ConsumesDirectionChange)
-        {
-            if (currentTransition.TransitionType == TransitionType.Start)
-            {
-                return TapFacingDecision.Ignore;
-            }
-
-            if (currentTransition.TransitionType == TransitionType.Turn)
-            {
-                return TapFacingDecision.PlayTurnImmediately;
-            }
-
-            return TapFacingDecision.CachePendingFacing;
-        }
-
-        return TapFacingDecision.PlayTurnImmediately;
-    }
-}
-
-public enum TapFacingDecision : byte
-{
-    PlayTurnImmediately,
-    CachePendingFacing,
-    Ignore,
 }

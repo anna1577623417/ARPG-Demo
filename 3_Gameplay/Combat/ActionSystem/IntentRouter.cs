@@ -50,7 +50,7 @@ public static class IntentRouter
         {
             if (player.States?.Current is PlayerLocomotionState)
             {
-                player.InterruptTurnPresentation(nameof(GameplayIntentKind.Jump));
+                player.InterruptTurn(TurnInterruptReason.Jump, nameof(GameplayIntentKind.Jump));
             }
 
             player.RequestJumpFromIntent();
@@ -67,7 +67,7 @@ public static class IntentRouter
 
         if (player.States?.Current is PlayerLocomotionState)
         {
-            player.InterruptTurnPresentation(intent.Kind.ToString());
+            player.InterruptTurn(TurnInterruptReason.Action, intent.Kind.ToString());
         }
 
         if (forceActionReentry)

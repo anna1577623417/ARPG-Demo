@@ -16,7 +16,7 @@ using UnityEngine;
 [RequireComponent(typeof(PlayerStateManager))]
 [RequireComponent(typeof(PlayerController))]
 [RequireComponent(typeof(PlayerKCCMotor))]
-public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, IDamageable, IEffectReceiver, IActionContext, IActionLeaseOwner, IActionIntentCommitter
+public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, IDamageable, IEffectReceiver, IActionContext, IActionLeaseOwner, IActionIntentCommitter, IAirCycleReadPort
 {
     // ─── 输入 ───
     [Header("Input")]
@@ -65,6 +65,7 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
     PlayerKCCMotor m_motor;
     PlayerSkillComponent m_skillComponent;
     readonly InputContextResolver m_inputContext = new InputContextResolver();
+    readonly AirCycleRuntime m_airCycle = new AirCycleRuntime();
     float m_attackTimer;
     Vector3 m_movementIntent;
     Vector3 m_facingIntent;
@@ -76,12 +77,12 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
     Vector3 m_logicForward = Vector3.forward;
     VisualFacingDriver m_visualFacing;
     InputTense m_currentInputTense = InputTense.Idle;
-    bool m_tapTurnArmPending;
-    Vector3 m_tapTurnFromForward = Vector3.forward;
     int m_logicForwardLockCount;
     int m_turnPresentationInterruptGen;
     int m_consumedTurnInterruptGen;
     string m_lastTurnInterruptReason;
+    uint m_nextTurnCompensationGeneration;
+    TurnCompensationCue m_turnCompensationCue;
 
     Vector3 m_pendingFacing;
     bool m_hasPendingFacing;
@@ -118,6 +119,8 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
     // ─── 公开属性 ───
     public InputReader InputReader => inputReader;
     public PlayerStateManager States => m_stateManager;
+    public IAirCycleReadPort AirCycle => m_airCycle;
+    public AirCycleSnapshot CurrentAirCycle => m_airCycle.CurrentAirCycle;
     public SkillEntryService SkillEntries => m_skillComponent?.Service;
     public SkillEntryLoadoutSO SkillEntryLoadout => skillEntryLoadout;
 
@@ -189,6 +192,7 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
     public Quaternion VisualRotation =>
         visualRoot != null ? visualRoot.rotation : transform.rotation;
     public TurnInfo CurrentTurnInfo => m_currentTurnInfo;
+    public TurnCompensationCue CurrentTurnCompensationCue => m_turnCompensationCue;
     /// <summary>159.1 L2+：Resolver 连续 Clip 表现快照（Strafe 等）。</summary>
     public LocomotionPresentationSnapshot LocomotionPresentation => m_locoPresentation;
     /// <summary>
@@ -199,7 +203,147 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
                               || GameMainDebugSettings.SimulateLockOnLocomotion;
 
     public void ActivateRunLatch(float seconds) => m_runLatchEndTime = Time.time + Mathf.Max(0.01f, seconds);
-    public void SetTurnInfo(in TurnInfo info) => m_currentTurnInfo = info;
+    public void SetTurnInfo(in TurnInfo info)
+    {
+        var previous = m_currentTurnInfo;
+        m_currentTurnInfo = info;
+        CameraTurn233Probe.ObserveTurnInfo(this, in previous, in info, "Player.SetTurnInfo");
+        CharacterTurnDisplacement233Probe.ObserveTurnInfo(this, in info);
+    }
+
+    /// <summary>
+    /// 235.2：PlayerController 在写入当帧 MovementIntent 前调用。
+    /// 大角差 Cue 同帧提交 Gameplay Facing；速度响应与 KCC 继续结算，Clip 只拥有有限 Presentation Lease。
+    /// </summary>
+    public void SubmitTurnCompensationCommand(Vector3 worldCommand, bool hasMoveInput)
+    {
+        if (!hasMoveInput)
+        {
+            return;
+        }
+
+        if (!CanStartTurnCompensationFromCurrentState(out var stateSource))
+        {
+            var command = PlanarizeFacing(worldCommand);
+            var signed = Vector3.SignedAngle(m_logicForward, command, Vector3.up);
+            var rejected = TurnIntentBuilder.CreateNonTurning(Mathf.Abs(signed), signed);
+            LocomotionTurnPresentation235Probe.ObserveDecision(
+                this,
+                in rejected,
+                $"TurnCompensationResolver.state_ineligible:{stateSource}");
+            return;
+        }
+
+        var tuning = locomotionProfile != null ? locomotionProfile.Tuning : null;
+        var settings = States.LocomotionTurnSettings;
+        var enabled = settings.EnableTurnInPlacePresentation
+                      && (tuning == null || tuning.EnableMovingTurnCompensation);
+        var nextGeneration = m_nextTurnCompensationGeneration + 1U;
+        var suppressedByMode = !enabled || IsLockedOn || m_inputContext.DirectionalCommitted;
+        if (suppressedByMode && m_turnCompensationCue.IsTurning)
+        {
+            var command = PlanarizeFacing(worldCommand);
+            var signed = Vector3.SignedAngle(m_logicForward, command, Vector3.up);
+            m_nextTurnCompensationGeneration = nextGeneration;
+            m_turnCompensationCue = new TurnCompensationCue(
+                nextGeneration,
+                TurnType.None,
+                0,
+                Mathf.Abs(signed),
+                signed,
+                Time.frameCount);
+            var cancelInfo = m_turnCompensationCue.ToTurnInfo();
+            LocomotionTurnPresentation235Probe.ObserveDecision(
+                this,
+                in cancelInfo,
+                IsLockedOn ? "TurnCompensationResolver.cancel_lock_on" : "TurnCompensationResolver.cancel_directional");
+            LocomotionTurnPresentation235Probe.ObserveEnd(
+                this,
+                IsLockedOn ? "lock_on_suppressed" : "directional_suppressed");
+            return;
+        }
+
+        if (!TurnCompensationResolver.TryResolve(
+                m_logicForward,
+                worldCommand,
+                enabled,
+                IsLockedOn,
+                m_inputContext.DirectionalCommitted,
+                tuning != null ? tuning.Turn90ThresholdDeg : 70f,
+                tuning != null ? tuning.Turn180ThresholdDeg : 135f,
+                nextGeneration,
+                Time.frameCount,
+                tuning != null && tuning.Turn90PresentationLease > 0.0001f
+                    ? tuning.Turn90PresentationLease
+                    : 0.16f,
+                tuning != null && tuning.Turn180PresentationLease > 0.0001f
+                    ? tuning.Turn180PresentationLease
+                    : 0.24f,
+                out var cue))
+        {
+            var command = new Vector3(worldCommand.x, 0f, worldCommand.z);
+            var signed = command.sqrMagnitude > 0.0001f
+                ? Vector3.SignedAngle(m_logicForward, command.normalized, Vector3.up)
+                : 0f;
+            var noTurn = TurnIntentBuilder.CreateNonTurning(Mathf.Abs(signed), signed);
+            LocomotionTurnPresentation235Probe.ObserveDecision(
+                this,
+                in noTurn,
+                enabled ? "TurnCompensationResolver.below_threshold" : "TurnCompensationResolver.suppressed");
+            return;
+        }
+
+        m_nextTurnCompensationGeneration = nextGeneration;
+        m_turnCompensationCue = cue;
+        if (cue.IsTurning)
+        {
+            // 235.2：逻辑方向即时提交，但禁止清速度、禁止创建零位移门。
+            // 当前/下一 State Logic 继续用统一速度响应与 KCC 结算；重复写同方向不会产生第二次空间旋转。
+            SetLogicForward(worldCommand, "TurnCompensation.ImmediateCommit");
+        }
+        var turnInfo = cue.ToTurnInfo();
+        LocomotionTurnPresentation235Probe.ObserveDecision(
+            this,
+            in turnInfo,
+            cue.IsTurning ? "TurnCompensationResolver.fire" : "TurnCompensationResolver.cancel_only");
+    }
+
+    public bool TryGetTurnCompensationCueAfter(uint consumedGeneration, out TurnCompensationCue cue)
+    {
+        cue = m_turnCompensationCue;
+        return cue.IsValid && cue.Generation > consumedGeneration;
+    }
+
+    public void ClearTurnCompensationCue(string reason = null)
+    {
+        var generation = m_turnCompensationCue.Generation;
+        var endReason = reason ?? "cue_cleared";
+        m_turnCompensationCue = default;
+        if (generation != 0)
+        {
+            LocomotionTurnPresentation235Probe.ObserveEnd(this, endReason);
+        }
+    }
+
+    bool CanStartTurnCompensationFromCurrentState(out string source)
+    {
+        if (States?.Current is PlayerLocomotionState)
+        {
+            source = "Locomotion";
+            return true;
+        }
+
+        if (States?.Current is PlayerActionState actionState
+            && actionState.CurrentAction != null
+            && actionState.CurrentAction.IsLocomotionRecovery)
+        {
+            source = $"Recovery:{actionState.CurrentAction.name}";
+            return true;
+        }
+
+        source = States?.Current != null ? States.Current.StateId.ToString() : "NoState";
+        return false;
+    }
     public void SetLocomotionPresentation(in LocomotionPresentationSnapshot snapshot) => m_locoPresentation = snapshot;
 
     internal void InjectMovementContext(IGameModeMovementContext context) => m_movementContext = context;
@@ -297,13 +441,17 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
                       && holdDur >= 0f
                       && holdDur <= chordWin;
 
-        // 213.6 — CharacterForward 契约：Commit 仅锁 LogicForward；pulse 只供 Pick / 诊断。
-        var commitFwd = PlanarizeFacing(Forward);
-        var source = isChord ? "characterForward@Chord" : "liveLogicForward@Motion";
+        // 234.5：Chord 消费 MoveDown 不可变快照；Motion 使用已经持续移动后的 live LogicForward。
+        var liveForward = PlanarizeFacing(Forward);
+        var hasMoveDownBasis = m_inputContext.TryGetMoveDownPlanarForward(out var moveDownForward);
+        var commitFwd = isChord && hasMoveDownBasis ? moveDownForward : liveForward;
+        var source = isChord && hasMoveDownBasis
+            ? "moveDownSnapshot@Chord"
+            : "liveLogicForward@Motion";
 
         m_inputContext.CommitDirectionalAbility(
             commitFwd,
-            Forward,
+            liveForward,
             holdDur,
             chordWin,
             source);
@@ -493,6 +641,45 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
 
     protected override void OnEnable() { base.OnEnable(); }
 
+    protected override void OnDisable()
+    {
+        CancelAirCycle(AirCycleCancelReason.EntityDisabled, RuntimeTracePhase.LogicEnd);
+        base.OnDisable();
+    }
+
+    internal AirCycleTransitionResult EnsureAirCycle(AirCycleCause cause, RuntimeTracePhase phase)
+    {
+        var stamp = CaptureRuntimeStep(phase);
+        return m_airCycle.EnsureActive(cause, in stamp);
+    }
+
+    internal AirCycleTransitionResult MarkAirCycleFalling(RuntimeTracePhase phase)
+    {
+        var stamp = CaptureRuntimeStep(phase);
+        return m_airCycle.MarkFalling(in stamp);
+    }
+
+    internal AirCycleTransitionResult MarkAirCycleLandingRouted(RuntimeTracePhase phase)
+    {
+        var stamp = CaptureRuntimeStep(phase);
+        return m_airCycle.MarkLandingRouted(in stamp);
+    }
+
+    internal AirCycleTransitionResult CloseAirCycle(RuntimeTracePhase phase)
+    {
+        var stamp = CaptureRuntimeStep(phase);
+        return m_airCycle.Close(in stamp);
+    }
+
+    internal AirCycleTransitionResult CancelAirCycle(AirCycleCancelReason reason, RuntimeTracePhase phase)
+    {
+        var stamp = CaptureRuntimeStep(phase);
+        return m_airCycle.Cancel(reason, in stamp);
+    }
+
+    RuntimeStepStamp CaptureRuntimeStep(RuntimeTracePhase phase) =>
+        m_stateManager != null ? m_stateManager.CaptureRuntimeStep(phase) : default;
+
     void EnsurePlayerDefaultResourceStats()
     {
         if (Stats.Get(StatType.MaxStamina) < 1f)
@@ -565,28 +752,6 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
     /// <summary>184.1 — 由 PlayerController 每帧写入 Tap/Hold 时态。</summary>
     public void SetCurrentInputTense(InputTense tense) => m_currentInputTense = tense;
 
-    /// <summary>184.1 — Tap 释放边沿：强制 TurnResolver 以 press 前 LogicForward 与当前 LogicForward 判定。</summary>
-    public void ArmTapTurnPresentation(in Vector3 fromLogicForward)
-    {
-        m_tapTurnArmPending = true;
-        m_tapTurnFromForward = fromLogicForward.sqrMagnitude > 0.0001f
-            ? new Vector3(fromLogicForward.x, 0f, fromLogicForward.z).normalized
-            : m_logicForward;
-    }
-
-    public bool TryConsumeTapTurnArm(out Vector3 fromLogicForward)
-    {
-        if (!m_tapTurnArmPending)
-        {
-            fromLogicForward = default;
-            return false;
-        }
-
-        m_tapTurnArmPending = false;
-        fromLogicForward = m_tapTurnFromForward;
-        return true;
-    }
-
     /// <summary>184.1 W9 — Stop 等 Action 期禁止改写 LogicForward。</summary>
     public bool IsLogicForwardLocked => m_logicForwardLockCount > 0;
 
@@ -637,19 +802,28 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
     }
 
     /// <summary>184.1 W5 — 主动 Intent 打断 Turn 表现（Action / Jump 等）。</summary>
-    public void InterruptTurnPresentation(string reason = null)
+    public void InterruptTurn(TurnInterruptReason reason, string detail = null)
     {
-        if (!m_currentTurnInfo.IsTurning && !m_tapTurnArmPending)
+        var hasLegacyTurn = m_currentTurnInfo.IsTurning;
+        var hasCompensationCue = m_turnCompensationCue.IsValid;
+        if (!hasLegacyTurn && !hasCompensationCue)
         {
             return;
         }
 
+        var previousTurnType = hasLegacyTurn ? m_currentTurnInfo.Type : m_turnCompensationCue.Type;
         SetTurnInfo(default);
-        m_tapTurnArmPending = false;
+        ClearTurnCompensationCue($"interrupt:{reason}");
         m_turnPresentationInterruptGen++;
-        m_lastTurnInterruptReason = reason;
-        GetComponent<PlayerAnimController>()?.InterruptTurnIfAny(reason);
+        m_lastTurnInterruptReason = detail ?? reason.ToString();
+        var step = CaptureRuntimeStep(RuntimeTracePhase.StateLogicEnd);
+        PublishEvent(new TurnPresentationInterruptedEvent(
+            GetInstanceID(), in step, (uint)m_turnPresentationInterruptGen, previousTurnType, reason));
     }
+
+    [System.Obsolete("Use InterruptTurn(TurnInterruptReason, string).")]
+    public void InterruptTurnPresentation(string reason = null) =>
+        InterruptTurn(TurnInterruptReason.External, reason);
 
     /// <summary>Locomotion 帧内消费打断请求并清 TurnResolver 锁。</summary>
     public bool ConsumeTurnPresentationInterruptRequest()
@@ -776,10 +950,12 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
         => ResolveDirectionalChord(moveBuffered, out _);
 
     /// <summary>184.1 Layer 2 — 即时逻辑朝向；VisualRoot 世界 rotation 在存在时保持不变。</summary>
-    public void SetLogicForward(Vector3 dir)
+    public void SetLogicForward(Vector3 dir, string source = null)
     {
         if (IsLogicForwardLocked)
         {
+            CameraTurn233Probe.ObserveLogicForwardRejected(this, dir, source);
+            CharacterTurnDisplacement233Probe.ObserveLogicForwardRejected(this, dir, source);
             return;
         }
 
@@ -791,6 +967,8 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
 
         planar.Normalize();
         var prev = m_logicForward;
+        var rootYawBefore = transform.eulerAngles.y;
+        var visualYawBefore = visualRoot != null ? visualRoot.eulerAngles.y : rootYawBefore;
         m_logicForward = planar;
 
         // Probe：Action 状态期间被改写 forward → 候选异常转向源头
@@ -810,6 +988,25 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
             transform.rotation = Quaternion.LookRotation(m_logicForward, Vector3.up);
         }
 
+        CameraTurn233Probe.ObserveLogicForwardWrite(
+            this,
+            prev,
+            m_logicForward,
+            source,
+            rootYawBefore,
+            transform.eulerAngles.y,
+            visualYawBefore,
+            visualRoot != null ? visualRoot.eulerAngles.y : transform.eulerAngles.y);
+        CharacterTurnDisplacement233Probe.ObserveLogicForwardWrite(
+            this,
+            prev,
+            m_logicForward,
+            source,
+            rootYawBefore,
+            transform.eulerAngles.y,
+            visualYawBefore,
+            visualRoot != null ? visualRoot.eulerAngles.y : transform.eulerAngles.y);
+
         if (Vector3.Angle(prev, m_logicForward) > 0.5f)
         {
             TurnProbe.LogFacingEdge(this, m_currentInputTense, prev, m_logicForward, "LogicForward");
@@ -818,7 +1015,7 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
 
     public override void LookAtDirection(Vector3 worldDirection, bool immediate = false)
     {
-        SetLogicForward(worldDirection);
+        SetLogicForward(worldDirection, "Player.LookAtDirection");
     }
 
     /// <summary>
@@ -1091,11 +1288,13 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
         ActionDataSO action,
         AnimationClip presentationClip = null,
         float normalizedStart = 0f,
-        float playbackAnimSpeedOverride = -1f)
+        float playbackAnimSpeedOverride = -1f,
+        uint actionLeaseVersion = 0)
     {
         if (action == null) return;
         PublishEvent(new PlayerActionPresentationRequestEvent(
-            GetInstanceID(), kind, action, presentationClip, normalizedStart, playbackAnimSpeedOverride));
+            GetInstanceID(), kind, action, presentationClip, normalizedStart,
+            playbackAnimSpeedOverride, actionLeaseVersion));
     }
 
     /// <summary>调整 Playable 速率（表现层事件，不直接引用 Animator）。</summary>
@@ -1292,25 +1491,22 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
                 }
             }
 
-            // 198.3 Facing 维度守卫（与 Move 独立）
+            // 234.5：FreeLocomotion 方向与逻辑朝向同 Tick 对齐；LockOn 仍消费目标方向。
+            // Action Facing Gate 继续独立授权，禁止 Presentation/Visual 反写 Gameplay Facing。
             if (!ShouldSuppressLocomotionRotation()
                 && ActionRotationGate.IsAllowed(this, ActionRotationGate.Kind.Facing))
             {
-                var motionDirection = PlanarVelocity.sqrMagnitude > 0.0001f
-                    ? PlanarVelocity.normalized
-                    : input.normalized;
-                var facingSpeed = tuning != null
-                    ? Mathf.Max(0f, tuning.MotionFacingAngularSpeedDeg)
-                    : Mathf.Max(0f, RuntimeStats.RotationSpeed);
-                var maxRadians = facingSpeed * Mathf.Deg2Rad * Time.deltaTime;
-                var resolvedForward = Vector3.RotateTowards(
-                    m_logicForward,
-                    motionDirection,
-                    maxRadians,
-                    0f);
+                var resolvedForward = input.normalized;
+                var source = "Player.MoveByLocomotionIntent.FreeImmediate";
+                if (TryGetLockTargetPlanarForward(out var lockForward))
+                {
+                    resolvedForward = lockForward;
+                    source = "Player.MoveByLocomotionIntent.LockOnTarget";
+                }
+
                 ActionTurnProbe.Log(this, m_logicForward, resolvedForward, "Player.MoveByLocomotionIntent.ResolvedMotion");
-                SetLogicForward(resolvedForward);
-                MaybeLogLocomotionRotationEdge(LocomotionRotationMode.Smooth, immediate: false);
+                SetLogicForward(resolvedForward, source);
+                MaybeLogLocomotionRotationEdge(LocomotionRotationMode.SnapAlways, immediate: true);
             }
         }
         else
@@ -1414,8 +1610,10 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
         // 158.2 L3：JumpForce Tuning 优先；缺失回落 Player.jumpForce
         var tuning = locomotionProfile != null ? locomotionProfile.Tuning : null;
         var force = tuning != null ? tuning.JumpForce : jumpForce;
+        EnsureAirCycle(AirCycleCause.Jump, RuntimeTracePhase.IntentResolved);
         m_motor?.Jump(force);
-        PublishEvent(new PlayerJumpEvent(GetInstanceID(), name));
+        var step = CaptureRuntimeStep(RuntimeTracePhase.StateLogicEnd);
+        PublishEvent(new PlayerJumpEvent(GetInstanceID(), name, CurrentAirCycle, step));
     }
 
     /// <summary>158.2 L3：把 LocomotionTuning 物理参数写入 Motor（Init 时；Profile 热换后可再调）。</summary>
@@ -1476,7 +1674,10 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
     public MotorSolveContext BuildActionMotorSolveContext()
         => m_motor != null ? m_motor.BuildActionMotorSolveContext() : MotorSolveContext.Locomotion;
     public void TeleportTo(Vector3 worldPos, bool forceAirborne = false)
-        => m_motor?.TeleportTo(worldPos, forceAirborne);
+    {
+        CancelAirCycle(AirCycleCancelReason.Teleport, RuntimeTracePhase.IntentResolved);
+        m_motor?.TeleportTo(worldPos, forceAirborne);
+    }
 
     public bool TryProbeGroundHeight(Vector3 worldPos, float maxCastDistance, out float groundWorldY)
     {

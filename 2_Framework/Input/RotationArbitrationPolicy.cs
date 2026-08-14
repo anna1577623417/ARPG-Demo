@@ -6,7 +6,8 @@ public enum RotationArbitrationPolicy : byte
     /// <summary>Locomotion 默认：有移动输入即 LookAtDirection。</summary>
     Immediate = 0,
 
-    /// <summary>WASD 进入 Ability 上下文窗口时延迟转向，等待方向技能组合输入。</summary>
+    /// <summary>已退役：234.5 后 MoveDown 只保存快照，不再冻结日常 Locomotion Facing。</summary>
+    [System.Obsolete("234.5: MoveDown no longer delays locomotion facing; use Immediate until ability commit.")]
     DelayedDuringAbilityContext = 1,
 
     /// <summary>方向技能已提交：Action 期冻结为进入瞬间的平面朝向。</summary>

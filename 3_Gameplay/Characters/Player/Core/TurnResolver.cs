@@ -179,16 +179,6 @@ public sealed class TurnResolver
             ClearLock("wants_run");
             return BuildNonTurningAngleSnapshot(player);
         }
-        if (player.TryConsumeTapTurnArm(out var tapFromLogic))
-        {
-            if (player.HasPendingFacing)
-            {
-                return BuildNonTurningAngleSnapshot(player);
-            }
-
-            return TryEnterTurnFromTap(player, tapFromLogic, triggerThreshold, type180Threshold);
-        }
-
         var forward = ResolvePresentationForward(player);
         forward.y = 0f;
         var intent = player.MovementIntent;
@@ -360,7 +350,7 @@ public sealed class TurnResolver
             return "angle_gate";
         }
 
-        return player.CurrentInputTense == InputTense.Tap ? "tap" : "angle_gate";
+        return "angle_gate";
     }
 
     /// <summary>184.1 — 表现层 forward（VisualRoot）；无拆分时回落 LogicForward。</summary>
@@ -381,45 +371,6 @@ public sealed class TurnResolver
         var logic = player != null ? player.LogicForward : Vector3.forward;
         logic.y = 0f;
         return logic.sqrMagnitude > 0.0001f ? logic.normalized : Vector3.forward;
-    }
-
-    TurnInfo TryEnterTurnFromTap(
-        Player player,
-        Vector3 fromLogicForward,
-        float triggerThreshold,
-        float type180Threshold)
-    {
-        fromLogicForward.y = 0f;
-        var toForward = player.LogicForward;
-        toForward.y = 0f;
-        if (fromLogicForward.sqrMagnitude < 0.0001f || toForward.sqrMagnitude < 0.0001f)
-        {
-            return BuildNonTurningAngleSnapshot(player);
-        }
-
-        fromLogicForward.Normalize();
-        toForward.Normalize();
-        var signedAngle = Vector3.SignedAngle(fromLogicForward, toForward, Vector3.up);
-        var absAngle = Mathf.Abs(signedAngle);
-        if (!TurnIntentBuilder.TryClassify(signedAngle, triggerThreshold, type180Threshold, out m_lockedType, out m_lockedDirection))
-        {
-            return TurnIntentBuilder.CreateNonTurning(absAngle, signedAngle);
-        }
-
-        m_locked = true;
-        m_lockTimer = 0f;
-        TurnProbe.LogTapTurn(player, m_lockedType, m_lockedDirection, absAngle);
-        TurnProbe.LogSubEnter(player, m_lockedType, m_lockedDirection, absAngle, signedAngle, "tap");
-
-        if (m_settings.EnableTriggerDebugger || LocomotionDebug.IsTraceEnabled(player))
-        {
-            LocomotionDebug.Log(
-                player,
-                LocomotionDebug.CatTurn,
-                $"LOCK tap type={m_lockedType} dir={(m_lockedDirection < 0 ? "L" : "R")} abs={absAngle:F1}°");
-        }
-
-        return TurnIntentBuilder.Create(true, m_lockedType, m_lockedDirection, absAngle, signedAngle);
     }
 
     /// <summary>183.1 §0.4：WantsRun 时略过 Turn-In-Place 表现（与 speed 门槛 OR）。</summary>

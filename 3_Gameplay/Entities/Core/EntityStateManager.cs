@@ -5,7 +5,14 @@ using UnityEngine;
 /// <summary>
 /// 非泛型基类，用于 Inspector 引用和 GetComponent。
 /// </summary>
-public abstract class EntityStateManager : MonoBehaviour { }
+public abstract class EntityStateManager : MonoBehaviour, IRuntimeStepSource
+{
+    public abstract ulong CurrentLogicStepId { get; }
+    public abstract ulong CurrentPhysicsStepId { get; }
+    public abstract RuntimeStepStamp Capture(RuntimeTracePhase phase);
+
+    public RuntimeStepStamp CaptureRuntimeStep(RuntimeTracePhase phase) => Capture(phase);
+}
 
 /// <summary>
 /// 实体状态机管理器。
@@ -19,10 +26,13 @@ public abstract class EntityStateManager : MonoBehaviour { }
 public abstract class EntityStateManager<T> : EntityStateManager where T : Entity<T>
 {
     private readonly StateMachine<T> _machine = new StateMachine<T>();
+    private readonly RuntimeStepCursor _runtimeStep = new RuntimeStepCursor();
 
     public T Entity { get; private set; }
     public EntityState<T> Current => _machine.Current as EntityState<T>;
     public EntityState<T> Previous => _machine.Previous as EntityState<T>;
+    public override ulong CurrentLogicStepId => _runtimeStep.CurrentLogicStepId;
+    public override ulong CurrentPhysicsStepId => _runtimeStep.CurrentPhysicsStepId;
 
     protected abstract List<EntityState<T>> BuildStateList();
 
@@ -31,6 +41,7 @@ public abstract class EntityStateManager<T> : EntityStateManager where T : Entit
     protected virtual void Start()
     {
         Entity = GetComponent<T>();
+        _runtimeStep.Bind(RuntimeSession.CurrentId, Entity != null ? Entity.GetInstanceID() : GetInstanceID());
 
         var entityStates = BuildStateList();
         var states = new List<State<T>>(entityStates.Count);
@@ -51,8 +62,16 @@ public abstract class EntityStateManager<T> : EntityStateManager where T : Entit
 
     protected virtual void Update()
     {
-        OnPreLogicUpdate(Time.deltaTime);
-        _machine.LogicUpdate(Time.deltaTime);
+        _runtimeStep.BeginLogic(Time.frameCount);
+        try
+        {
+            OnPreLogicUpdate(Time.deltaTime);
+            _machine.LogicUpdate(Time.deltaTime);
+        }
+        finally
+        {
+            _runtimeStep.EndLogic(Time.frameCount);
+        }
     }
 
     /// <summary>
@@ -64,7 +83,20 @@ public abstract class EntityStateManager<T> : EntityStateManager where T : Entit
 
     protected virtual void FixedUpdate()
     {
-        _machine.PhysicsUpdate(Time.fixedDeltaTime);
+        _runtimeStep.BeginPhysics(Time.frameCount);
+        try
+        {
+            _machine.PhysicsUpdate(Time.fixedDeltaTime);
+        }
+        finally
+        {
+            _runtimeStep.EndPhysics(Time.frameCount);
+        }
+    }
+
+    public override RuntimeStepStamp Capture(RuntimeTracePhase phase)
+    {
+        return _runtimeStep.Capture(phase, Time.frameCount);
     }
 
     // ─── 状态切换入口 ───

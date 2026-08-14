@@ -42,6 +42,18 @@ public static class GameMainDebugSettings
     /// <summary>227 — Jump/RunStart 与 WASD 位置结算、Motor 外写入、显式 Teleport 专项探针。</summary>
     public static bool LocomotionTransition227BugLog { get; set; }
 
+    /// <summary>233 — 摄像机、移动参考、逻辑转向与表现转向权威链专项探针。</summary>
+    public static bool CameraTurn233Log { get; set; }
+
+    /// <summary>233.4 — 角色逻辑/根/表现转向与 Walk/Run 过渡最小位移专项探针。</summary>
+    public static bool CharacterTurnDisplacement233Log { get; set; }
+
+    /// <summary>233.5 — Walk/Run 点按、Start/Loop/End 与 MotionProfile 有效位移来源专项探针。</summary>
+    public static bool LocomotionMotion233Log { get; set; }
+
+    /// <summary>235 — 即时逻辑转向后的 90/180 补偿性 Turn 表现时机、选片与播放专项探针。</summary>
+    public static bool LocomotionTurnPresentation235Log { get; set; }
+
     // ─── Combat / Interrupt ───
     public static bool InterruptFlow { get; set; }
     public static bool ComboAirGate { get; set; }
@@ -101,6 +113,10 @@ public static class GameMainDebugSettings
         AnimTransition227Log = EditorPrefsGetBool(nameof(AnimTransition227Log));
         AnimTransition227BugLog = EditorPrefsGetBool(nameof(AnimTransition227BugLog));
         LocomotionTransition227BugLog = EditorPrefsGetBool(nameof(LocomotionTransition227BugLog));
+        CameraTurn233Log = EditorPrefsGetBool(nameof(CameraTurn233Log));
+        CharacterTurnDisplacement233Log = EditorPrefsGetBool(nameof(CharacterTurnDisplacement233Log));
+        LocomotionMotion233Log = EditorPrefsGetBool(nameof(LocomotionMotion233Log));
+        LocomotionTurnPresentation235Log = EditorPrefsGetBool(nameof(LocomotionTurnPresentation235Log));
         InterruptFlow = EditorPrefsGetBool(nameof(InterruptFlow));
         ComboAirGate = EditorPrefsGetBool(nameof(ComboAirGate));
         CombatHit = EditorPrefsGetBool(nameof(CombatHit));
@@ -138,6 +154,10 @@ public static class GameMainDebugSettings
         EditorPrefsSetBool(nameof(AnimTransition227Log), AnimTransition227Log);
         EditorPrefsSetBool(nameof(AnimTransition227BugLog), AnimTransition227BugLog);
         EditorPrefsSetBool(nameof(LocomotionTransition227BugLog), LocomotionTransition227BugLog);
+        EditorPrefsSetBool(nameof(CameraTurn233Log), CameraTurn233Log);
+        EditorPrefsSetBool(nameof(CharacterTurnDisplacement233Log), CharacterTurnDisplacement233Log);
+        EditorPrefsSetBool(nameof(LocomotionMotion233Log), LocomotionMotion233Log);
+        EditorPrefsSetBool(nameof(LocomotionTurnPresentation235Log), LocomotionTurnPresentation235Log);
         EditorPrefsSetBool(nameof(InterruptFlow), InterruptFlow);
         EditorPrefsSetBool(nameof(ComboAirGate), ComboAirGate);
         EditorPrefsSetBool(nameof(CombatHit), CombatHit);
@@ -173,6 +193,10 @@ public static class GameMainDebugSettings
         AnimTransition227Log = true;
         AnimTransition227BugLog = true;
         LocomotionTransition227BugLog = true;
+        CameraTurn233Log = true;
+        CharacterTurnDisplacement233Log = true;
+        LocomotionMotion233Log = true;
+        LocomotionTurnPresentation235Log = true;
         InterruptFlow = true;
         ComboAirGate = true;
         CombatHit = true;
@@ -209,6 +233,10 @@ public static class GameMainDebugSettings
         AnimTransition227Log = false;
         AnimTransition227BugLog = false;
         LocomotionTransition227BugLog = false;
+        CameraTurn233Log = false;
+        CharacterTurnDisplacement233Log = false;
+        LocomotionMotion233Log = false;
+        LocomotionTurnPresentation235Log = false;
         InterruptFlow = false;
         ComboAirGate = false;
         CombatHit = false;
@@ -254,6 +282,10 @@ public static class GameMainDebugSettings
         AnimTransition227Log = false;
         AnimTransition227BugLog = false;
         LocomotionTransition227BugLog = false;
+        CameraTurn233Log = false;
+        CharacterTurnDisplacement233Log = false;
+        LocomotionMotion233Log = false;
+        LocomotionTurnPresentation235Log = false;
         InterruptFlow = false;
         ComboAirGate = false;
         CombatHit = false;

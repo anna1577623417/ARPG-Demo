@@ -10,30 +10,11 @@ public static class MotionGrammarProbe
     static bool IsEnabled(Player player) =>
         player != null && (GameMainDebugSettings.TurnSubState || GameMainDebugSettings.Locomotion);
 
-    public static void LogTapFacingDecision(
-        Player player,
-        ActionDataSO owner,
-        TapFacingDecision decision,
-        string reason)
-    {
-        if (!IsEnabled(player))
-        {
-            return;
-        }
-
-        var type = owner != null ? owner.TransitionType.ToString() : "None";
-        Debug.Log(
-            $"{Prefix} TAP-FACING owner={owner?.name ?? "?"} type={type} " +
-            $"decision={decision} reason={reason} frame={Time.frameCount}",
-            player);
-    }
-
     public static void LogFacingCached(
         Player player,
         Vector3 from,
         Vector3 to,
-        ActionDataSO owner,
-        TapFacingDecision decision = TapFacingDecision.CachePendingFacing)
+        ActionDataSO owner)
     {
         if (!IsEnabled(player))
         {
@@ -46,7 +27,7 @@ public static class MotionGrammarProbe
         Debug.Log(
             $"{Prefix} FACING-CACHED owner={owner?.name ?? "?"} " +
             $"from=({from.x:F2},{from.z:F2}) to=({to.x:F2},{to.z:F2}) " +
-            $"decision={decision} reason={reason} frame={Time.frameCount}",
+            $"reason={reason} frame={Time.frameCount}",
             player);
     }
 

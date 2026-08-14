@@ -34,6 +34,11 @@ public sealed class ActionMotionPlayback
 
         _executor != null ? _executor.LastContribution : MotionContribution.Inactive;
 
+    /// <summary>233.5 只读诊断：MotionExecutor 上一帧按实际动作基准换算后的世界位移。</summary>
+    public Vector3 LastWorldDelta =>
+
+        _executor != null ? _executor.LastWorldDelta : Vector3.zero;
+
 
 
     public void ResetDriverFlags()
@@ -216,7 +221,16 @@ public sealed class ActionMotionPlayback
         DriverPlan = ActionMotionDriverResolver.Resolve(action);
         UseMotionProfile = DriverPlan.IsValid && DriverPlan.UsesMotionExecutor;
         LastFrameAppliedMotor = false;
-        SetClipRootMotionForPlayer(player, DriverPlan.IsValid && DriverPlan.UsesClipRootMotion);
+
+        var rootMotionDecision = LegacyAnimatorRootMotionPolicy.Resolve(
+            DriverPlan.IsValid && DriverPlan.UsesClipRootMotion);
+        if (rootMotionDecision == LegacyAnimatorRootMotionDecision.Denied)
+        {
+            Debug.LogError(
+                $"[ActionMotionDriver] Direct Animator RootMotion denied by 232 quarantine. " +
+                $"action={(action != null ? action.name : "null")} {DriverPlan}",
+                action);
+        }
 
         if (!DriverPlan.IsValid)
         {
@@ -535,28 +549,6 @@ public sealed class ActionMotionPlayback
             action: action,
 
             stopContext: in stopCtx);
-
-    }
-
-
-
-    public static void SetClipRootMotionForPlayer(Player player, bool enabled)
-
-    {
-
-        if (player == null)
-
-        {
-
-            return;
-
-        }
-
-
-
-        var anim = player.GetComponent<EntityAnimController>();
-
-        anim?.SetClipRootMotionEnabled(enabled);
 
     }
 

@@ -1,4 +1,4 @@
-> 最后更新：2026-08-09 22:01
+> 最后更新：2026-08-14 03:20
 
 # Codex 专属落盘与日常开发规则
 
@@ -98,6 +98,25 @@
 - 代码探针负责运行时事实，手动 Log 负责时机标注；两者通过稳定标识与时间信息对照。
 - `【Log】` 保存原始事实，`【验收指南】` 保存操作方法，`【验收结论】` 保存分析结论；三者不得混写。
 - 结论必须区分“Log 已证明”“代码静态确认”“Unity 实测已确认”“尚未验证”和“推测”。
+
+### 行为 Bug / 表现回退的强制闭环顺序
+
+- 对 Locomotion、Animation、Camera、Action、Motor 等运行时行为 Bug 或表现回退，默认且强制采用：**低噪声 Log 探针 → 时机 Log 提取/原始证据 → 根因诊断 → 设计书/修复方案 → 正式蓝图 → 代码施工 → Output/验收**。
+- 禁止在没有探针与可关联时机证据时直接凭观感改参数、CrossFade、角速度、Root Motion、KCC 或状态分流；紧急止血也必须明确标为临时措施，并保留补齐证据与正式蓝图的 OPEN。
+- 探针必须先写“要证伪什么”，再定义事件字典、关联键、采样窗口、限流与体积预算；默认只采状态边沿、决策边沿、资产选择、播放请求、首帧/中点/结束和异常，不逐帧刷屏。
+- 时机 Log 提取必须保存原始事实并按稳定键关联 Input/Gameplay/Presentation/Motor；不得把分析结论改写进 `【Log】`。若当前环境不能取得新的 Play 样本，必须显式区分用户实机观察、既有 Log 已证明、代码静态确认与 Play 待验证，禁止伪造 Runtime 事实。
+- 设计书必须先冻结权威边界、状态机时序、数据合同、非目标、降级/回滚和验收矩阵；修复方案必须指出第一个偏离合同的量及最小修复面。蓝图只有在上述依据成立后才能生成。
+- 代码施工必须逐条对应蓝图 Landing，新增防回归测试和必要探针，并更新 Output、Project Hub 与模块记录。编译通过不能替代 Unity Test Runner、PlayMode 或实机验收。
+- 补偿性动画只能消费 Gameplay 已裁决事实，不得反写 LogicFacing、PlanarVelocity、KCC、Camera Heading 或 TargetLock；表现缺失不得通过恢复 Gameplay 水平缓转来修复。
+
+### Runtime / Debug Log 无堆栈强制规则
+
+- 从本规则生效起，所有新增或修改的 Runtime、Debug、Diagnostics、验收探针 Log **一律不得附带调用堆栈**；这是默认且强制的输出合同，不依赖 Unity Console 的 Stack Trace Logging 设置。
+- 探针禁止直接使用会受全局堆栈设置影响的 `Debug.Log`、`Debug.LogWarning`、`Debug.LogError`。统一使用 `Debug.LogFormat(LogType, LogOption.NoStacktrace, context, format, args)`，Warning / Error 级诊断同样显式传入 `LogOption.NoStacktrace`。
+- 若某项调查确实需要调用路径，必须由用户明确要求；调用栈应走独立、默认关闭的专项取证开关，不能混入常规 Log，也不能改变“常规 Log 无堆栈”的默认行为。
+- Log 必须采用 AI 友好的单行结构化格式，优先稳定短键与关联字段；禁止把多行说明、重复上下文或可由会话头推导的信息逐条复制到每个事件。
+- 高频事实必须采用边沿、状态变化、异常阈值、节流心跳或有限采样窗口；禁止无上限逐帧刷屏。新探针应在设计时给出事件字典、采样频率/窗口和预估体积预算。
+- Landing 验证必须检查：Unity Console 复制结果不含 `UnityEngine.Debug:*` 或脚本调用栈；持续运行不会无限增长；原始文本可不经清洗直接交给 AI 分析。未完成该检查时，Log 可标记编译通过，但运行时采样质量仍为 OPEN。
 
 ## 完成标准
 

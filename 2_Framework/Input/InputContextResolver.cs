@@ -2,7 +2,7 @@ using UnityEngine;
 
 /// <summary>
 /// 173.1 — 输入上下文解析：WASD + 方向技能键在短窗口内组合为单一 Ability 意图，
-/// 期间冻结 Locomotion 转向，避免 D→转15°→Space 右翻滚变成右后翻。
+/// MoveDown 只保存 Ability 基准快照；只有方向技能真正 Commit 后才冻结 Locomotion Facing。
 /// 173.3-B — 松手 grace 内继承上一次身体朝向快照（跑→松手→反向 Space）。
 /// </summary>
 public sealed class InputContextResolver
@@ -13,15 +13,10 @@ public sealed class InputContextResolver
     bool _moveActive;
     float _moveActiveSince = -999f;
     Vector3 _capturedPlanarForward = Vector3.forward;
-    bool _contextRotationSuppressed;
-    float _contextSuppressUntil = -999f;
     bool _directionalCommitted;
     Vector3 _committedPlanarForward = Vector3.forward;
 
-    bool _capturedDirty;
-    float _lastMoveReleaseTime = -999f;
-
-    // ─── 173.1.B 一对一探针：仅在 _contextRotationSuppressed 翻转时输出一条，避免刷屏 ───
+    // ─── 234.5：仅在 Commit 冻结状态翻转时输出一条，避免刷屏 ───
     public bool DebugRotationGate;
     bool _lastSuppressedLogged;
     string _ownerLabel = "Player";
@@ -31,6 +26,19 @@ public sealed class InputContextResolver
     public bool MoveActive => _moveActive;
     public bool DirectionalCommitted => _directionalCommitted;
     public float MoveActiveSince => _moveActiveSince;
+
+    /// <summary>234.5：MoveDown 时冻结的身体平面朝向，仅供组合技能语义消费，不冻结 Locomotion。</summary>
+    public bool TryGetMoveDownPlanarForward(out Vector3 planarForward)
+    {
+        if (_moveActiveSince > -900f)
+        {
+            planarForward = _capturedPlanarForward;
+            return true;
+        }
+
+        planarForward = default;
+        return false;
+    }
 
     /// <summary>206.1 — 方向键按下后已持续秒数；未按下 → -1。</summary>
     public float MoveHoldDurationSec(float now)
@@ -61,6 +69,11 @@ public sealed class InputContextResolver
         float contextWindowSec,
         float directionGraceSec = DefaultDirectionGraceSec)
     {
+        // 234.5：保留历史 API 参数，避免既有配置与调用点发生签名迁移；
+        // FreeLocomotion 已不再使用预防性 context/grace 窗口冻结朝向。
+        _ = contextWindowSec;
+        _ = directionGraceSec;
+
         if (!_loadoutHasDirectionalModifier)
         {
             return;
@@ -74,7 +87,6 @@ public sealed class InputContextResolver
             if (!hasMove && _moveActive)
             {
                 _moveActive = false;
-                _lastMoveReleaseTime = now;
             }
 
             return;
@@ -89,8 +101,6 @@ public sealed class InputContextResolver
                 _moveActiveSince = now;
                 _capturedPlanarForward = planarForward;
 
-                _contextRotationSuppressed = true;
-                _contextSuppressUntil = now + Mathf.Max(0.02f, contextWindowSec);
                 LogGateIfFlipped(now);
                 HoldMotionDodgeProbe.LogMoveDown(
                     now,
@@ -102,14 +112,7 @@ public sealed class InputContextResolver
             }
             else
             {
-                // 持续按住期间同步 LogicForward，避免 Commit 时 captured 与 live 大幅偏离。
-                _capturedPlanarForward = planarForward;
-
-                if (_contextRotationSuppressed && now > _contextSuppressUntil)
-                {
-                    _contextRotationSuppressed = false;
-                    LogGateIfFlipped(now);
-                }
+                // 234.5：MoveDown 快照不可变。持续移动只更新 Hold 计时，不能覆盖技能基准。
             }
 
             return;
@@ -118,33 +121,29 @@ public sealed class InputContextResolver
         if (_moveActive)
         {
             _moveActive = false;
-            _lastMoveReleaseTime = now;
-            _capturedDirty = false;
         }
 
-        if (now > _contextSuppressUntil)
-        {
-            _contextRotationSuppressed = false;
-            LogGateIfFlipped(now);
-        }
-    }
-
-    /// <summary>身体朝向已与输入意图对齐后调用，结束 grace 继承（173.3-B）。</summary>
-    public void InvalidateCapturedForward()
-    {
-        _capturedDirty = true;
+        LogGateIfFlipped(now);
     }
 
     void LogGateIfFlipped(float now)
     {
         if (!DebugRotationGate) return;
-        if (_contextRotationSuppressed == _lastSuppressedLogged) return;
-        _lastSuppressedLogged = _contextRotationSuppressed;
-        Debug.Log(
-            $"[RotGate] owner={_ownerLabel} suppressed={_contextRotationSuppressed} " +
-            $"directionalLoadout={_loadoutHasDirectionalModifier} committed={_directionalCommitted} " +
-            $"moveActive={_moveActive} winLeft={Mathf.Max(0f, _contextSuppressUntil - now):F3}s " +
-            $"t={now:F2} frame={Time.frameCount}");
+        var suppressed = _directionalCommitted;
+        if (suppressed == _lastSuppressedLogged) return;
+        _lastSuppressedLogged = suppressed;
+        Debug.LogFormat(
+            LogType.Log,
+            LogOption.NoStacktrace,
+            null,
+            "[RotGate] owner={0} suppressed={1} directionalLoadout={2} committed={3} moveActive={4} t={5:F2} frame={6}",
+            _ownerLabel,
+            suppressed,
+            _loadoutHasDirectionalModifier,
+            _directionalCommitted,
+            _moveActive,
+            now,
+            Time.frameCount);
     }
 
     /// <summary>
@@ -168,8 +167,7 @@ public sealed class InputContextResolver
         _directionalCommitted = true;
         _committedPlanarForward = Planarize(committedPlanarForward);
 
-        _contextRotationSuppressed = true;
-        _capturedDirty = true;
+        LogGateIfFlipped(Time.time);
 
         DodgeChord8Probe.LogDirectionalCommit(
             _committedPlanarForward,
@@ -196,9 +194,7 @@ public sealed class InputContextResolver
         var preserveMoveHold = liveMoveInput.sqrMagnitude > moveDeadZone * moveDeadZone;
 
         _directionalCommitted = false;
-        _contextRotationSuppressed = false;
-        _contextSuppressUntil = -999f;
-        _capturedDirty = false;
+        LogGateIfFlipped(Time.time);
 
         if (!preserveMoveHold)
         {
@@ -219,7 +215,6 @@ public sealed class InputContextResolver
         ClearDirectionalActionContext();
         _loadoutHasDirectionalModifier = false;
         _moveActiveSince = -999f;
-        _lastMoveReleaseTime = -999f;
         _capturedPlanarForward = Vector3.forward;
     }
 
@@ -228,13 +223,6 @@ public sealed class InputContextResolver
         if (_directionalCommitted)
         {
             return RotationArbitrationPolicy.FrozenDuringDirectionalAction;
-        }
-
-        if (_loadoutHasDirectionalModifier
-            && _contextRotationSuppressed
-            && now <= _contextSuppressUntil)
-        {
-            return RotationArbitrationPolicy.DelayedDuringAbilityContext;
         }
 
         return RotationArbitrationPolicy.Immediate;

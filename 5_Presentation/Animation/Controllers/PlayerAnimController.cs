@@ -61,6 +61,8 @@ public class PlayerAnimController : EntityAnimController
 
     private Entity _entity;
     private Player _player;
+    private ActionDataSO _telemetryAction;
+    private uint _telemetryLeaseVersion;
 
     /// <summary>184.1 W5 — Turn 表现 CrossFade 打断时长（178.1 协作）。</summary>
     public const float TurnInterruptCrossfadeSec = 0.08f;
@@ -69,14 +71,14 @@ public class PlayerAnimController : EntityAnimController
     public bool IsPlayingTurnPresentation =>
         _inLocomotion
         && _player != null
-        && _player.CurrentTurnInfo.IsTurning
+        && _turnCompensationActive
         && IsTurnSub(_locoSub);
 
     /// <summary>184.1 W5 — 任何主动 Intent 打断 Turn 切片（短 CrossFade）。</summary>
     public void InterruptTurnIfAny(string reason = null)
     {
         var wasTurnVisual = IsTurnSub(_locoSub);
-        var wasTurnInfo = _player != null && _player.CurrentTurnInfo.IsTurning;
+        var wasTurnInfo = _turnCompensationActive;
         if (!wasTurnVisual && !wasTurnInfo)
         {
             return;
@@ -93,9 +95,12 @@ public class PlayerAnimController : EntityAnimController
                 "Interrupt",
                 TurnInterruptCrossfadeSec,
                 reason ?? "interrupt");
+            LocomotionTurnPresentation235Probe.ObserveEnd(_player, reason ?? "interrupt");
         }
 
         _lastActiveTurnType = TurnType.None;
+        _turnCompensationActive = false;
+        _turnCompensationTimeLeft = 0f;
 
         if (!_inLocomotion || _player == null)
         {
@@ -122,6 +127,12 @@ public class PlayerAnimController : EntityAnimController
 
     /// <summary>162.1：上一帧处于 Turn 子态时的类型，用于解锁边沿 PostTurnBlend。</summary>
     private TurnType _lastActiveTurnType = TurnType.None;
+    private uint _consumedTurnCompensationGeneration;
+    private uint _playedTurnCompensationGeneration;
+    private bool _turnCompensationActive;
+    private TurnInfo _activeTurnCompensationInfo;
+    private float _turnCompensationTimeLeft;
+    private float _turnCompensationLeaseSeconds;
 
     private enum LocomotionSub : byte
     {
@@ -162,6 +173,7 @@ public class PlayerAnimController : EntityAnimController
         _entity.EventBus.Subscribe<PlayerActionPresentationRequestEvent>(OnActionPresentationRequest);
         _entity.EventBus.Subscribe<PlayerContinuousLocomotionRequestEvent>(OnContinuousLocomotionRequest);
         _entity.EventBus.Subscribe<PlayablePlaybackSpeedRequestEvent>(OnPlayablePlaybackSpeedRequest);
+        _entity.EventBus.Subscribe<TurnPresentationInterruptedEvent>(OnTurnPresentationInterrupted);
 
         // 跳跃三阶段
         _entity.EventBus.Subscribe<PlayerJumpEvent>(OnJumpStart);
@@ -177,14 +189,23 @@ public class PlayerAnimController : EntityAnimController
         _entity.EventBus.Unsubscribe<PlayerActionPresentationRequestEvent>(OnActionPresentationRequest);
         _entity.EventBus.Unsubscribe<PlayerContinuousLocomotionRequestEvent>(OnContinuousLocomotionRequest);
         _entity.EventBus.Unsubscribe<PlayablePlaybackSpeedRequestEvent>(OnPlayablePlaybackSpeedRequest);
+        _entity.EventBus.Unsubscribe<TurnPresentationInterruptedEvent>(OnTurnPresentationInterrupted);
         _entity.EventBus.Unsubscribe<PlayerJumpEvent>(OnJumpStart);
         _entity.EventBus.Unsubscribe<PlayerJumpAirPhaseEvent>(OnJumpAirPhase);
         _entity.EventBus.Unsubscribe<PlayerLandedEvent>(OnLanded);
+        PresentationTelemetryStore.Clear(_entity.GetInstanceID());
+        ClearTurnCompensationPresentation();
+    }
+
+    private void OnTurnPresentationInterrupted(TurnPresentationInterruptedEvent evt)
+    {
+        InterruptTurnIfAny(evt.Reason.ToString());
     }
 
     protected override void Update()
     {
         base.Update(); // Crossfade 权重插值
+        PublishPlaybackTelemetry();
 
         // 落地锁定倒计时（表现层；Gameplay 打断统一走 Move 意图 + ActionWindow，157.2）
         if (_landingHold)
@@ -202,6 +223,27 @@ public class PlayerAnimController : EntityAnimController
 
         if (_inLocomotion && !_landingHold)
         {
+            var cueChanged = TryConsumeTurnCompensationCue();
+            if (cueChanged && IsTurnSub(_locoSub))
+            {
+                _locoSub = LocomotionSub.None;
+            }
+
+            if (!cueChanged && _turnCompensationActive)
+            {
+                _turnCompensationTimeLeft -= Time.deltaTime;
+                if (_turnCompensationTimeLeft <= 0f)
+                {
+                    _turnCompensationActive = false;
+                    _turnCompensationTimeLeft = 0f;
+                    LocomotionTurnPresentation235Probe.ObserveHandoff(
+                        _player,
+                        _consumedTurnCompensationGeneration,
+                        "lease_complete");
+                    _player.ClearTurnCompensationCue("lease_complete");
+                }
+            }
+
             var target = ResolveLocomotionSub();
             if (target != _locoSub)
             {
@@ -225,14 +267,15 @@ public class PlayerAnimController : EntityAnimController
                         fromSub.ToString(),
                         target.ToString(),
                         transitionOverride >= 0f ? transitionOverride : 0.08f);
+                    LocomotionTurnPresentation235Probe.ObserveEnd(_player, $"sub_change:{fromSub}->{target}");
                 }
 
                 PlayLocomotionClipForSub(target, transitionOverride, fromSub);
             }
 
-            if (IsTurnSub(_locoSub) && _player != null && _player.CurrentTurnInfo.IsTurning)
+            if (IsTurnSub(_locoSub) && _turnCompensationActive)
             {
-                _lastActiveTurnType = _player.CurrentTurnInfo.Type;
+                _lastActiveTurnType = _activeTurnCompensationInfo.Type;
             }
 
             ApplyLocomotionStrideMatching();
@@ -252,6 +295,7 @@ public class PlayerAnimController : EntityAnimController
         {
             InterruptTurnIfAny("ActionStateEnter");
             _inLocomotion = false;
+            ClearTurnCompensationPresentation();
             return;
         }
 
@@ -262,6 +306,7 @@ public class PlayerAnimController : EntityAnimController
             if (_player != null && !_player.IsGrounded)
             {
                 _inLocomotion = false;
+                ClearTurnCompensationPresentation();
                 return;
             }
 
@@ -269,6 +314,7 @@ public class PlayerAnimController : EntityAnimController
 
             if (!_landingHold)
             {
+                TryConsumeTurnCompensationCue();
                 _locoSub = LocomotionSub.None;
                 var target = ResolveLocomotionSub();
                 _locoSub = target;
@@ -281,11 +327,13 @@ public class PlayerAnimController : EntityAnimController
         if (evt.StateName == nameof(PlayerAirborneState))
         {
             _inLocomotion = false;
+            ClearTurnCompensationPresentation();
             return;
         }
 
         // 其他状态（Dead 等）：直接查 AnimLibrary
         _inLocomotion = false;
+        ClearTurnCompensationPresentation();
         var entry = animLibrary.GetEntry(evt.StateName);
         if (entry != null && entry.Clip != null)
         {
@@ -308,9 +356,9 @@ public class PlayerAnimController : EntityAnimController
             return _player.WantsRun ? LocomotionSub.Run : LocomotionSub.Walk;
         }
 
-        // 转身优先：TurnInfo 由 PlayerLocomotionState 每帧写入。
-        // IsTurning 时即便玩家在按方向键，本层也优先播 Turn 切片直到锁定解除。
-        var turn = _player.CurrentTurnInfo;
+        // 235：转身只消费一次性补偿 Cue；Gameplay Facing/KCC 已在同 Tick 完成即时改向。
+        // 有限 Lease 内表现优先播 Turn 切片，但它不建立 Gameplay 状态锁，也不回写世界旋转。
+        var turn = _turnCompensationActive ? _activeTurnCompensationInfo : default;
         if (turn.IsTurning)
         {
             switch (turn.Type)
@@ -341,31 +389,49 @@ public class PlayerAnimController : EntityAnimController
         LocomotionSub fromSub = LocomotionSub.None)
     {
         if (animLibrary == null) return;
+        if (IsTurnSub(target)
+            && _turnCompensationActive
+            && _playedTurnCompensationGeneration == _consumedTurnCompensationGeneration)
+        {
+            return;
+        }
 
         // 159.2：Profile 优先（Turn ContinuousClip）；未注册或未配 Clip 时回落 AnimLibrary 字符串键。
         if (IsTurnSub(target)
             && _player != null
             && LocomotionAnimProfileBridge.TryGetTurnContinuousClip(
-                _player.LocomotionProfile, _player.CurrentTurnInfo, _player.WantsRun, out var turnBinding))
+                _player.LocomotionProfile, _activeTurnCompensationInfo, _player.WantsRun, out var turnBinding)
+            && turnBinding.TryGetContinuousPresentation(
+                out var clip,
+                out var bindingTransition,
+                out var bindingSpeed,
+                out _,
+                out var continuousAction))
         {
-            if (!turnBinding.TryGetContinuousPresentation(
-                    out var clip,
-                    out var bindingTransition,
-                    out var bindingSpeed,
-                    out _,
-                    out var continuousAction))
-            {
-                return;
-            }
-
             var transition = transitionOverride >= 0f ? transitionOverride : bindingTransition;
             var speed = bindingSpeed > 0.001f ? bindingSpeed : 1f;
             _currentLocoEntry = null;
             var isLooping = continuousAction != null
                 ? continuousAction.IsContinuousLocomotion
                 : clip.isLooping;
+            speed = BeginTurnCompensationLease(clip, speed);
             Play(clip, transition, speed, isLooping,
-                restartIfSameClip: false, requestSource: "Locomotion.ProfileTurn");
+                restartIfSameClip: true, requestSource: "Locomotion.ProfileTurn");
+            _playedTurnCompensationGeneration = _consumedTurnCompensationGeneration;
+            LocomotionTurnPresentation235Probe.ObserveSelection(
+                _player,
+                turnBinding.TurnDirection,
+                "Profile",
+                continuousAction,
+                clip,
+                transition,
+                speed,
+                isLooping);
+            LocomotionTurnPresentation235Probe.ObservePlay(
+                _player,
+                turnBinding.TurnDirection,
+                clip,
+                "Locomotion.ProfileTurn");
             LogTurnSubPlayIfNeeded(target, turnBinding.TurnDirection, clip.name, "Profile", transition, clip.length, speed);
             LogTurnPresentationEdge(fromSub, target, $"Profile:TurnInPlaceDirected:{turnBinding.TurnDirection}", clip, transition);
             MaybeLogTurnPresentationRepeat(target, turnBinding.TurnDirection.ToString(), clip, transition);
@@ -418,18 +484,51 @@ public class PlayerAnimController : EntityAnimController
         if (_currentLocoEntry != null && _currentLocoEntry.Clip != null)
         {
             var transition = transitionOverride >= 0f ? transitionOverride : _currentLocoEntry.TransitionDuration;
-            Play(_currentLocoEntry.Clip, transition, _currentLocoEntry.Speed,
-                _currentLocoEntry.IsLooping, restartIfSameClip: false,
+            var playbackSpeed = IsTurnSub(target)
+                ? BeginTurnCompensationLease(_currentLocoEntry.Clip, _currentLocoEntry.Speed)
+                : _currentLocoEntry.Speed;
+            Play(_currentLocoEntry.Clip, transition, playbackSpeed,
+                _currentLocoEntry.IsLooping, restartIfSameClip: IsTurnSub(target),
                 requestSource: $"Locomotion.AnimLibrary.{target}");
+            if (IsTurnSub(target))
+            {
+                _playedTurnCompensationGeneration = _consumedTurnCompensationGeneration;
+            }
+            LocomotionTurnPresentation235Probe.ObserveSelection(
+                _player,
+                TurnDirectionFromSub(target),
+                "AnimLibrary",
+                null,
+                _currentLocoEntry.Clip,
+                transition,
+                playbackSpeed,
+                _currentLocoEntry.IsLooping);
+            LocomotionTurnPresentation235Probe.ObservePlay(
+                _player,
+                TurnDirectionFromSub(target),
+                _currentLocoEntry.Clip,
+                $"Locomotion.AnimLibrary.{target}");
             LogTurnSubPlayIfNeeded(target, TurnDirectionFromSub(target), _currentLocoEntry.Clip.name, "AnimLibrary", transition, _currentLocoEntry.Clip.length, _currentLocoEntry.Speed);
             LogTurnPresentationEdge(fromSub, target, key, _currentLocoEntry.Clip, transition);
             MaybeLogTurnPresentationRepeat(target, key, _currentLocoEntry.Clip, transition);
         }
         else if (ShouldLogTurnPresentation && IsTurnSub(target))
         {
-            Debug.LogWarning(
-                $"[TurnDbg:Anim] missing AnimLibrary entry or Clip | key={key} | player={_player?.name}",
-                this);
+            Debug.LogFormat(
+                LogType.Warning,
+                LogOption.NoStacktrace,
+                this,
+                "[TurnDbg:Anim] missing AnimLibrary entry or Clip | key={0} | player={1}",
+                key,
+                _player != null ? _player.name : "null");
+        }
+
+        if (IsTurnSub(target)
+            && (_currentLocoEntry == null || _currentLocoEntry.Clip == null))
+        {
+            _turnCompensationActive = false;
+            _turnCompensationTimeLeft = 0f;
+            _player?.ClearTurnCompensationCue("missing_turn_clip");
         }
     }
 
@@ -437,6 +536,79 @@ public class PlayerAnimController : EntityAnimController
     private bool ShouldLogTurnPresentation =>
         debugTurnPresentation
         || (_player != null && _player.States != null && _player.States.LocomotionTurnSettings.EnableTriggerDebugger);
+
+    bool TryConsumeTurnCompensationCue()
+    {
+        if (_player == null
+            || !_player.TryGetTurnCompensationCueAfter(
+                _consumedTurnCompensationGeneration,
+                out var cue))
+        {
+            return false;
+        }
+
+        _consumedTurnCompensationGeneration = cue.Generation;
+        if (!TurnCompensationResolver.IsCueFresh(in cue, Time.frameCount))
+        {
+            _turnCompensationActive = false;
+            _activeTurnCompensationInfo = default;
+            _turnCompensationTimeLeft = 0f;
+            _turnCompensationLeaseSeconds = 0f;
+            _player.ClearTurnCompensationCue("stale_cue");
+            return true;
+        }
+
+        _turnCompensationActive = cue.IsTurning;
+        _activeTurnCompensationInfo = cue.ToTurnInfo();
+        _turnCompensationTimeLeft = 0f;
+        _turnCompensationLeaseSeconds = cue.PresentationLeaseSeconds;
+        if (!cue.IsTurning)
+        {
+            _player.ClearTurnCompensationCue("cancel_only_consumed");
+        }
+        return true;
+    }
+
+    float BeginTurnCompensationLease(AnimationClip clip, float speed)
+    {
+        if (!_turnCompensationActive || clip == null)
+        {
+            return Mathf.Max(0.01f, speed);
+        }
+
+        var tuning = _player != null && _player.LocomotionProfile != null
+            ? _player.LocomotionProfile.Tuning
+            : null;
+        var completionRatio = tuning != null ? tuning.TurnCompensationCompletionRatio : 0.7f;
+        var resolvedSpeed = TurnCompensationResolver.ResolvePlaybackSpeedForLease(
+            clip.length,
+            speed,
+            completionRatio,
+            _turnCompensationLeaseSeconds);
+        _turnCompensationTimeLeft = _turnCompensationLeaseSeconds > 0.0001f
+            ? _turnCompensationLeaseSeconds
+            : TurnCompensationResolver.ResolveLeaseSeconds(
+                clip.length,
+                resolvedSpeed,
+                completionRatio);
+        if (_player != null)
+        {
+            var cue = _player.CurrentTurnCompensationCue;
+            LocomotionTurnPresentation235Probe.ObserveLeaseBegin(
+                _player,
+                in cue,
+                _turnCompensationTimeLeft);
+        }
+        return resolvedSpeed;
+    }
+
+    void ClearTurnCompensationPresentation()
+    {
+        _turnCompensationActive = false;
+        _activeTurnCompensationInfo = default;
+        _turnCompensationTimeLeft = 0f;
+        _turnCompensationLeaseSeconds = 0f;
+    }
 
     private void LogTurnSubPlayIfNeeded(
         LocomotionSub sub,
@@ -504,22 +676,11 @@ public class PlayerAnimController : EntityAnimController
     {
         if (wasTurn && !nowTurn)
         {
-            var bindingDur = 0.08f;
-            if (TryGetTurnBindingForSub(fromSub, out var exitBinding))
-            {
-                bindingDur = exitBinding.ResolvePresentationTransition();
-            }
-
-            var postBlend = 0.08f;
-            if (_player?.States != null)
-            {
-                var ts = _player.States.LocomotionTurnSettings;
-                postBlend = _lastActiveTurnType == TurnType.Turn180
-                    ? ts.PostTurnBlendTurn180
-                    : ts.PostTurnBlendTurn90;
-            }
-
-            return bindingDur + postBlend;
+            // 235.2 空间朝向交接：Turn Clip 在旧 VisualRoot 空间结束，Locomotion Loop 在新 LogicForward
+            // 空间开始。两者做普通 CrossFade 会让 Turn 根姿态在新空间再次淡出，视觉上形成第二次转向。
+            // 当前双端口 Mixer 没有惯性化/根朝向补偿能力，因此必须原子切换；未来由 227 TransitionPlan
+            // 的 SpatialHandoff 模式用 pose inertialization 改善姿态连续性，但仍不得混合空间朝向。
+            return 0f;
         }
 
         if (!wasTurn && nowTurn && TryGetTurnBindingForSub(toSub, out var enterBinding))
@@ -736,6 +897,12 @@ public class PlayerAnimController : EntityAnimController
             return;
         }
 
+        // 235.1：Walk/Run 连续请求是 Turn 的底层期望，不能覆盖 active/pending Turn 后令同 generation 重播。
+        if (_turnCompensationActive || _player.CurrentTurnCompensationCue.IsTurning)
+        {
+            return;
+        }
+
         _inLocomotion = true;
         _locoSub = MapContinuousState(evt.ResolvedState);
         if (_locoSub == LocomotionSub.None)
@@ -758,6 +925,8 @@ public class PlayerAnimController : EntityAnimController
     private void OnActionPresentationRequest(PlayerActionPresentationRequestEvent evt)
     {
         _inLocomotion = false;
+        _telemetryAction = evt.Action;
+        _telemetryLeaseVersion = evt.ActionLeaseVersion;
 
         if (evt.Action != null)
         {
@@ -789,6 +958,26 @@ public class PlayerAnimController : EntityAnimController
         // 无 SO 回退：按 Kind 查 AnimLibrary（Ver4.3.6+ Skill_Entry_NN 默认走 Action_Attack 兜底，
         // 具体 Clip 仍以 ActionData.MainClip 优先）
         PlayLibraryEntry("Action_Attack");
+    }
+
+    private void PublishPlaybackTelemetry()
+    {
+        if (_player == null || _telemetryAction == null || _player.States == null)
+        {
+            return;
+        }
+
+        var step = _player.States.CaptureRuntimeStep(RuntimeTracePhase.PresentationObserve);
+        var version = PresentationTelemetryStore.NextVersion(_player.GetInstanceID());
+        if (TryBuildPlaybackSample(
+                _telemetryAction,
+                _telemetryLeaseVersion,
+                in step,
+                version,
+                out var sample))
+        {
+            PresentationTelemetryStore.Publish(in sample);
+        }
     }
 
     private void OnPlayablePlaybackSpeedRequest(PlayablePlaybackSpeedRequestEvent evt)

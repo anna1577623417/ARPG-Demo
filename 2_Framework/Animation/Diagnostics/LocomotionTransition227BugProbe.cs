@@ -30,6 +30,8 @@ public static class LocomotionTransition227BugProbe
         public bool FirstMotorCommitLogged;
         public int LastMotorCommitFrame = -1;
         public int MotorCommitCountThisFrame;
+        public ulong LastMotorCommitLogicStep;
+        public int MotorCommitCountThisLogicStep;
         public string LastMotorCommitSource;
         public Vector3 LastObservedPosition;
         public int LastObservedFrame = -1;
@@ -184,6 +186,8 @@ public static class LocomotionTransition227BugProbe
         session.FirstMotorCommitLogged = false;
         session.LastMotorCommitFrame = -1;
         session.MotorCommitCountThisFrame = 0;
+        session.LastMotorCommitLogicStep = 0;
+        session.MotorCommitCountThisLogicStep = 0;
         session.LastMotorCommitSource = "none";
         session.LastObservedPosition = player.transform.position;
         session.LastObservedFrame = Time.frameCount;
@@ -212,6 +216,7 @@ public static class LocomotionTransition227BugProbe
         if (kind == FlowKind.None) return;
 
         var session = GetOrBeginSession(player, kind, action);
+        var step = CaptureStep(player, RuntimeTracePhase.MotorCommit);
         if (session.LastMotorCommitFrame != Time.frameCount)
         {
             session.LastMotorCommitFrame = Time.frameCount;
@@ -219,6 +224,13 @@ public static class LocomotionTransition227BugProbe
         }
 
         session.MotorCommitCountThisFrame++;
+        if (session.LastMotorCommitLogicStep != step.EntityLogicStepId)
+        {
+            session.LastMotorCommitLogicStep = step.EntityLogicStepId;
+            session.MotorCommitCountThisLogicStep = 0;
+        }
+
+        session.MotorCommitCountThisLogicStep++;
         session.LastMotorCommitSource = source;
 
         if (session.MotorCommitCountThisFrame == 1 && !session.FirstMotorCommitLogged)
@@ -229,16 +241,19 @@ public static class LocomotionTransition227BugProbe
                 session,
                 "MOTOR_COMMIT_FIRST",
                 $"action={SafeAction(action)} motorCommitSource={Safe(source)} motorCommitCount=1 " +
+                $"logicStepMotorCommitCount={session.MotorCommitCountThisLogicStep} step=({step}) " +
                 $"resolvedDriver=({driverPlan})");
         }
-        else if (session.MotorCommitCountThisFrame > 1)
+        else if (session.MotorCommitCountThisLogicStep > 1)
         {
             Log(
                 player,
                 session,
                 "MOTOR_COMMIT_DUPLICATE",
                 $"action={SafeAction(action)} motorCommitSource={Safe(source)} " +
-                $"motorCommitCount={session.MotorCommitCountThisFrame} resolvedDriver=({driverPlan}) " +
+                $"motorCommitCount={session.MotorCommitCountThisFrame} " +
+                $"logicStepMotorCommitCount={session.MotorCommitCountThisLogicStep} step=({step}) " +
+                $"resolvedDriver=({driverPlan}) " +
                 "classification=CODE_SIDE_DOUBLE_MOTOR_APPLY");
         }
     }
@@ -535,11 +550,20 @@ public static class LocomotionTransition227BugProbe
 
     static void Log(Player player, Session session, string eventName, string payload)
     {
+        var step = CaptureStep(player, RuntimeTracePhase.PresentationObserve);
+        var airCycle = player != null ? player.CurrentAirCycle : default;
         Debug.Log(
             $"{LogPrefix} {eventName} sourceDesign=227.4 sessionId={session.SessionId} " +
             $"instanceId={player.GetInstanceID()} frame={Time.frameCount} time={Time.time:F3} " +
-            $"flow={session.Kind} {payload}",
+            $"flow={session.Kind} step=({step}) airCycle=({airCycle}) {payload}",
             player);
+    }
+
+    static RuntimeStepStamp CaptureStep(Player player, RuntimeTracePhase phase)
+    {
+        return player?.States != null
+            ? player.States.CaptureRuntimeStep(phase)
+            : default;
     }
 
     static string SafeAction(ActionDataSO action) => action != null ? action.name : "null";

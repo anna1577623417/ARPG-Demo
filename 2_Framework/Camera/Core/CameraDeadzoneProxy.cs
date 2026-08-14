@@ -135,6 +135,11 @@ public class CameraDeadzoneProxy : MonoBehaviour
     {
         if (_followTarget == null) return;
 
+        var probePlayer = GameMainDebugSettings.CameraTurn233Log
+            ? _followTarget.GetComponentInParent<Player>()
+            : null;
+        var probeProxyYawBefore = transform.eulerAngles.y;
+
         // ── 1. 旋转：仅镜像 yaw（水平偏航），不传 pitch / roll。 ─────────────────
         // 角色被边缘脱困位移、动画 root motion 等场景下 followTarget 的 pitch/roll 会瞬时跳变，
         // 直接全量镜像会让 3rdPersonFollow 轨道俯仰被拉扯，相机插入角色体内。
@@ -199,6 +204,20 @@ public class CameraDeadzoneProxy : MonoBehaviour
                 smoothTime * Mathf.Max(0.01f, verticalSmoothMultiplier));
 
             _lookAtProxy.position = new Vector3(_currentProxyPos.x, _lookAtProxyY, _currentProxyPos.z);
+        }
+
+        if (GameMainDebugSettings.CameraTurn233Log)
+        {
+            var mainCamera = Camera.main;
+            CameraTurn233Probe.ObserveProxy(
+                probePlayer,
+                this,
+                fwdEuler.y,
+                probeProxyYawBefore,
+                transform.eulerAngles.y,
+                _followTarget.position,
+                transform.position,
+                mainCamera != null ? mainCamera.transform.eulerAngles.y : float.NaN);
         }
     }
 

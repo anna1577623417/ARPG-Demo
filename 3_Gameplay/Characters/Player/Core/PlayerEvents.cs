@@ -37,11 +37,24 @@ public readonly struct PlayerJumpEvent : IGameEvent
 {
     public readonly int PlayerInstanceId;
     public readonly string PlayerName;
+    public readonly AirCycleSnapshot AirCycle;
+    public readonly RuntimeStepStamp Step;
 
     public PlayerJumpEvent(int playerInstanceId, string playerName)
+        : this(playerInstanceId, playerName, default, default)
+    {
+    }
+
+    public PlayerJumpEvent(
+        int playerInstanceId,
+        string playerName,
+        in AirCycleSnapshot airCycle,
+        in RuntimeStepStamp step)
     {
         PlayerInstanceId = playerInstanceId;
         PlayerName = playerName;
+        AirCycle = airCycle;
+        Step = step;
     }
 }
 
@@ -51,11 +64,24 @@ public readonly struct PlayerJumpAirPhaseEvent : IGameEvent
 {
     public readonly int PlayerInstanceId;
     public readonly string PlayerName;
+    public readonly AirCycleSnapshot AirCycle;
+    public readonly RuntimeStepStamp Step;
 
     public PlayerJumpAirPhaseEvent(int playerInstanceId, string playerName)
+        : this(playerInstanceId, playerName, default, default)
+    {
+    }
+
+    public PlayerJumpAirPhaseEvent(
+        int playerInstanceId,
+        string playerName,
+        in AirCycleSnapshot airCycle,
+        in RuntimeStepStamp step)
     {
         PlayerInstanceId = playerInstanceId;
         PlayerName = playerName;
+        AirCycle = airCycle;
+        Step = step;
     }
 }
 
@@ -65,11 +91,24 @@ public readonly struct PlayerLandedEvent : IGameEvent
 {
     public readonly int PlayerInstanceId;
     public readonly string PlayerName;
+    public readonly AirCycleSnapshot AirCycle;
+    public readonly RuntimeStepStamp Step;
 
     public PlayerLandedEvent(int playerInstanceId, string playerName)
+        : this(playerInstanceId, playerName, default, default)
+    {
+    }
+
+    public PlayerLandedEvent(
+        int playerInstanceId,
+        string playerName,
+        in AirCycleSnapshot airCycle,
+        in RuntimeStepStamp step)
     {
         PlayerInstanceId = playerInstanceId;
         PlayerName = playerName;
+        AirCycle = airCycle;
+        Step = step;
     }
 }
 
@@ -110,6 +149,40 @@ public readonly struct PlayerTeleportedEvent : IGameEvent
         PlayerInstanceId = playerInstanceId;
         PlayerName = playerName;
         WorldPosition = worldPosition;
+    }
+}
+
+public enum TurnInterruptReason : byte
+{
+    External = 0,
+    MovementModeChanged = 1,
+    Jump = 2,
+    Action = 3,
+    LocomotionDiscrete = 4,
+    StateExit = 5,
+}
+
+/// <summary>Gameplay turn cancellation fact. Presentation may observe it but never acknowledges it.</summary>
+public readonly struct TurnPresentationInterruptedEvent : IGameEvent
+{
+    public readonly int EntityInstanceId;
+    public readonly RuntimeStepStamp Step;
+    public readonly uint TurnGeneration;
+    public readonly TurnType PreviousTurnType;
+    public readonly TurnInterruptReason Reason;
+
+    public TurnPresentationInterruptedEvent(
+        int entityInstanceId,
+        in RuntimeStepStamp step,
+        uint turnGeneration,
+        TurnType previousTurnType,
+        TurnInterruptReason reason)
+    {
+        EntityInstanceId = entityInstanceId;
+        Step = step;
+        TurnGeneration = turnGeneration;
+        PreviousTurnType = previousTurnType;
+        Reason = reason;
     }
 }
 
@@ -159,6 +232,7 @@ public readonly struct PlayerActionPresentationRequestEvent : IGameEvent
     public readonly int PlayerInstanceId;
     public readonly GameplayIntentKind Kind;
     public readonly ActionDataSO Action;
+    public readonly uint ActionLeaseVersion;
     /// <summary>非空时覆盖 Action.MainClip（164.1 L10 相位急停变体等）。</summary>
     public readonly AnimationClip PresentationClip;
     /// <summary>167.1 Segment 预留：Clip 归一化起播点。</summary>
@@ -172,11 +246,13 @@ public readonly struct PlayerActionPresentationRequestEvent : IGameEvent
         ActionDataSO action,
         AnimationClip presentationClip = null,
         float normalizedStart = 0f,
-        float playbackAnimSpeedOverride = -1f)
+        float playbackAnimSpeedOverride = -1f,
+        uint actionLeaseVersion = 0)
     {
         PlayerInstanceId = playerInstanceId;
         Kind = kind;
         Action = action;
+        ActionLeaseVersion = actionLeaseVersion;
         PresentationClip = presentationClip;
         NormalizedStart = normalizedStart;
         PlaybackAnimSpeedOverride = playbackAnimSpeedOverride;

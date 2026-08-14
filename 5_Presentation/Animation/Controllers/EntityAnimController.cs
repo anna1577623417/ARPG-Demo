@@ -289,6 +289,36 @@ public abstract class EntityAnimController : MonoBehaviour {
         return true;
     }
 
+    protected bool TryBuildPlaybackSample(
+        ActionDataSO action,
+        uint actionLeaseVersion,
+        in RuntimeStepStamp step,
+        ulong sampleVersion,
+        out PresentationPlaybackSample sample)
+    {
+        sample = default;
+        if (action == null
+            || !TryGetPrimaryClipActionNormalizedTime(action, out var normalizedTime)
+            || !_clips[_currentPort].IsValid())
+        {
+            return false;
+        }
+
+        var clip = _clips[_currentPort].GetAnimationClip();
+        sample = new PresentationPlaybackSample(
+            in step,
+            GetAnimProbeInstanceId(),
+            actionLeaseVersion,
+            action.GetInstanceID(),
+            clip != null ? clip.GetInstanceID() : 0,
+            normalizedTime,
+            (float)_clips[_currentPort].GetTime(),
+            (float)_clips[_currentPort].GetSpeed(),
+            sampleVersion,
+            true);
+        return true;
+    }
+
     /// <summary>调整当前主输出 Clip 的播放倍率（步幅匹配等）。</summary>
     protected void SetPrimaryClipPlayableSpeed(float speed)
     {
@@ -296,15 +326,6 @@ public abstract class EntityAnimController : MonoBehaviour {
         if (_clips[_currentPort].IsValid())
         {
             _clips[_currentPort].SetSpeed(Mathf.Max(0.01f, speed));
-        }
-    }
-
-    /// <summary>164.1 L6：Per-Action Clip RootMotion 开关（与 MotionProfile 程序化位移二选一）。</summary>
-    public void SetClipRootMotionEnabled(bool enabled)
-    {
-        if (_animator != null)
-        {
-            _animator.applyRootMotion = enabled;
         }
     }
 

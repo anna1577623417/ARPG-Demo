@@ -139,6 +139,7 @@ public sealed class PlayerLocomotionState : PlayerState
         // 离开 Locomotion 必须清除转身锁定，否则下次回到 Locomotion 第一帧仍会处于"locked"状态。
         m_turnResolver.ClearLock("locomotion_exit");
         player.SetTurnInfo(default);
+        player.ClearTurnCompensationCue("locomotion_exit");
     }
 
     protected override void OnLogicUpdate(Player player)
@@ -163,10 +164,11 @@ public sealed class PlayerLocomotionState : PlayerState
             player.SetTurnInfo(default);
         }
 
-        // ─── 173.1：Ability 输入上下文窗口内冻结 Locomotion 转向 ───
-        if (player.ShouldSuppressLocomotionRotation())
+        // 234.5/235：WASD 不进入旧世界水平 Turn 锁；补偿动画改走一次性 TurnCompensationCue。
+        // MoveDown 上下文只保存技能基准；只有已 Commit 的 Directional Action 才冻结 Facing。
+        if (player.HasMovementIntent || player.ShouldSuppressLocomotionRotation())
         {
-            m_turnResolver.ClearLock("ability_context");
+            m_turnResolver.ClearLock(player.HasMovementIntent ? "free_locomotion_immediate" : "directional_commit");
             player.SetTurnInfo(default);
         }
         else
@@ -209,6 +211,7 @@ public sealed class PlayerLocomotionState : PlayerState
         // 227.4 / 227.3：以常规 Locomotion 的一次 LogicUpdate 为位置结算审计边界。
         // Begin 必须位于离散 Action 分流之后，避免把 Action Motion 误判成 WASD 瞬移。
         LocomotionPositionSettlement227Probe.BeginLocomotionFrame(player);
+        var characterTurn233PositionBefore = player.transform.position;
 
         // 198.x — 167.1 VelocityDecay Tick 已删除；182.1 StopStrategy 在 Action 退出时唯一权威处理速度
         if (player.HasMovementIntent)
@@ -221,7 +224,19 @@ public sealed class PlayerLocomotionState : PlayerState
         }
 
         player.ApplyMotor(MotorSolveContext.Locomotion);
+        LocomotionTurnPresentation235Probe.ObserveMotion(
+            player,
+            characterTurn233PositionBefore,
+            player.transform.position);
         LocomotionPositionSettlement227Probe.EndLocomotionFrame(player);
+        CharacterTurnDisplacement233Probe.ObserveLocomotionFrame(
+            player,
+            characterTurn233PositionBefore,
+            player.transform.position);
+        LocomotionMotion233Probe.ObserveLocomotionFrame(
+            player,
+            characterTurn233PositionBefore,
+            player.transform.position);
         LogLocomotionMoveTrace(player, player.CurrentTurnInfo);
     }
 
@@ -267,13 +282,20 @@ public sealed class PlayerLocomotionState : PlayerState
             planarSpeed: player.PlanarVelocity.magnitude);
 
         var decision = LocomotionResolver.Resolve(in intent, in ctx, profile);
+        var wasHadInput = m_lastHadInput;
+
+        LocomotionMotion233Probe.ObserveResolve(
+            player,
+            requested,
+            in decision,
+            wasHadInput,
+            hasInput);
 
         LogDecisionIfChanged(player, requested, in intent, in decision);
 
         PublishLocomotionPresentation(player, profile, in intent, in decision);
         PublishContinuousLocomotionIfNeeded(player, in decision);
 
-        var wasHadInput = m_lastHadInput;
         if (!wasHadInput && hasInput)
         {
             m_movePressStartTime = Time.time;
@@ -317,6 +339,11 @@ public sealed class PlayerLocomotionState : PlayerState
                 decision.ResolvedState,
                 decision.DiscreteAction,
                 "RealtimeKccResponse");
+            LocomotionMotion233Probe.ObserveStartBypassed(
+                player,
+                decision.ResolvedState,
+                decision.DiscreteAction,
+                "RealtimeKccResponse");
             return false;
         }
 
@@ -329,7 +356,7 @@ public sealed class PlayerLocomotionState : PlayerState
             LocomotionDebug.CatResolve,
             $"FIRE state={decision.ResolvedState} action={decision.DiscreteAction.name} (edge-triggered)");
 
-        player.InterruptTurnPresentation(decision.ResolvedState.ToString());
+        player.InterruptTurn(TurnInterruptReason.LocomotionDiscrete, decision.ResolvedState.ToString());
         player.States.Change<PlayerActionState>();
         return true;
     }

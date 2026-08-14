@@ -121,9 +121,17 @@ public sealed class PlayerAirborneState : PlayerState
         }
         else
         {
+            if (!player.CurrentAirCycle.IsActive && !player.IsGrounded)
+            {
+                player.EnsureAirCycle(AirCycleCause.WalkOff, RuntimeTracePhase.StateLogicEnd);
+            }
+
+            player.MarkAirCycleFalling(RuntimeTracePhase.StateLogicEnd);
             _hasPublishedAirPhase = true;
             LocomotionTransition227BugProbe.LogJumpAirPhase(player, "AirborneEnterWithoutConsumedIntent");
-            player.PublishEvent(new PlayerJumpAirPhaseEvent(player.GetInstanceID(), player.name));
+            var airStep = player.States.CaptureRuntimeStep(RuntimeTracePhase.StateLogicEnd);
+            player.PublishEvent(new PlayerJumpAirPhaseEvent(
+                player.GetInstanceID(), player.name, player.CurrentAirCycle, airStep));
             if (ctx.JumpLoop != null)
             {
                 player.SetGraphContextAction(ctx.JumpLoop, "fall-into-air");
@@ -198,8 +206,11 @@ public sealed class PlayerAirborneState : PlayerState
         if (!_hasPublishedAirPhase && player.VerticalSpeed <= 0f)
         {
             _hasPublishedAirPhase = true;
+            player.MarkAirCycleFalling(RuntimeTracePhase.StateLogicEnd);
             LocomotionTransition227BugProbe.LogJumpAirPhase(player, "VerticalSpeedNonPositive");
-            player.PublishEvent(new PlayerJumpAirPhaseEvent(player.GetInstanceID(), player.name));
+            var airStep = player.States.CaptureRuntimeStep(RuntimeTracePhase.StateLogicEnd);
+            player.PublishEvent(new PlayerJumpAirPhaseEvent(
+                player.GetInstanceID(), player.name, player.CurrentAirCycle, airStep));
             SyncJumpLoopGraphContext(player);
         }
 
@@ -233,7 +244,11 @@ public sealed class PlayerAirborneState : PlayerState
     /// </summary>
     internal static void RouteLanding(Player player, float fallHeight, bool forceActionReentry = false)
     {
-        player.PublishEvent(new PlayerLandedEvent(player.GetInstanceID(), player.name));
+        player.MarkAirCycleLandingRouted(RuntimeTracePhase.StateLogicEnd);
+        var landingSnapshot = player.CurrentAirCycle;
+        var landingStep = player.States.CaptureRuntimeStep(RuntimeTracePhase.StateLogicEnd);
+        player.PublishEvent(new PlayerLandedEvent(
+            player.GetInstanceID(), player.name, landingSnapshot, landingStep));
 
         fallHeight = Mathf.Max(0f, fallHeight);
         var landAction = PickJumpLandFromProfile(player, fallHeight, out var landSource);
@@ -253,6 +268,7 @@ public sealed class PlayerAirborneState : PlayerState
             {
                 player.States.Change<PlayerActionState>();
             }
+            player.CloseAirCycle(RuntimeTracePhase.LogicEnd);
             return;
         }
 
@@ -260,6 +276,7 @@ public sealed class PlayerAirborneState : PlayerState
 
         player.ClearGraphContextAction("land-no-profile");
         player.States.Change<PlayerLocomotionState>();
+        player.CloseAirCycle(RuntimeTracePhase.LogicEnd);
     }
 
     static ActionDataSO PickJumpLandFromProfile(Player player, float fallHeight, out string source)

@@ -12,7 +12,7 @@ public enum InputTense : byte
 
 /// <summary>
 /// 184.1 Layer 1：方向键 Tap/Hold 时态唯一裁决。
-/// <para>Pending 窗口内可被 Combo（Skill+方向）抢占；Hold 进入 Locomotion；Tap 仅 Turn 表现。</para>
+/// <para>Pending 窗口内可被 Combo（Skill+方向）抢占；WASD 从 Pending 起始终是 Locomotion 移动命令，Tap 不再补 Turn。</para>
 /// </summary>
 public sealed class InputTenseResolver
 {

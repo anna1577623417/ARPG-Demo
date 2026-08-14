@@ -109,6 +109,18 @@ public sealed class GameMainDebugSettingsWindow : EditorWindow
             Toggle(() => GameMainDebugSettings.LocomotionTransition227BugLog,
                 v => GameMainDebugSettings.LocomotionTransition227BugLog = v,
                 "Locomotion 227 Bug", "[Locomotion227Bug] Jump/RunStart + WASD 位置结算、Motor 后二次写入与显式 Teleport");
+            Toggle(() => GameMainDebugSettings.CameraTurn233Log,
+                v => GameMainDebugSettings.CameraTurn233Log = v,
+                "Camera / Turn 233", "[CameraTurn233] WASD→移动参考→逻辑/表现转向→Chase→Proxy→实际渲染相机");
+            Toggle(() => GameMainDebugSettings.CharacterTurnDisplacement233Log,
+                v => GameMainDebugSettings.CharacterTurnDisplacement233Log = v,
+                "Character Turn / Move 233.4", "[CharacterTurn233] 输入转向→Logic/Root/Visual + Walk/Run Start/Loop/End 位移摘要");
+            Toggle(() => GameMainDebugSettings.LocomotionMotion233Log,
+                v => GameMainDebugSettings.LocomotionMotion233Log = v,
+                "Locomotion Motion 233.5", "[LocomotionMotion233] 点按→Start/Loop/End + MP作者/Stop有效/Executor/KCC 位移对账");
+            Toggle(() => GameMainDebugSettings.LocomotionTurnPresentation235Log,
+                v => GameMainDebugSettings.LocomotionTurnPresentation235Log = v,
+                "Locomotion Turn Presentation 235", "[LocoTurn235] INPUT→DECIDE→SELECT→PLAY→END，有限边沿、无堆栈");
         });
 
         DrawSection("Combat / Intent", () =>

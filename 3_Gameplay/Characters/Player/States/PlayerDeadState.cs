@@ -6,6 +6,7 @@ public class PlayerDeadState : PlayerState
 {
     protected override void OnEnter(Player player)
     {
+        player.CancelAirCycle(AirCycleCancelReason.Dead, RuntimeTracePhase.StateLogicEnd);
         player.Tags.ClearAll();
         player.GameplayTags.Add((ulong)StateTag.Dead);
         ((IIntentHost)player).IntentBuffer.Clear();

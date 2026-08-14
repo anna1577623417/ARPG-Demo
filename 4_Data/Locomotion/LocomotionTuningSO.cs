@@ -57,21 +57,21 @@ public class LocomotionTuningSO : ScriptableObject
     [Tooltip("松开移动输入后的停止响应时间（秒）。")]
     [Range(0.05f, 0.5f)] public float ReleaseStopTime = 0.12f;
 
-    [Tooltip("90°转向时旧侧向速度的衰减响应时间（秒）。")]
+    [Tooltip("Legacy 序列化字段：234.5 后 FreeLocomotion 不再保留旧方向分量；仅用于迁移/诊断，不参与水平转向。")]
     [Range(0.03f, 0.4f)] public float DirectionTurnResponseTime = 0.09f;
 
-    [Tooltip("反向输入时旧方向速度制动至零的响应时间（秒）。")]
+    [Tooltip("反向输入时速度模长的响应时间（秒）。方向在同一 Tick 切换，不再沿旧方向制动或画弧。")]
     [Range(0.05f, 0.5f)] public float ReverseResponseTime = 0.16f;
 
     [Tooltip("从静止起步首帧的最低速度，占当前步态目标速度的比例。")]
     [Range(0f, 0.6f)] public float StartSpeedFloorRatio = 0.25f;
 
-    [Tooltip("连续移动的逻辑朝向角速度（度/秒）。根节点消费已解析运动方向，不再消费原始 WASD 瞬转。")]
+    [Tooltip("Legacy 序列化字段：234.5 后 FreeLocomotion LogicFacing 同 Tick 对齐命令方向，不再消费角速度。")]
     [Range(90f, 1440f)] public float MotionFacingAngularSpeedDeg = 720f;
 
     [Header("Rotation (183.1 Layer A — 逻辑朝向)")]
-    [Tooltip("Locomotion 柱逻辑朝向策略：Smooth=RotateTowards；SnapAlways=每帧对齐输入（法环默认档）；SnapWhileMoving=跑动 Snap、站立 Smooth。")]
-    public LocomotionRotationMode RotationMode = LocomotionRotationMode.Smooth;
+    [Tooltip("Legacy 序列化字段：234.5 后 FreeLocomotion 固定即时方向；保留用于旧资产迁移和 Inspector 诊断。")]
+    public LocomotionRotationMode RotationMode = LocomotionRotationMode.SnapAlways;
 
     [Tooltip("Smooth 模式角速度（度/秒）。UseTuningRotationSpeed=true 时 Locomotion 只读此值，不读 Stats.RotationSpeed。")]
     [Min(0f)] public float RotationSpeedDegPerSec = 540f;
@@ -89,12 +89,24 @@ public class LocomotionTuningSO : ScriptableObject
     [Tooltip("方向键持续 ≥ 此值（秒）视为 Hold（进入 Walk/Run Locomotion）。")]
     [Range(0.02f, 0.2f)] public float HoldEnterDelay = 0.08f;
 
-    [Tooltip("无 Turn 动画时 VisualRoot 缓追 LogicForward 的角速度（度/秒）。")]
+    [Tooltip("Legacy 序列化字段：234.5 后普通 Locomotion VisualRoot 直接同步 LogicFacing；显式 Turn Presentation 仍可持有视觉。")]
     [Range(180f, 1440f)] public float VisualMaxAngularSpeedDeg = 540f;
 
     [Header("Rotation (183.1 Layer B — Turn 表现分流)")]
-    [Tooltip("WantsRun 为 true 时 TurnResolver 不得 LOCK（A+跑略过 Turn 动画；法环默认 true）。")]
+    [Tooltip("Legacy：旧 TurnResolver 的 Run 跳过开关。235 补偿性 Turn Cue 不读取此字段。")]
     public bool SkipTurnPresentationWhenWantsRun = true;
+
+    [Tooltip("235：允许 FreeLocomotion 在即时 Gameplay 改向后播放一次 90/180 补偿动画。只影响表现，不锁移动/朝向。")]
+    public bool EnableMovingTurnCompensation = true;
+
+    [Tooltip("235：补偿 Turn one-shot 播放到 Clip 时长的此比例后回当前 Locomotion；Action/Jump/新 Cue 可提前打断。")]
+    [Range(0.15f, 1f)] public float TurnCompensationCompletionRatio = 0.7f;
+
+    [Tooltip("235.2：90°补偿表现的最大 Lease。只控制 Turn Clip 的 speed-to-fit 与回退时机，不锁速度、不锁 KCC。")]
+    [Range(0.06f, 0.5f)] public float Turn90PresentationLease = 0.16f;
+
+    [Tooltip("235.2：180°补偿表现的最大 Lease。角色从输入首 Tick 即按统一速度响应转向/移动，动画不得建立零位移门。")]
+    [Range(0.08f, 0.6f)] public float Turn180PresentationLease = 0.24f;
 
     [Tooltip("触发 180° 原地转身（Left180/Right180）的有符号角阈值（度）—— 唯一权威，由 TurnResolver 读取。")]
     [FormerlySerializedAs("PivotThresholdDeg")]
@@ -229,7 +241,8 @@ public enum RunInputMode : byte
 }
 
 /// <summary>
-/// 227.4.3：与 Animator/State/Motor 解耦的平面速度响应器。
+/// 234.5：与 Animator/State/Motor 解耦的平面速度模长响应器。
+/// 有输入时输出方向始终等于 desiredDirection；旧速度只贡献模长，不再制造水平转弯轨迹。
 /// 暂与 Tuning 类型同文件，保证 Unity/IDE 工程未刷新时也能参与编译。
 /// </summary>
 public static class LocomotionVelocityResponse
@@ -311,26 +324,25 @@ public static class LocomotionVelocityResponse
         }
 
         var parallelBefore = Vector3.Dot(current, desired);
-        var lateral = current - desired * parallelBefore;
-        var lateralBefore = lateral.magnitude;
-        var responseSpeed = Mathf.Max(currentSpeed, targetSpeed);
-        lateral = Vector3.MoveTowards(lateral, Vector3.zero, responseSpeed / settings.TurnTime * dt);
-
-        float parallelAfter;
+        var lateralBefore = (current - desired * parallelBefore).magnitude;
+        float nextSpeed;
         Branch branch;
         if (parallelBefore < 0f)
         {
-            parallelAfter = Mathf.MoveTowards(parallelBefore, 0f, responseSpeed / settings.ReverseTime * dt);
+            nextSpeed = Mathf.MoveTowards(
+                currentSpeed,
+                0f,
+                Mathf.Max(currentSpeed, targetSpeed) / settings.ReverseTime * dt);
             branch = Branch.ReverseBrake;
         }
         else
         {
-            parallelAfter = Mathf.MoveTowards(parallelBefore, targetSpeed, targetSpeed / settings.RiseTime * dt);
+            nextSpeed = Mathf.MoveTowards(currentSpeed, targetSpeed, targetSpeed / settings.RiseTime * dt);
             branch = lateralBefore > 0.01f ? Branch.Turn : Branch.Accelerate;
         }
 
-        var resolved = desired * parallelAfter + lateral;
-        resolved = Vector3.ClampMagnitude(resolved, Mathf.Max(targetSpeed, currentSpeed));
-        return new Result(resolved, branch, parallelBefore, parallelAfter, lateralBefore, lateral.magnitude);
+        nextSpeed = Mathf.Clamp(nextSpeed, 0f, Mathf.Max(targetSpeed, currentSpeed));
+        var resolved = desired * nextSpeed;
+        return new Result(resolved, branch, parallelBefore, nextSpeed, lateralBefore, 0f);
     }
 }

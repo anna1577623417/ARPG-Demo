@@ -1,7 +1,7 @@
 using UnityEngine;
 
 /// <summary>
-/// 184.1 Layer 3 — 表现朝向缓追 LogicForward。
+/// 234.5/235.2 — 普通 Locomotion 表现朝向同步 LogicForward；active Turn Lease 可短暂持有 Visual。
 /// <para>挂在 VisualRoot（Animator 子物体）；Gameplay 只读 LogicForward，不读本组件 rotation。</para>
 /// </summary>
 [DefaultExecutionOrder(100)]
@@ -34,12 +34,34 @@ public sealed class VisualFacingDriver : MonoBehaviour
             return;
         }
 
-        if (m_animController != null && m_animController.IsPlayingTurnPresentation)
+        var visualYawBefore = transform.eulerAngles.y;
+        var logicForward = m_player.LogicForward;
+        var logicYaw = logicForward.sqrMagnitude > 0.0001f
+            ? Mathf.Atan2(logicForward.x, logicForward.z) * Mathf.Rad2Deg
+            : float.NaN;
+        // 235.2：只有真正正在输出的 Turn Clip 才能持有 Visual。Cue pending 不得冻结骨架，
+        // 缺片、被 Action 抢占或延迟消费时都直接同步 LogicFacing。
+        var heldByTurnPresentation = m_animController != null && m_animController.IsPlayingTurnPresentation;
+        if (heldByTurnPresentation)
         {
+            CameraTurn233Probe.ObserveVisual(
+                m_player,
+                visualYawBefore,
+                visualYawBefore,
+                logicYaw,
+                Mathf.Abs(Mathf.DeltaAngle(visualYawBefore, logicYaw)),
+                true,
+                0f);
+            CharacterTurnDisplacement233Probe.ObserveVisual(
+                m_player,
+                visualYawBefore,
+                visualYawBefore,
+                logicYaw,
+                true,
+                0f);
             return;
         }
 
-        var logicForward = m_player.LogicForward;
         if (logicForward.sqrMagnitude < 0.0001f)
         {
             return;
@@ -47,20 +69,21 @@ public sealed class VisualFacingDriver : MonoBehaviour
 
         var target = Quaternion.LookRotation(logicForward, Vector3.up);
         var deltaAngle = Quaternion.Angle(transform.rotation, target);
-        var maxSpeed = deltaAngle >= m_fastTriggerAngleDeg
-            ? m_fastAngularSpeedDeg
-            : m_baseAngularSpeedDeg;
-
-        if (maxSpeed <= 0f)
-        {
-            transform.rotation = target;
-            return;
-        }
-
-        TurnProbe.LogVisualLag(m_player, deltaAngle, maxSpeed);
-        transform.rotation = Quaternion.RotateTowards(
-            transform.rotation,
-            target,
-            maxSpeed * Time.deltaTime);
+        transform.rotation = target;
+        CameraTurn233Probe.ObserveVisual(
+            m_player,
+            visualYawBefore,
+            transform.eulerAngles.y,
+            logicYaw,
+            deltaAngle,
+            false,
+            0f);
+        CharacterTurnDisplacement233Probe.ObserveVisual(
+            m_player,
+            visualYawBefore,
+            transform.eulerAngles.y,
+            logicYaw,
+            false,
+            0f);
     }
 }

@@ -131,7 +131,8 @@ public sealed class PlayerActionState : PlayerState
             m_action,
             presentationClip,
             normalizedStart,
-            presentationSpeed);
+            presentationSpeed,
+            m_leaseVersion);
 
         SyncInPlaceBonePresenter(
             player,
@@ -155,6 +156,19 @@ public sealed class PlayerActionState : PlayerState
             m_motionPlayback.HasActiveExecutor,
             m_motionPlayback.DriverPlan,
             m_leaseVersion);
+        CharacterTurnDisplacement233Probe.ObserveActionEnter(
+            player,
+            m_action,
+            m_leaseVersion,
+            m_motionPlayback.DriverPlan);
+        LocomotionMotion233Probe.ObserveActionEnter(
+            player,
+            m_action,
+            m_leaseVersion,
+            m_baseDuration,
+            normalizedStart,
+            m_motionPlayback.DriverPlan,
+            in m_stopCtx);
     }
 
     // 182.3 — 缓存最近一次写入 Animator 的 speed，仅在变化时下发，避免每帧事件刷屏
@@ -199,7 +213,6 @@ public sealed class PlayerActionState : PlayerState
         {
             case StopStrategy.Snap:
                 m_motionPlayback.SetUseMotionProfile(false);
-                ActionMotionPlayback.SetClipRootMotionForPlayer(player, false);
                 break;
             case StopStrategy.InheritPhysics:
                 normalizedStart = Mathf.Clamp01(normalizedStart);
@@ -239,20 +252,6 @@ public sealed class PlayerActionState : PlayerState
     }
 
     // 198.x — ApplyTailSegmentScope 已删除（Tail Segment 特性退役）
-
-    static float ResolvePlayableActionNt(Player player, ActionDataSO action)
-    {
-        if (player == null || action == null)
-        {
-            return -1f;
-        }
-
-        var animCtrl = player.GetComponent<EntityAnimController>();
-        return animCtrl != null
-            && animCtrl.TryGetPrimaryClipActionNormalizedTime(action, out var actionNt)
-            ? actionNt
-            : -1f;
-    }
 
     void ResetActionMotionExitState()
     {
@@ -308,7 +307,8 @@ public sealed class PlayerActionState : PlayerState
             action,
             ResolvePresentationClip(player, action),
             normalizedStartForPresentation,
-            presentationSpeed);
+            presentationSpeed,
+            m_leaseVersion);
 
         SyncInPlaceBonePresenter(
             player,
@@ -329,6 +329,7 @@ public sealed class PlayerActionState : PlayerState
     protected override void OnLogicUpdate(Player player)
     {
         var dt = Time.deltaTime;
+        var characterTurn233PositionBefore = player.transform.position;
 
         // 凝滞点：若当前 ActiveRoute 是 ChargeRoute 且 Playback 标了 FreezeNormalizedAdvance，
         // PlayerActionState 自己的 elapsed 也同步暂停 —— 否则 nt 会照常推进到 1，硬退出 Action 状态。
@@ -388,6 +389,28 @@ public sealed class PlayerActionState : PlayerState
         }
 
         TickResolvedBaseMotor(player);
+        CharacterTurnDisplacement233Probe.ObserveActionFrame(
+            player,
+            m_action,
+            m_leaseVersion,
+            nt,
+            m_motionPlayback.DriverPlan,
+            m_motionPlayback.LastFrameAppliedMotor,
+            characterTurn233PositionBefore,
+            player.transform.position);
+        LocomotionMotion233Probe.ObserveActionFrame(
+            player,
+            m_action,
+            m_leaseVersion,
+            m_prevNormalizedTime,
+            nt,
+            m_motionPlayback.DriverPlan,
+            in m_stopCtx,
+            m_motionPlayback.LastContribution,
+            m_motionPlayback.LastWorldDelta,
+            m_motionPlayback.LastFrameAppliedMotor,
+            characterTurn233PositionBefore,
+            player.transform.position);
 
         // 227.4.3：Profile JumpStart 的 Gameplay 所有权只覆盖上升段。
         // 物理越过顶点后立即交还 Airborne，让其发布 JumpLoop 并持有 touchdown。
@@ -417,7 +440,8 @@ public sealed class PlayerActionState : PlayerState
                 m_lastPresentationSpeed = live;
             }
 
-            var playableNt = ResolvePlayableActionNt(player, m_action);
+            var playableNt = StopProbePresentationAdapter.ResolveNormalizedTime(
+                player, m_action, m_leaseVersion);
             StopProbe.LogTick(player, in m_stopCtx, m_action, nt, live, playableNt);
         }
 
@@ -476,7 +500,8 @@ public sealed class PlayerActionState : PlayerState
                     expectedWallDuration,
                     expectedDistance);
 
-                var playableNtAtExit = ResolvePlayableActionNt(player, m_action);
+                var playableNtAtExit = StopProbePresentationAdapter.ResolveNormalizedTime(
+                    player, m_action, m_leaseVersion);
                 StopProbe.LogPresentationMismatch(player, m_action, nt, playableNtAtExit);
             }
 
@@ -581,6 +606,7 @@ public sealed class PlayerActionState : PlayerState
             m_action,
             normalizedTime,
             "ApexCrossed");
+        player.MarkAirCycleFalling(RuntimeTracePhase.StateLogicEnd);
         m_exitDispatched = true;
         player.States.Change<PlayerAirborneState>();
         return true;
@@ -597,6 +623,13 @@ public sealed class PlayerActionState : PlayerState
 
     protected override void OnExit(Player player)
     {
+        LocomotionMotion233Probe.ObserveActionExit(
+            player,
+            m_action,
+            m_leaseVersion,
+            m_motionPlayback.DriverPlan,
+            in m_stopCtx);
+        CharacterTurnDisplacement233Probe.ObserveActionExit(player, m_action, m_leaseVersion);
         if (m_hasLease)
         {
             player.CompleteActionLease(m_leaseVersion);
@@ -605,8 +638,6 @@ public sealed class PlayerActionState : PlayerState
         }
 
         StopInPlaceBonePresenter(player);
-        ActionMotionPlayback.SetClipRootMotionForPlayer(player, false);
-
         LocomotionStateId endHint = LocomotionStateId.None;
         if (m_isLocomotionOnlyAction && m_action != null)
         {
@@ -904,7 +935,7 @@ public sealed class PlayerActionState : PlayerState
         {
             var fromForward = player.LogicForward;
             ActionTurnProbe.Log(player, fromForward, pendingForward, "PlayerActionState.OnExit.PendingFacing");
-            player.SetLogicForward(pendingForward);
+            player.SetLogicForward(pendingForward, "PlayerActionState.PendingFacing");
             InputActionProbe.LogFacingApplied(player, m_action, fromForward, pendingForward, "End/Pivot.PendingFacing");
             MotionGrammarProbe.LogFacingApplied(player, m_action, pendingForward);
         }
