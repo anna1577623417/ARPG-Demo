@@ -43,7 +43,7 @@ MonoBehaviour:
   useFallbackOnNeutral: 1
   fallbackRoute: {fileID: 11400000, guid: 52e875ef26ff6f24f87004db035a4160, type: 2}
   motionForwardRoute: {fileID: 11400000, guid: db4eed8bc926fd84c9779557195b4361, type: 2}
-  directionalInputFrame: 0
+  directionalInputFrame: 1
   useMotionCurveBasisOverride: 1
   motionCurveBasisOverride: 0
   abilityGateRules: []

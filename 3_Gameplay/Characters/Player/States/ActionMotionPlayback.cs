@@ -266,7 +266,7 @@ public sealed class ActionMotionPlayback
 
         in StopRuntimeContext stopCtx,
 
-        Vector3 burstFaceDir,
+        in MotionFrameSnapshot frame,
 
         float motionDuration)
 
@@ -296,9 +296,9 @@ public sealed class ActionMotionPlayback
 
         var animSpeed = stopCtx.IsActive ? stopCtx.BaseAnimSpeed : action.ResolveEffectiveAnimSpeed();
 
-        _motionStartForward = burstFaceDir.sqrMagnitude > 0.0001f
+        _motionStartForward = frame.IsValid
 
-            ? burstFaceDir.normalized
+            ? frame.Forward
 
             : player.LogicForward;
 
@@ -308,7 +308,7 @@ public sealed class ActionMotionPlayback
 
             motionDuration,
 
-            burstFaceDir,
+            in frame,
 
             player.transform.position,
 
@@ -468,7 +468,7 @@ public sealed class ActionMotionPlayback
 
         in StopRuntimeContext stopCtx,
 
-        Vector3 burstFaceDir,
+        in MotionFrameSnapshot frame,
 
         float motionDuration)
 
@@ -496,7 +496,7 @@ public sealed class ActionMotionPlayback
 
 
 
-        BeginExecutorOnly(player, action, normalizedStart, in stopCtx, burstFaceDir, motionDuration);
+        BeginExecutorOnly(player, action, normalizedStart, in stopCtx, in frame, motionDuration);
 
     }
 
@@ -512,7 +512,7 @@ public sealed class ActionMotionPlayback
 
         in StopRuntimeContext stopCtx,
 
-        Vector3 burstFaceDir,
+        in MotionFrameSnapshot frame,
 
         float motionDuration)
 
@@ -530,9 +530,9 @@ public sealed class ActionMotionPlayback
 
         var animSpeed = stopCtx.IsActive ? stopCtx.BaseAnimSpeed : action.ResolveEffectiveAnimSpeed();
 
-        _motionStartForward = burstFaceDir.sqrMagnitude > 0.0001f
+        _motionStartForward = frame.IsValid
 
-            ? burstFaceDir.normalized
+            ? frame.Forward
 
             : player.LogicForward;
 
@@ -542,7 +542,7 @@ public sealed class ActionMotionPlayback
 
             motionDuration,
 
-            burstFaceDir,
+            in frame,
 
             player.transform.position,
 

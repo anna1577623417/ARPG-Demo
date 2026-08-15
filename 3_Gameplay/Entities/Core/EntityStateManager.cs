@@ -67,6 +67,7 @@ public abstract class EntityStateManager<T> : EntityStateManager where T : Entit
         {
             OnPreLogicUpdate(Time.deltaTime);
             _machine.LogicUpdate(Time.deltaTime);
+            OnPostLogicUpdate(Time.deltaTime);
         }
         finally
         {
@@ -78,6 +79,11 @@ public abstract class EntityStateManager<T> : EntityStateManager where T : Entit
     /// 在 LogicUpdate 之前执行：供子类实现意图缓冲、帧上下文构建等。
     /// </summary>
     protected virtual void OnPreLogicUpdate(float deltaTime)
+    {
+    }
+
+    /// <summary>在 LogicUpdate 之后执行：供子类实现 FacingCommit 等必须晚于 Skill Resolve 的提交。</summary>
+    protected virtual void OnPostLogicUpdate(float deltaTime)
     {
     }
 

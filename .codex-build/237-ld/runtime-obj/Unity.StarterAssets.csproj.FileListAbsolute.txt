@@ -1,0 +1,6 @@
+F:\Code\UnityProject\Core-Drive Action\Assets\GameMain\Scripts\.codex-build\237-ld\runtime\Unity.StarterAssets.dll
+F:\Code\UnityProject\Core-Drive Action\Assets\GameMain\Scripts\.codex-build\237-ld\runtime\Unity.StarterAssets.pdb
+F:\Code\UnityProject\Core-Drive Action\Assets\GameMain\Scripts\.codex-build\237-ld\runtime-obj\Unity.StarterAssets.csproj.AssemblyReference.cache
+F:\Code\UnityProject\Core-Drive Action\Assets\GameMain\Scripts\.codex-build\237-ld\runtime-obj\Unity.StarterAssets.csproj.CoreCompileInputs.cache
+F:\Code\UnityProject\Core-Drive Action\Assets\GameMain\Scripts\.codex-build\237-ld\runtime-obj\Unity.StarterAssets.dll
+F:\Code\UnityProject\Core-Drive Action\Assets\GameMain\Scripts\.codex-build\237-ld\runtime-obj\Unity.StarterAssets.pdb

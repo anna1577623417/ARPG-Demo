@@ -97,14 +97,8 @@ public sealed class PlayerActionState : PlayerState
         m_actionEnterElapsed = m_elapsed;
         m_actionEnterPlanarPos = player.transform.position;
 
-        m_burstFaceDir = m_motionPlayback.ResolveFacingDirection(
-            player,
-            m_action.MotionProfile,
-            ResolveActiveOwnerGroup(player));
-        if (m_stopCtx.UseIntegratedBrake && m_stopCtx.StopDirection.sqrMagnitude > 0.0001f)
-        {
-            m_burstFaceDir = m_stopCtx.StopDirection;
-        }
+        var motionFrame = ResolveMotionFrame(player, m_action);
+        m_burstFaceDir = motionFrame.IsValid ? motionFrame.Forward : player.LogicForward;
         m_motionPlayback.SetBurstFaceDir(m_burstFaceDir);
 
         // 216.3 M0 L3：Phase 单一真相 —— 不再手工 Add PhaseStartup；由 EvaluatePhaseTags 衍生。
@@ -123,7 +117,7 @@ public sealed class PlayerActionState : PlayerState
             m_action,
             normalizedStart,
             in m_stopCtx,
-            m_burstFaceDir,
+            in motionFrame,
             ResolveDurationSeconds());
 
         DirectionalInputDiagProbe.LogPlay(
@@ -181,6 +175,18 @@ public sealed class PlayerActionState : PlayerState
             normalizedStart,
             m_motionPlayback.DriverPlan,
             in m_stopCtx);
+        SkillGroupTurn237Probe.ObserveActionBegin(
+            player,
+            m_action,
+            ResolveActiveOwnerGroup(player),
+            player.SkillEntries != null ? player.SkillEntries.ActiveEntrySlot : default,
+            m_burstFaceDir);
+        player.BeginActionFacingLease(m_action, m_burstFaceDir);
+        DirectionAuthority237Probe.ObserveActionEntry(
+            player,
+            m_action,
+            ResolveActiveOwnerGroup(player),
+            in motionFrame);
     }
 
     // 182.3 — 缓存最近一次写入 Animator 的 speed，仅在变化时下发，避免每帧事件刷屏
@@ -325,10 +331,8 @@ public sealed class PlayerActionState : PlayerState
         m_prevNormalizedTime = normalizedStart;
         m_actionEnterElapsed = m_elapsed;
         m_actionEnterPlanarPos = player.transform.position;
-        m_burstFaceDir = m_motionPlayback.ResolveFacingDirection(
-            player,
-            action.MotionProfile,
-            ResolveActiveOwnerGroup(player));
+        var motionFrame = ResolveMotionFrame(player, action);
+        m_burstFaceDir = motionFrame.IsValid ? motionFrame.Forward : player.LogicForward;
         m_motionPlayback.SetBurstFaceDir(m_burstFaceDir);
 
         m_motionPlayback.RestartForSwap(
@@ -336,7 +340,7 @@ public sealed class PlayerActionState : PlayerState
             action,
             normalizedStart,
             in m_stopCtx,
-            m_burstFaceDir,
+            in motionFrame,
             ResolveDurationSeconds());
 
         var clipStart = ResolveStopClipStart(normalizedStart);
@@ -353,6 +357,12 @@ public sealed class PlayerActionState : PlayerState
             player,
             m_motionPlayback.UseMotionProfile || m_motionPlayback.DriverPlan.RequiresBaseMotorTick,
             action);
+        player.BeginActionFacingLease(action, m_burstFaceDir);
+        DirectionAuthority237Probe.ObserveActionEntry(
+            player,
+            action,
+            ResolveActiveOwnerGroup(player),
+            in motionFrame);
     }
 
     float ResolveStopClipStart(float actionNormalizedStart)
@@ -516,13 +526,14 @@ public sealed class PlayerActionState : PlayerState
         m_burstFaceDir = m_tapChainCommandDir.sqrMagnitude > 0.0001f
             ? m_tapChainCommandDir
             : (m_stopCtx.StopDirection.sqrMagnitude > 0.0001f ? m_stopCtx.StopDirection : player.LogicForward);
+        var tapFrame = MotionFrameSnapshot.Freeze(m_burstFaceDir, MotionSpace.CharacterForward);
         m_motionPlayback.SetBurstFaceDir(m_burstFaceDir);
         m_motionPlayback.RestartForSwap(
             player,
             m_action,
             normalizedStart,
             in m_stopCtx,
-            m_burstFaceDir,
+            in tapFrame,
             ResolveDurationSeconds());
         if (!m_motionPlayback.HasActiveExecutor)
         {
@@ -531,7 +542,7 @@ public sealed class PlayerActionState : PlayerState
                 m_action,
                 normalizedStart,
                 in m_stopCtx,
-                m_burstFaceDir,
+                in tapFrame,
                 ResolveDurationSeconds());
         }
 
@@ -883,6 +894,7 @@ public sealed class PlayerActionState : PlayerState
             m_motionPlayback.DriverPlan,
             in m_stopCtx);
         CharacterTurnDisplacement233Probe.ObserveActionExit(player, m_action, m_leaseVersion);
+        SkillGroupTurn237Probe.ObserveActionEnd(player, m_action);
         if (m_hasLease)
         {
             player.CompleteActionLease(m_leaseVersion);
@@ -902,6 +914,8 @@ public sealed class PlayerActionState : PlayerState
             m_motionPlayback.EndSession(player, m_action);
         }
 
+        player.NotifyDirectionalActionEnd();
+        player.EndActionFacingLease();
         player.SkillEntries?.NotifyRouteExited(wasInterrupted: false);
         if (m_isLocomotionOnlyAction)
         {
@@ -1193,7 +1207,7 @@ public sealed class PlayerActionState : PlayerState
         {
             var fromForward = player.LogicForward;
             ActionTurnProbe.Log(player, fromForward, pendingForward, "PlayerActionState.OnExit.PendingFacing");
-            player.SetLogicForward(pendingForward, "PlayerActionState.PendingFacing");
+            player.RequestFacing(FacingLeaseOwner.Action, pendingForward, "PlayerActionState.PendingFacing");
             InputActionProbe.LogFacingApplied(player, m_action, fromForward, pendingForward, "End/Pivot.PendingFacing");
             MotionGrammarProbe.LogFacingApplied(player, m_action, pendingForward);
         }
@@ -1323,6 +1337,17 @@ public sealed class PlayerActionState : PlayerState
         action = m_action;
         normalizedTime = m_prevNormalizedTime;
         return action != null;
+    }
+
+    MotionFrameSnapshot ResolveMotionFrame(Player player, ActionDataSO action)
+    {
+        var frame = player.BuildMotionFrame(action, ResolveActiveOwnerGroup(player));
+        if (m_stopCtx.UseIntegratedBrake && m_stopCtx.StopDirection.sqrMagnitude > 0.0001f)
+        {
+            return MotionFrameSnapshot.Freeze(m_stopCtx.StopDirection, frame.Space);
+        }
+
+        return frame;
     }
 
     static SkillGroupDefinition ResolveActiveOwnerGroup(Player player)

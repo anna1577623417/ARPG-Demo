@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: LocomotionTuning_Player
   m_EditorClassIdentifier: 
   WalkMultiplier: 1
-  RunMultiplier: 1.25
+  RunMultiplier: 1.5
   BackwardMultiplier: 0.7
   StrafeMultiplier: 0.85
   AirMoveMultiplier: 0.6
@@ -31,10 +31,14 @@ MonoBehaviour:
   RotationSpeedDegPerSec: 720
   SnapSpeedThreshold: 0.2
   UseTuningRotationSpeed: 1
-  SkipTurnPresentationWhenWantsRun: 1
   TapMaxDuration: 0.15
   HoldEnterDelay: 0.08
   VisualMaxAngularSpeedDeg: 540
+  SkipTurnPresentationWhenWantsRun: 1
+  EnableMovingTurnCompensation: 1
+  TurnCompensationCompletionRatio: 0.7
+  Turn90PresentationLease: 0.16
+  Turn180PresentationLease: 0.24
   Turn180ThresholdDeg: 135
   Turn90ThresholdDeg: 60
   JumpForce: 12
@@ -46,4 +50,17 @@ MonoBehaviour:
   EnableTieredLanding: 0
   LandingMediumThreshold: 2
   LandingHeavyThreshold: 5
-  RunInputMode: 1
+  RunInputMode: 0
+  AbilityContextWindowSec: 0.1
+  ClearPlanarVelocityOnDirectionalCommit: 1
+  DirectionGraceSec: 0.12
+  DirectionModifierBufferSec: 0.28
+  ShiftModifierSoftGraceSec: 0.12
+  ChordWindowSec: 0.12
+  DirectionalTimingProfile: {fileID: 0}
+  MotionWindowSec: 0.2
+  MotionCurveTailSlopeThreshold: 0.5
+  DefaultLinearDecayDuration: 0.15
+  DefaultExpDecayHalfLife: 0.25
+  DefaultTapWindowSec: 0.15
+  DefaultEndTailNormalizedStart: 0.6

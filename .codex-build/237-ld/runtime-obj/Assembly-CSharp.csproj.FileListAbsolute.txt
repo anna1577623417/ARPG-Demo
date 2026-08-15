@@ -1,0 +1,10 @@
+F:\Code\UnityProject\Core-Drive Action\Assets\GameMain\Scripts\.codex-build\237-ld\runtime\Assembly-CSharp.dll
+F:\Code\UnityProject\Core-Drive Action\Assets\GameMain\Scripts\.codex-build\237-ld\runtime\Assembly-CSharp.pdb
+F:\Code\UnityProject\Core-Drive Action\Assets\GameMain\Scripts\.codex-build\237-ld\runtime\Unity.StarterAssets.Editor.pdb
+F:\Code\UnityProject\Core-Drive Action\Assets\GameMain\Scripts\.codex-build\237-ld\runtime\URPWizard.pdb
+F:\Code\UnityProject\Core-Drive Action\Assets\GameMain\Scripts\.codex-build\237-ld\runtime\Unity.StarterAssets.pdb
+F:\Code\UnityProject\Core-Drive Action\Assets\GameMain\Scripts\.codex-build\237-ld\runtime-obj\Assembly-CSharp.csproj.AssemblyReference.cache
+F:\Code\UnityProject\Core-Drive Action\Assets\GameMain\Scripts\.codex-build\237-ld\runtime-obj\Assembly-CSharp.csproj.CoreCompileInputs.cache
+F:\Code\UnityProject\Core-Drive Action\Assets\GameMain\Scripts\.codex-build\237-ld\runtime-obj\Assembly.44154EF1.Up2Date
+F:\Code\UnityProject\Core-Drive Action\Assets\GameMain\Scripts\.codex-build\237-ld\runtime-obj\Assembly-CSharp.dll
+F:\Code\UnityProject\Core-Drive Action\Assets\GameMain\Scripts\.codex-build\237-ld\runtime-obj\Assembly-CSharp.pdb

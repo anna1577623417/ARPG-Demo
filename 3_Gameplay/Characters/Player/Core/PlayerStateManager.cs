@@ -66,6 +66,11 @@ public class PlayerStateManager : EntityStateManager<Player>, IEntityIntentArbit
         WriteControlOwnerObservable();
     }
 
+    protected override void OnPostLogicUpdate(float deltaTime)
+    {
+        Entity?.TickFacingCommitGate();
+    }
+
     public FrameContext BuildFrameContext(float deltaTime) => Entity.BuildFrameContext(deltaTime);
 
     public InputSnapshot BuildInputSnapshot(in GameplayIntent intent) => BuildPlayerInputSnapshot(in intent);

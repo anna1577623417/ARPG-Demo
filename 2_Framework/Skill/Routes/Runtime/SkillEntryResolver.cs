@@ -497,7 +497,9 @@ internal sealed class SkillEntryResolver
         }
 
         return TryPickGroupRoute(
+            slot,
             group,
+            ctxGroupDef,
             in intent,
             in inputSnapshot,
             in ctx,
@@ -587,7 +589,9 @@ internal sealed class SkillEntryResolver
     }
 
     bool TryPickGroupRoute(
+        SkillEntrySlot slot,
         SkillGroupDefinition group,
+        SkillContextGroupDefinition contextGroup,
         in GameplayIntent intent,
         in InputSnapshot inputSnapshot,
         in SkillRouteContext ctx,
@@ -602,6 +606,18 @@ internal sealed class SkillEntryResolver
         var owner = _host.LegacyPlayer;
         var isMotionModeForDiag = false;
         var pulseAxisForDiag = Vector2.zero;
+        var skipMatchLog = false;
+
+        if (owner != null
+            && owner.TryGetFrozenDirectionalEntry(out var frozen)
+            && frozen.ShouldReuse(slot, group, intent.TimeStamp, _host.ActiveRouteRuntime))
+        {
+            resolvedDir = frozen.Slot;
+            picked = frozen.Route != null ? frozen.Route : group.SelectByDirection(frozen.Slot);
+            hadDirectionalPick = true;
+            isMotionModeForDiag = frozen.Mode == DirectionalContextMode.MotionForward;
+            skipMatchLog = true;
+        }
 
         var useDirectional = semantic == InputSemanticType.Directional
             || semantic == InputSemanticType.Tap
@@ -609,9 +625,9 @@ internal sealed class SkillEntryResolver
 
         SkillRouteDebug.LogDodge8(owner, group, "PickBegin",
             $"semantic={semantic} axis={intent.DirectionAxis} buffer={inputSnapshot.MoveBuffered} " +
-            $"neutralFallback={group.UseFallbackOnNeutral}");
+            $"neutralFallback={group.UseFallbackOnNeutral} frozen={skipMatchLog}");
 
-        if (useDirectional)
+        if (!skipMatchLog && useDirectional)
         {
             const float dirDeadzoneSq = 0.0001f;
             var axis = intent.DirectionAxis.sqrMagnitude > dirDeadzoneSq
@@ -635,19 +651,63 @@ internal sealed class SkillEntryResolver
                     SkillRouteDebug.LogDodge8(owner, group, "Pick",
                         $"motion→MotionForwardRoute route={picked.name}");
                     DodgeChord8Probe.LogPick("Motion", resolvedDir, picked.name);
+                    var holdDur = owner.InputContext.MoveHoldDurationSec(Time.time);
+                    var motionChordWin = owner.LocomotionProfile != null && owner.LocomotionProfile.Tuning != null
+                        ? owner.LocomotionProfile.Tuning.ChordWindowSec
+                        : 0.12f;
+                    SkillGroupTurn237Probe.ObservePick(
+                        owner,
+                        slot,
+                        group,
+                        resolvedDir,
+                        resolvedDir,
+                        reframed: false,
+                        picked,
+                        isMotionMode: true,
+                        holdDur,
+                        motionChordWin,
+                        axis);
+                    var motionCtx = new DirectionalContextResult(
+                        true,
+                        DirectionalContextMode.MotionForward,
+                        resolvedDir,
+                        axis,
+                        owner.ResolveCameraRelativeWorldDirection(axis),
+                        owner.DesiredFacing,
+                        owner.DirectionHistory.LastToken,
+                        -1f,
+                        usedLiveLogic: false,
+                        failReason: null);
+                    DirectionAuthority237Probe.ObserveCtxMatch(
+                        owner, slot, group, in motionCtx, picked, isMotionMode: true);
+                    owner.CaptureDirectionalActionEntry(
+                        DirectionalActionEntry.Capture(slot, group, picked, in motionCtx, intent.TimeStamp));
                 }
                 else
                 {
+                    DirectionalContextResult context = default;
                     if (owner != null)
                     {
                         picked = DirectionalRouteMotionBinding.SelectRouteForChord(
-                            group, axis, owner, out resolvedDir);
+                            group, axis, owner, slot, contextGroup, out resolvedDir, out context);
                         SkillRouteDebug.LogDodge8(owner, group, "SplitFrame",
-                            $"input={group.DirectionalInputFrame} motion={group.ResolveMotionCurveBasis(picked?.FirstStage()?.Action?.MotionProfile)}");
+                            $"input={group.DirectionalInputFrame} motion={group.ResolveMotionCurveBasis(picked?.FirstStage()?.Action?.MotionProfile)} mode={context.Mode}");
                     }
                     else
                     {
-                        picked = group.SelectByDirection(resolvedDir);
+                        context = DirectionalContextResolver.Resolve(
+                            InputClock.UnscaledNow,
+                            history: null,
+                            DirectionalTimingProfileSO.Standard,
+                            group.DirectionalInputFrame,
+                            axis,
+                            new Vector3(axis.x, 0f, axis.y),
+                            Vector3.forward);
+                        if (context.Success)
+                        {
+                            resolvedDir = context.Slot;
+                            picked = group.SelectByDirection(resolvedDir);
+                        }
                     }
 
                     if (picked == null)
@@ -681,6 +741,12 @@ internal sealed class SkillEntryResolver
                                 picked.name,
                                 "move_still_held_but_chord_picked");
                         }
+                    }
+
+                    if (owner != null && context.Success)
+                    {
+                        owner.CaptureDirectionalActionEntry(
+                            DirectionalActionEntry.Capture(slot, group, picked, in context, intent.TimeStamp));
                     }
                 }
             }
@@ -720,25 +786,31 @@ internal sealed class SkillEntryResolver
             ? owner.LocomotionProfile.Tuning.ChordWindowSec
             : 0.12f;
         DirectionalInputDiagProbe.NotifyResolvedDir(resolvedDir);
-        DirectionalInputDiagProbe.LogPick(
-            owner,
-            group,
-            semantic,
-            pulseAxisForDiag,
-            isMotionModeForDiag,
-            resolvedDir,
-            picked != null ? picked.name : null,
-            ctxHoldDur,
-            chordWin);
+        if (!skipMatchLog)
+        {
+            DirectionalInputDiagProbe.LogPick(
+                owner,
+                group,
+                semantic,
+                pulseAxisForDiag,
+                isMotionModeForDiag,
+                resolvedDir,
+                picked != null ? picked.name : null,
+                ctxHoldDur,
+                chordWin);
+        }
 
         if (_host.TryPickRouteDefinition(picked, in ctx, out runtime))
         {
-            var dirNote = hadDirectionalPick ? $" chord={resolvedDir}" : string.Empty;
-            SkillRouteDebug.LogDirectional4(
-                owner, group, "Unit",
-                $"PICK Group={group.name} child={picked.name} semantic={semantic}{dirNote}");
-            SkillRouteDebug.LogDodge8(owner, group, "Resolved",
-                $"route={picked.name}{dirNote} semantic={semantic}");
+            if (!skipMatchLog)
+            {
+                var dirNote = hadDirectionalPick ? $" chord={resolvedDir}" : string.Empty;
+                SkillRouteDebug.LogDirectional4(
+                    owner, group, "Unit",
+                    $"PICK Group={group.name} child={picked.name} semantic={semantic}{dirNote}");
+                SkillRouteDebug.LogDodge8(owner, group, "Resolved",
+                    $"route={picked.name}{dirNote} semantic={semantic}");
+            }
             return true;
         }
 

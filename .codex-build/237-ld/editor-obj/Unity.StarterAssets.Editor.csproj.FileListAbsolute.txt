@@ -1,0 +1,8 @@
+F:\Code\UnityProject\Core-Drive Action\Assets\GameMain\Scripts\.codex-build\237-ld\editor\Unity.StarterAssets.Editor.dll
+F:\Code\UnityProject\Core-Drive Action\Assets\GameMain\Scripts\.codex-build\237-ld\editor\Unity.StarterAssets.Editor.pdb
+F:\Code\UnityProject\Core-Drive Action\Assets\GameMain\Scripts\.codex-build\237-ld\editor\Unity.StarterAssets.pdb
+F:\Code\UnityProject\Core-Drive Action\Assets\GameMain\Scripts\.codex-build\237-ld\editor-obj\Unity.StarterAssets.Editor.csproj.AssemblyReference.cache
+F:\Code\UnityProject\Core-Drive Action\Assets\GameMain\Scripts\.codex-build\237-ld\editor-obj\Unity.StarterAssets.Editor.csproj.CoreCompileInputs.cache
+F:\Code\UnityProject\Core-Drive Action\Assets\GameMain\Scripts\.codex-build\237-ld\editor-obj\Unity.St.22EBAEB8.Up2Date
+F:\Code\UnityProject\Core-Drive Action\Assets\GameMain\Scripts\.codex-build\237-ld\editor-obj\Unity.StarterAssets.Editor.dll
+F:\Code\UnityProject\Core-Drive Action\Assets\GameMain\Scripts\.codex-build\237-ld\editor-obj\Unity.StarterAssets.Editor.pdb

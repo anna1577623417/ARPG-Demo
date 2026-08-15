@@ -31,6 +31,9 @@ public sealed class SkillContextGroupDefinition : ScriptableObject
                               "Grounded/Airborne/HasTarget 等用 GateRule 资产，不再使用散列 bool。")]
     AbilityGateRuleSO[] abilityGateRules;
 
+    [SerializeField, Tooltip("237 L1：方向意图时间窗。为空则回落 LocomotionTuning.DirectionalTimingProfile，再回落代码默认 Pre=0.10。")]
+    DirectionalTimingProfileSO timingProfile;
+
     [SerializeField, Tooltip("数值越小越先匹配。")]
     int priority;
 
@@ -56,6 +59,7 @@ public sealed class SkillContextGroupDefinition : ScriptableObject
     public InputSemanticType RequiredSemantic => requiredSemantic;
     public MoveDirection8 RequiredMoveDirection => requiredMoveDirection;
     public AbilityGateRuleSO[] AbilityGateRules => abilityGateRules;
+    public DirectionalTimingProfileSO TimingProfile => timingProfile;
     public int Priority => priority;
 
     public bool Matches(SkillEntrySlot slot, InputSemanticType semantic, in CombatContextSnapshot ctx)

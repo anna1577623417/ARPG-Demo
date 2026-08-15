@@ -1,7 +1,7 @@
 using NUnit.Framework;
 using UnityEngine;
 
-/// <summary>209.3 L1 — SplitFrame 输入分轨真值表（EditMode）。</summary>
+/// <summary>209.3 / 237 L3 — SplitFrame 输入分轨。LogicProjected 吃传入 basis，不读 live Logic。</summary>
 public sealed class DirectionalFrameResolverTests
 {
     [Test]
@@ -10,15 +10,39 @@ public sealed class DirectionalFrameResolverTests
         var dir = DirectionalFrameResolver.ResolveInputChord(
             DirectionalInputFrame.BodyFixed,
             new Vector2(1f, 0f),
-            owner: null);
+            worldDir: Vector3.right,
+            basisFacing: Vector3.forward);
 
         Assert.AreEqual(DirectionalRouteType.Right, dir);
     }
 
     [Test]
+    public void LogicProjected_OldBasis_DWorldRight_RightSlot()
+    {
+        var dir = DirectionalFrameResolver.ResolveInputChord(
+            DirectionalInputFrame.LogicProjected,
+            new Vector2(1f, 0f),
+            worldDir: Vector3.right,
+            basisFacing: Vector3.forward);
+
+        Assert.AreEqual(DirectionalRouteType.Right, dir);
+    }
+
+    [Test]
+    public void LogicProjected_AlignedBasis_DWorldRight_ForwardSlot()
+    {
+        var dir = DirectionalFrameResolver.ResolveInputChord(
+            DirectionalInputFrame.LogicProjected,
+            new Vector2(1f, 0f),
+            worldDir: Vector3.right,
+            basisFacing: Vector3.right);
+
+        Assert.AreEqual(DirectionalRouteType.Forward, dir);
+    }
+
+    [Test]
     public void LogicProjected_CameraFacesCharacter_DKey_LeftSlot()
     {
-        // camFwd ≈ -logicFwd → camera-right in world ≈ -character-right
         var dir = InputChordResolver.ResolveRelativeToLogicForward(
             Vector3.left,
             Vector3.forward,
@@ -37,4 +61,40 @@ public sealed class DirectionalFrameResolverTests
 
         Assert.AreEqual(DirectionalRouteType.Right, dir);
     }
+
+#pragma warning disable CS0618
+    [Test]
+    public void CharacterStick_DKey_SameAsBodyFixed()
+    {
+        var stick = DirectionalFrameResolver.ResolveInputChord(
+            DirectionalInputFrame.CharacterStick,
+            new Vector2(1f, 0f),
+            worldDir: Vector3.right,
+            basisFacing: Vector3.forward);
+        var body = DirectionalFrameResolver.ResolveInputChord(
+            DirectionalInputFrame.BodyFixed,
+            new Vector2(1f, 0f),
+            worldDir: Vector3.right,
+            basisFacing: Vector3.forward);
+        Assert.AreEqual(body, stick);
+        Assert.AreEqual(DirectionalRouteType.Right, stick);
+    }
+
+    [Test]
+    public void WorldStick_DKey_SameAsBodyFixed()
+    {
+        var world = DirectionalFrameResolver.ResolveInputChord(
+            DirectionalInputFrame.WorldStick,
+            new Vector2(1f, 0f),
+            worldDir: Vector3.forward,
+            basisFacing: Vector3.forward);
+        var body = DirectionalFrameResolver.ResolveInputChord(
+            DirectionalInputFrame.BodyFixed,
+            new Vector2(1f, 0f),
+            worldDir: Vector3.forward,
+            basisFacing: Vector3.forward);
+        Assert.AreEqual(body, world);
+        Assert.AreEqual(DirectionalRouteType.Right, world);
+    }
+#pragma warning restore CS0618
 }

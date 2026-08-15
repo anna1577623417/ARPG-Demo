@@ -180,6 +180,11 @@ public class LocomotionTuningSO : ScriptableObject
              "推荐 0.10–0.15s。低于此值 = 玩家把方向键当 Space 的修饰符。")]
     [Range(0.05f, 0.30f)] public float ChordWindowSec = 0.12f;
 
+    [Header("237 Direction Intent Timing")]
+    [Tooltip("方向意图 PreTrigger / FacingCommitDelay。为空则代码默认 Pre=0.10。\n" +
+             "【不是】ChordWindowSec。L1 只读解析；PostTrigger / ReleaseGrace 未接线。")]
+    public DirectionalTimingProfileSO DirectionalTimingProfile;
+
     [Tooltip("方向键按下到 Space 按下的间隔 ≥ 此时间 → Motion 态（沿 LogicForward F-Dodge）。\n" +
              "推荐 0.18–0.25s。高于此值 = 玩家已经在跑步，dodge 沿当前移动方向。\n" +
              "灰色地带 (Chord, Motion) 默认归 Chord，响应更灵敏。")]

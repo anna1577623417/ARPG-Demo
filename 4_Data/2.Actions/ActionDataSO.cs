@@ -155,6 +155,14 @@ public partial class ActionDataSO : ScriptableObject
     [Tooltip("196.x — Recovery 期间 Jump Intent 锁定秒数。语义同上；推荐 0（立即可跳）。")]
     public float RecoveryJumpLockSeconds = -1f;
 
+    [Header("Facing Policy (237 L5)")]
+    [Tooltip(
+        "动作期间 CommittedFacing 策略。与 SkillGroup 的 Directional Input Frame 正交：本字段不选槽。\n" +
+        "PreserveEntryFacing：位移可侧向，朝向锁在进入时（八向 Dodge / Slide 默认）。\n" +
+        "FaceMotionAtEntry：进入时提交到本次位移方向。\n" +
+        "TrackTarget：面向锁定目标。本版不接 LockOn，运行时按 PreserveEntry 处理并打 OPEN。")]
+    public ActionFacingPolicy FacingPolicy = ActionFacingPolicy.PreserveEntryFacing;
+
     [Header("Rotation Input (198.3) — 默认禁用")]
     [Tooltip("198.3 — 动作期间玩家方向输入触发转向/移动的总开关。\n" +
              "  ✗（默认）→ 即使 Window 配了 AllowFacing/AllowMove，玩家输入仍完全屏蔽（修复 198.2 转向 bug）\n" +

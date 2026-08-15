@@ -75,6 +75,15 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
     bool m_isInitialized;
 
     Vector3 m_logicForward = Vector3.forward;
+    Vector3 m_desiredFacing = Vector3.forward;
+    readonly DirectionInputHistory m_directionHistory = new DirectionInputHistory();
+    readonly FacingCommitGate m_facingCommitGate = new FacingCommitGate();
+    readonly OrientationAuthority m_orientation = new OrientationAuthority();
+    LocomotionRuntimeContext m_locoContext;
+    ActionFacingPolicyResolution m_lastActionFacingResolution;
+    Vector3 m_lastHoldRedirectDesired;
+    bool m_hasHoldRedirectRequest;
+    DirectionalActionEntry m_directionalActionEntry;
     VisualFacingDriver m_visualFacing;
     InputTense m_currentInputTense = InputTense.Idle;
     int m_logicForwardLockCount;
@@ -189,6 +198,20 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
     public Vector3 PendingFacing => m_pendingFacing;
     /// <summary>184.1 Layer 2 — 逻辑朝向（Gameplay 唯一权威）。</summary>
     public Vector3 LogicForward => m_logicForward;
+    /// <summary>237 L5 — Visual 只读 Authority 输出，不再擅自 hard-snap 一份未仲裁 Logic。</summary>
+    public Vector3 PresentationFacing => m_orientation.PresentationFacing;
+    public OrientationAuthority Orientation => m_orientation;
+    /// <summary>237 L1/L2/LA — 当帧期望朝向。CommittedFacing 由 Gate 到期或 HoldRedirect 写入。</summary>
+    public Vector3 DesiredFacing => m_desiredFacing;
+    public DirectionInputHistory DirectionHistory => m_directionHistory;
+    public FacingCommitGate FacingCommit => m_facingCommitGate;
+    /// <summary>237.3 LA — 只读运动事实。不驱动动画或状态。</summary>
+    public LocomotionRuntimeContext LocomotionRuntime => m_locoContext;
+    /// <summary>237.3 LB — 最近一次 Action Enter 的作者 Policy 与生效 Policy。</summary>
+    public ActionFacingPolicyResolution LastActionFacingResolution => m_lastActionFacingResolution;
+    public DirectionalActionEntry FrozenDirectionalEntry => m_directionalActionEntry;
+    public DirectionalIntent CurrentDirectionalIntent =>
+        new DirectionalIntent(InputReader != null ? InputReader.MoveInput : Vector2.zero, m_desiredFacing, (InputReader != null ? InputReader.MoveInput : Vector2.zero).magnitude);
     public new Vector3 Forward => m_logicForward;
     public Transform VisualRoot => visualRoot;
     public Quaternion VisualRotation =>
@@ -214,8 +237,9 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
     }
 
     /// <summary>
-    /// 235.2：PlayerController 在写入当帧 MovementIntent 前调用。
-    /// 大角差 Cue 同帧提交 Gameplay Facing；速度响应与 KCC 继续结算，Clip 只拥有有限 Presentation Lease。
+    /// 235.2 / 237 L2：PlayerController 在写入当帧 MovementIntent 前调用。
+    /// L2 起 Down 当帧不再提交 Gameplay Facing，也不发 Turn Cue。
+    /// Cue 改到 FacingCommitGate 到期与 Commit 同点；速度响应与 KCC 仍当帧结算。
     /// </summary>
     public void SubmitTurnCompensationCommand(Vector3 worldCommand, bool hasMoveInput)
     {
@@ -264,50 +288,6 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
                 IsLockedOn ? "lock_on_suppressed" : "directional_suppressed");
             return;
         }
-
-        if (!TurnCompensationResolver.TryResolve(
-                m_logicForward,
-                worldCommand,
-                enabled,
-                IsLockedOn,
-                m_inputContext.DirectionalCommitted,
-                tuning != null ? tuning.Turn90ThresholdDeg : 70f,
-                tuning != null ? tuning.Turn180ThresholdDeg : 135f,
-                nextGeneration,
-                Time.frameCount,
-                tuning != null && tuning.Turn90PresentationLease > 0.0001f
-                    ? tuning.Turn90PresentationLease
-                    : 0.16f,
-                tuning != null && tuning.Turn180PresentationLease > 0.0001f
-                    ? tuning.Turn180PresentationLease
-                    : 0.24f,
-                out var cue))
-        {
-            var command = new Vector3(worldCommand.x, 0f, worldCommand.z);
-            var signed = command.sqrMagnitude > 0.0001f
-                ? Vector3.SignedAngle(m_logicForward, command.normalized, Vector3.up)
-                : 0f;
-            var noTurn = TurnIntentBuilder.CreateNonTurning(Mathf.Abs(signed), signed);
-            LocomotionTurnPresentation235Probe.ObserveDecision(
-                this,
-                in noTurn,
-                enabled ? "TurnCompensationResolver.below_threshold" : "TurnCompensationResolver.suppressed");
-            return;
-        }
-
-        m_nextTurnCompensationGeneration = nextGeneration;
-        m_turnCompensationCue = cue;
-        if (cue.IsTurning)
-        {
-            // 235.2：逻辑方向即时提交，但禁止清速度、禁止创建零位移门。
-            // 当前/下一 State Logic 继续用统一速度响应与 KCC 结算；重复写同方向不会产生第二次空间旋转。
-            SetLogicForward(worldCommand, "TurnCompensation.ImmediateCommit");
-        }
-        var turnInfo = cue.ToTurnInfo();
-        LocomotionTurnPresentation235Probe.ObserveDecision(
-            this,
-            in turnInfo,
-            cue.IsTurning ? "TurnCompensationResolver.fire" : "TurnCompensationResolver.cancel_only");
     }
 
     public bool TryGetTurnCompensationCueAfter(uint consumedGeneration, out TurnCompensationCue cue)
@@ -345,6 +325,62 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
 
         source = States?.Current != null ? States.Current.StateId.ToString() : "NoState";
         return false;
+    }
+
+    void TryFireTurnCompensationAfterGateCommit(Vector3 prevCommitted, Vector3 newCommitted, int token)
+    {
+        if (token > 0
+            && m_directionHistory.TryGetOwner(token, out var owner)
+            && owner == DirectionTokenOwner.SkillChord)
+        {
+            return;
+        }
+
+        if (!CanStartTurnCompensationFromCurrentState(out _))
+        {
+            return;
+        }
+
+        var tuning = locomotionProfile != null ? locomotionProfile.Tuning : null;
+        var settings = States != null ? States.LocomotionTurnSettings : TurnSettings.Default;
+        var enabled = settings.EnableTurnInPlacePresentation
+                      && (tuning == null || tuning.EnableMovingTurnCompensation);
+        if (!enabled || IsLockedOn || m_inputContext.DirectionalCommitted)
+        {
+            return;
+        }
+
+        var nextGeneration = m_nextTurnCompensationGeneration + 1U;
+        if (!TurnCompensationResolver.TryResolve(
+                prevCommitted,
+                newCommitted,
+                enabled,
+                IsLockedOn,
+                m_inputContext.DirectionalCommitted,
+                tuning != null ? tuning.Turn90ThresholdDeg : 70f,
+                tuning != null ? tuning.Turn180ThresholdDeg : 135f,
+                nextGeneration,
+                Time.frameCount,
+                tuning != null && tuning.Turn90PresentationLease > 0.0001f
+                    ? tuning.Turn90PresentationLease
+                    : 0.16f,
+                tuning != null && tuning.Turn180PresentationLease > 0.0001f
+                    ? tuning.Turn180PresentationLease
+                    : 0.24f,
+                out var cue)
+            || !cue.IsTurning)
+        {
+            return;
+        }
+
+        m_nextTurnCompensationGeneration = nextGeneration;
+        m_turnCompensationCue = cue;
+        SkillGroupTurn237Probe.ObserveCue(this, in cue, "FacingCommitGate.Expire");
+        DirectionAuthority237Probe.ObserveTurnCue(this, in cue, "FacingCommitGate.Expire");
+        LocomotionTurnPresentation235Probe.ObserveDecision(
+            this,
+            cue.ToTurnInfo(),
+            "TurnCompensationResolver.gate_expire");
     }
     public void SetLocomotionPresentation(in LocomotionPresentationSnapshot snapshot) => m_locoPresentation = snapshot;
 
@@ -388,7 +424,51 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
         return MotionSpaceBasis.ResolvePlanarForward(this, m_movementContext, space);
     }
 
-    /// <summary>Motion 管道专用 LogicForward 写入；绕过 InputContext 冻结与 Stop 锁。</summary>
+    /// <summary>237 L6 — 进入 Action 时冻结 Motion 参考系。Tick 不得再解析 live Transform。</summary>
+    public MotionFrameSnapshot BuildMotionFrame(ActionDataSO action, SkillGroupDefinition group)
+    {
+        var profile = action != null ? action.MotionProfile : null;
+        var space = group != null
+            ? group.ResolveMotionCurveBasis(profile)
+            : profile != null ? profile.MotionSpace : MotionSpace.CharacterForward;
+
+        Vector3 forward;
+        if (TryGetFrozenDirectionalEntry(out var entry) && entry.IsValid)
+        {
+            switch (space)
+            {
+                case MotionSpace.CameraForward:
+                    forward = PlanarizeFacing(
+                        entry.WorldDir.sqrMagnitude > 0.0001f ? entry.WorldDir : entry.BasisFacing);
+                    break;
+                case MotionSpace.WorldSpace:
+                    forward = Vector3.forward;
+                    break;
+                case MotionSpace.LockTarget:
+                    forward = TryGetLockTargetPlanarForward(out var lockFwd)
+                        ? lockFwd
+                        : PlanarizeFacing(entry.BasisFacing);
+                    break;
+                default:
+                    forward = PlanarizeFacing(entry.BasisFacing);
+                    break;
+            }
+        }
+        else
+        {
+            forward = ResolveMotionPlanarForward(space);
+        }
+
+        var frame = MotionFrameSnapshot.Freeze(forward, space);
+        if (!frame.IsValid)
+        {
+            DirectionAuthority237Probe.ObserveMotionFail(this, "no_frame");
+        }
+
+        return frame;
+    }
+
+    /// <summary>Motion 管道朝向请求。Action 租约内不再改 Committed；FaceMotion 只在 Enter 提交一次。</summary>
     public void SetLogicForwardFromMotion(
         Vector3 dir,
         RotationMode mode,
@@ -397,26 +477,12 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
     {
         _ = mode;
         _ = worldDelta;
-        _ = source;
-        var planar = PlanarizeFacing(dir);
-        var prev = m_logicForward;
-        if (Vector3.Angle(prev, planar) < 0.05f)
+        if (m_orientation.HasActionLease)
         {
             return;
         }
 
-        m_logicForward = planar;
-
-        if (visualRoot != null && visualRoot != transform)
-        {
-            var visualWorldRot = visualRoot.rotation;
-            transform.rotation = Quaternion.LookRotation(m_logicForward, Vector3.up);
-            visualRoot.rotation = visualWorldRot;
-        }
-        else
-        {
-            transform.rotation = Quaternion.LookRotation(m_logicForward, Vector3.up);
-        }
+        RequestFacing(FacingLeaseOwner.Action, dir, source ?? "Motion");
     }
 
     static Vector3 PlanarizeFacing(Vector3 dir)
@@ -433,6 +499,274 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
     public RotationArbitrationPolicy CurrentRotationPolicy()
         => m_inputContext.ResolvePolicy(Time.time);
 
+    /// <summary>237 L1/L2 — MoveDown：写入 History Token 与 DesiredFacing，打开 Commit Gate，不写 CommittedFacing。</summary>
+    public int NotifyDirectionIntentDown(Vector2 raw, Vector3 worldDir, Vector3 basisFacing, float cameraYaw)
+    {
+        var desired = PlanarizeFacing(worldDir);
+        m_desiredFacing = desired;
+        var token = m_directionHistory.PushDown(raw, desired, PlanarizeFacing(basisFacing), cameraYaw);
+        var timing = ResolveDirectionalTiming();
+        var delay = m_facingCommitGate.Open(token, desired, timing.FacingCommitDelaySec, out var clamped);
+        if (clamped)
+        {
+            DirectionAuthority237Probe.ObserveDelayClamp(this, timing.FacingCommitDelaySec, delay);
+        }
+
+        m_hasHoldRedirectRequest = false;
+        m_lastHoldRedirectDesired = Vector3.zero;
+        RefreshLocomotionRuntimeContext(raw, desired);
+        return token;
+    }
+
+    /// <summary>
+    /// 237 L1 / 237.3 LA — 持有期间刷新 DesiredTravel/DesiredFacing。
+    /// Gate pending 只 RefreshDesired；Gate 已关且夹角足够则 RequestFacing(HoldRedirect)，不 PushDown、不开 Gate、不打 Turn Cue。
+    /// </summary>
+    public void TickDesiredFacing(Vector2 raw, Vector3 worldDir, float deadzone)
+    {
+        if (raw.sqrMagnitude <= deadzone * deadzone)
+        {
+            RefreshLocomotionRuntimeContext(raw, Vector3.zero);
+            return;
+        }
+
+        var desiredTravel = PlanarizeFacing(worldDir);
+        m_desiredFacing = desiredTravel;
+        RefreshLocomotionRuntimeContext(raw, desiredTravel);
+
+        if (m_facingCommitGate.IsPending)
+        {
+            m_facingCommitGate.RefreshDesired(m_desiredFacing);
+            return;
+        }
+
+        TryRequestHoldRedirectFacing();
+    }
+
+    /// <summary>237.3 LA — 每帧填充五列事实。worldDir 有输入时即 DesiredTravel。</summary>
+    public void RefreshLocomotionRuntimeContext(Vector2 raw, Vector3 worldDir)
+    {
+        var desiredTravel = raw.sqrMagnitude > 0.0001f
+            ? PlanarizeFacing(worldDir)
+            : Vector3.zero;
+        var vel = PlanarVelocity;
+        vel.y = 0f;
+        var actualTravel = vel.sqrMagnitude > 0.0001f ? vel.normalized : Vector3.zero;
+        m_locoContext = new LocomotionRuntimeContext(
+            raw,
+            desiredTravel,
+            actualTravel,
+            m_desiredFacing,
+            m_logicForward);
+    }
+
+    void TryRequestHoldRedirectFacing()
+    {
+        var minDelta = ResolveDirectionalTiming().RedirectFacingMinDeltaDeg;
+        if (minDelta < 0.05f)
+        {
+            minDelta = 1f;
+        }
+
+        if (Vector3.Angle(m_desiredFacing, m_logicForward) + 0.0001f < minDelta)
+        {
+            return;
+        }
+
+        if (m_hasHoldRedirectRequest
+            && Vector3.Angle(m_desiredFacing, m_lastHoldRedirectDesired) + 0.0001f < minDelta)
+        {
+            return;
+        }
+
+        m_hasHoldRedirectRequest = true;
+        m_lastHoldRedirectDesired = m_desiredFacing;
+        RequestFacing(FacingLeaseOwner.Locomotion, m_desiredFacing, "HoldRedirect");
+    }
+
+    public void ClearDirectionCandidate()
+    {
+        m_desiredFacing = m_logicForward;
+        m_directionHistory.Reset();
+        m_facingCommitGate.Clear();
+        m_hasHoldRedirectRequest = false;
+        m_lastHoldRedirectDesired = Vector3.zero;
+        ClearFrozenDirectionalEntry();
+    }
+
+    /// <summary>237 L3 — Trigger 选槽冻结。同一 Intent Peek 与 Action 内禁止再 PICK。</summary>
+    public void CaptureDirectionalActionEntry(in DirectionalActionEntry entry)
+    {
+        m_directionalActionEntry = entry;
+    }
+
+    public void BindDirectionalActionEntryToAction()
+    {
+        if (!m_directionalActionEntry.IsValid)
+        {
+            return;
+        }
+
+        m_directionalActionEntry = m_directionalActionEntry.BindToAction();
+        ClaimSkillDirectionToken(m_directionalActionEntry.Token);
+    }
+
+    /// <summary>237 L4 — 八向成功进入后 Claim 本次 Edge，取消 pending Gate / Cue。</summary>
+    public void ClaimSkillDirectionToken(int token)
+    {
+        if (token <= 0)
+        {
+            DirectionAuthority237Probe.ObserveClaimOpen(this, token, "empty_token");
+            return;
+        }
+
+        if (!m_directionHistory.TryClaim(token, DirectionTokenOwner.SkillChord, out var existing))
+        {
+            DirectionAuthority237Probe.ObserveClaimFail(this, token, existing);
+            if (existing == DirectionTokenOwner.SkillChord)
+            {
+                m_facingCommitGate.Clear();
+                ClearTurnCompensationCue("skill_claim_already");
+            }
+
+            return;
+        }
+
+        m_facingCommitGate.Clear();
+        ClearTurnCompensationCue("skill_claim");
+        DirectionAuthority237Probe.ObserveClaim(
+            this, token, DirectionTokenOwner.SkillChord, cancelTurn: true);
+    }
+
+    public void NotifyDirectionalActionEnd()
+    {
+        var leftoverCue = m_turnCompensationCue.IsTurning;
+        var claimed = DirectionTokenOwner.None;
+        var token = m_directionalActionEntry.IsValid
+            ? m_directionalActionEntry.Token
+            : m_directionHistory.LastToken;
+        if (token > 0)
+        {
+            m_directionHistory.TryGetOwner(token, out claimed);
+        }
+
+        if (claimed == DirectionTokenOwner.SkillChord && leftoverCue)
+        {
+            ClearTurnCompensationCue("action_end_claimed");
+        }
+
+        DirectionAuthority237Probe.ObserveActionEnd(this, leftoverCue, claimed);
+    }
+
+    public void ClearFrozenDirectionalEntry()
+    {
+        m_directionalActionEntry = default;
+        DirectionAuthority237Probe.ResetMatchKey();
+    }
+
+    public bool TryGetFrozenDirectionalEntry(out DirectionalActionEntry entry)
+    {
+        entry = m_directionalActionEntry;
+        return entry.IsValid;
+    }
+
+    /// <summary>237 L2/L4 — Skill Resolve 之后：未 Claim 的 Gate 到期才 Commit，并先 Claim 再发 Cue。HoldRedirect 不走本方法。</summary>
+    public void TickFacingCommitGate()
+    {
+        if (!m_facingCommitGate.IsPending)
+        {
+            return;
+        }
+
+        var gateToken = m_facingCommitGate.Token;
+        if (gateToken > 0
+            && m_directionHistory.TryGetOwner(gateToken, out var claimed)
+            && claimed == DirectionTokenOwner.SkillChord)
+        {
+            m_facingCommitGate.Clear();
+            return;
+        }
+
+        if (States?.Current is PlayerActionState)
+        {
+            if (m_facingCommitGate.AgeUnscaled + 0.0001f >= m_facingCommitGate.DelaySec)
+            {
+                DirectionAuthority237Probe.ObserveFacingReq(
+                    this,
+                    FacingLeaseOwner.Locomotion,
+                    m_orientation.ActionPolicy,
+                    granted: false,
+                    deny: "ActionLease",
+                    source: "FacingCommitGate.Expire");
+            }
+
+            return;
+        }
+
+        if (IsLogicForwardLocked)
+        {
+            return;
+        }
+
+        if (m_facingCommitGate.AgeUnscaled + 0.0001f < m_facingCommitGate.DelaySec)
+        {
+            return;
+        }
+
+        var expireOwner = ClassifyExpiredTokenOwner(m_facingCommitGate.AgeUnscaled);
+        if (!m_facingCommitGate.TryExpire(out var commitDir, out var token))
+        {
+            return;
+        }
+
+        if (token > 0)
+        {
+            if (!m_directionHistory.TryClaim(token, expireOwner, out var existing))
+            {
+                DirectionAuthority237Probe.ObserveClaimFail(this, token, existing);
+                if (existing == DirectionTokenOwner.SkillChord)
+                {
+                    return;
+                }
+            }
+            else
+            {
+                DirectionAuthority237Probe.ObserveClaim(this, token, expireOwner, cancelTurn: false);
+            }
+        }
+
+        var prev = m_logicForward;
+        if (!RequestFacing(FacingLeaseOwner.Locomotion, commitDir, "FacingCommitGate.Expire"))
+        {
+            return;
+        }
+
+        TryFireTurnCompensationAfterGateCommit(prev, m_logicForward, token);
+    }
+
+    DirectionTokenOwner ClassifyExpiredTokenOwner(float ageUnscaled)
+    {
+        var tapMax = ResolveDirectionalTiming().TurnTapMaxDurationSec;
+        if (tapMax < 0.0001f)
+        {
+            tapMax = 0.14f;
+        }
+
+        var stillHeld = InputReader != null && InputReader.MoveInput.sqrMagnitude > 0.0001f;
+        if (stillHeld && ageUnscaled > tapMax + 0.0001f)
+        {
+            return DirectionTokenOwner.Locomotion;
+        }
+
+        return DirectionTokenOwner.TurnTap;
+    }
+
+    public DirectionalTimingSnapshot ResolveDirectionalTiming(SkillContextGroupDefinition contextGroup = null)
+    {
+        var tuning = locomotionProfile != null ? locomotionProfile.Tuning : null;
+        return DirectionalTimingProfileSO.Resolve(contextGroup, tuning);
+    }
+
     public void CommitDirectionalInputContext(Vector2 pulseMoveBuffered)
     {
         var tuning = locomotionProfile != null ? locomotionProfile.Tuning : null;
@@ -447,6 +781,7 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
         var liveForward = PlanarizeFacing(Forward);
         var hasMoveDownBasis = m_inputContext.TryGetMoveDownPlanarForward(out var moveDownForward);
         var commitFwd = isChord && hasMoveDownBasis ? moveDownForward : liveForward;
+        var captureFwd = hasMoveDownBasis ? moveDownForward : liveForward;
         var source = isChord && hasMoveDownBasis
             ? "moveDownSnapshot@Chord"
             : "liveLogicForward@Motion";
@@ -472,12 +807,15 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
                 $"pulse=({pulseMoveBuffered.x:F2},{pulseMoveBuffered.y:F2}) holdDur={holdDur:F3}s " +
                 $"policy={CurrentRotationPolicy()}");
         }
+
+        SkillGroupTurn237Probe.ObserveCommit(this, pulseMoveBuffered, holdDur, chordWin, source, captureFwd, liveForward, commitFwd);
     }
 
     public void ClearDirectionalInputContext()
     {
         var liveMove = InputReader != null ? InputReader.MoveInput : Vector2.zero;
         m_inputContext.ClearDirectionalActionContext(liveMove, 0.12f);
+        ClearFrozenDirectionalEntry();
     }
 
     public float NormalizedSpeed
@@ -645,6 +983,7 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
 
     protected override void OnDisable()
     {
+        ClearDirectionCandidate();
         CancelAirCycle(AirCycleCancelReason.EntityDisabled, RuntimeTracePhase.LogicEnd);
         base.OnDisable();
     }
@@ -727,7 +1066,14 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
         var fwd = transform.forward;
         fwd.y = 0f;
         m_logicForward = fwd.sqrMagnitude > 0.0001f ? fwd.normalized : Vector3.forward;
+        m_desiredFacing = m_logicForward;
         m_facingIntent = m_logicForward;
+        m_orientation.BindInitial(m_logicForward);
+        m_directionHistory.Reset();
+        m_facingCommitGate.Clear();
+        m_hasHoldRedirectRequest = false;
+        m_lastHoldRedirectDesired = Vector3.zero;
+        m_directionalActionEntry = default;
 
         if (visualRoot == null && Animator != null)
         {
@@ -951,32 +1297,147 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
     public DirectionalRouteType ResolveDirectionalChord(Vector2 moveBuffered)
         => ResolveDirectionalChord(moveBuffered, out _);
 
-    /// <summary>184.1 Layer 2 — 即时逻辑朝向；VisualRoot 世界 rotation 在存在时保持不变。</summary>
-    public void SetLogicForward(Vector3 dir, string source = null)
+    /// <summary>237 L5 — 生产朝向提交。外部 SetLogicForward 走本入口；失败打 Log，禁止旁路写 Logic。</summary>
+    public bool RequestFacing(FacingLeaseOwner owner, Vector3 dir, string source)
     {
+        if (m_orientation == null)
+        {
+            DirectionAuthority237Probe.ObserveAuthorityMissing(this, source);
+            return false;
+        }
+
         if (IsLogicForwardLocked)
         {
             CameraTurn233Probe.ObserveLogicForwardRejected(this, dir, source);
             CharacterTurnDisplacement233Probe.ObserveLogicForwardRejected(this, dir, source);
+            DirectionAuthority237Probe.ObserveFacingReq(
+                this, owner, m_orientation.ActionPolicy, granted: false, deny: "LogicLock", source: source, requestedDir: dir);
+            return false;
+        }
+
+        var request = new FacingRequest(owner, dir, source, m_orientation.ActionPolicy);
+        if (!m_orientation.TryCommit(in request, out var committed, out var deny))
+        {
+            DirectionAuthority237Probe.ObserveFacingReq(
+                this, owner, m_orientation.ActionPolicy, granted: false, deny: deny, source: source, requestedDir: dir);
+            return false;
+        }
+
+        DirectionAuthority237Probe.ObserveFacingReq(
+            this, owner, m_orientation.ActionPolicy, granted: true, deny: null, source: source, requestedDir: dir);
+        ApplyCommittedFacing(committed, source);
+        return true;
+    }
+
+    /// <summary>237 L5/LB — Action Enter 吃 Resolver 的 EffectivePolicy。PreserveEntry 不改 Committed。不按 slot 写脸。</summary>
+    public void BeginActionFacingLease(ActionDataSO action, Vector3 motionFacing)
+    {
+        var authored = action != null
+            ? action.FacingPolicy
+            : ActionFacingPolicy.PreserveEntryFacing;
+        m_lastActionFacingResolution = ActionFacingPolicyResolver.Resolve(
+            authored,
+            FacingPolicyGameplayContext.Unwired);
+
+        if (m_orientation == null)
+        {
+            DirectionAuthority237Probe.ObserveAuthorityMissing(this, "ActionEnter");
             return;
         }
 
-        var planar = new Vector3(dir.x, 0f, dir.z);
-        if (planar.sqrMagnitude < 0.0001f)
+        if (action == null)
+        {
+            DirectionAuthority237Probe.ObservePolicyMissing(this);
+        }
+
+        var effective = m_lastActionFacingResolution.EffectivePolicy;
+        var denyReason = m_lastActionFacingResolution.TrackTargetOpen ? "TrackTargetOpen" : null;
+        if (!m_orientation.TryBeginActionLease(
+                effective,
+                m_logicForward,
+                motionFacing,
+                out var committed,
+                out var leaseDeny))
+        {
+            DirectionAuthority237Probe.ObserveFacingReq(
+                this,
+                FacingLeaseOwner.Action,
+                effective,
+                granted: false,
+                deny: leaseDeny ?? "ActionLease",
+                source: "ActionEnter",
+                requestedDir: motionFacing);
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(leaseDeny) && string.IsNullOrEmpty(denyReason))
+        {
+            denyReason = leaseDeny;
+        }
+
+        var requested = effective == ActionFacingPolicy.FaceMotionAtEntry
+            ? motionFacing
+            : committed;
+        DirectionAuthority237Probe.ObserveFacingReq(
+            this,
+            FacingLeaseOwner.Action,
+            effective,
+            granted: true,
+            deny: denyReason,
+            source: "ActionEnter",
+            requestedDir: requested);
+
+        if (!IsLogicForwardLocked)
+        {
+            ApplyCommittedFacing(committed, "ActionFacing.Enter");
+        }
+    }
+
+    public void EndActionFacingLease()
+    {
+        if (m_orientation == null || !m_orientation.HasActionLease)
         {
             return;
         }
 
-        planar.Normalize();
+        m_orientation.EndActionLease();
+        DirectionAuthority237Probe.ObserveVisualAuth(this, FacingLeaseOwner.Locomotion);
+        ReevaluateHeldFacingAfterAction();
+    }
+
+    void ReevaluateHeldFacingAfterAction()
+    {
+        if (InputReader == null || InputReader.MoveInput.sqrMagnitude <= 0.0001f)
+        {
+            return;
+        }
+
+        RequestFacing(FacingLeaseOwner.Locomotion, m_desiredFacing, "ActionExit.Held");
+    }
+
+    /// <summary>184.1 Layer 2 — 包装 OrientationAuthority。生产路径禁止旁路写 m_logicForward。</summary>
+    public void SetLogicForward(Vector3 dir, string source = null)
+    {
+        RequestFacing(OrientationAuthority.ClassifyOwner(source), dir, source);
+    }
+
+    void ApplyCommittedFacing(Vector3 dir, string source)
+    {
+        var planar = PlanarizeFacing(dir);
         var prev = m_logicForward;
+        if (Vector3.Angle(prev, planar) < 0.05f)
+        {
+            m_logicForward = planar;
+            return;
+        }
+
         var rootYawBefore = transform.eulerAngles.y;
         var visualYawBefore = visualRoot != null ? visualRoot.eulerAngles.y : rootYawBefore;
         m_logicForward = planar;
 
-        // Probe：Action 状态期间被改写 forward → 候选异常转向源头
-        if (States?.Current is PlayerActionState __probeAct)
+        if (States?.Current is PlayerActionState probeAct)
         {
-            InputActionProbe.LogFacingApplied(this, __probeAct.CurrentAction, prev, planar, "Player.SetLogicForward@ActionState");
+            InputActionProbe.LogFacingApplied(this, probeAct.CurrentAction, prev, planar, "Player.ApplyCommittedFacing@ActionState");
         }
 
         if (visualRoot != null && visualRoot != transform)
@@ -1008,6 +1469,8 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
             transform.eulerAngles.y,
             visualYawBefore,
             visualRoot != null ? visualRoot.eulerAngles.y : transform.eulerAngles.y);
+        SkillGroupTurn237Probe.ObserveLogicSnap(this, prev, m_logicForward, source);
+        DirectionAuthority237Probe.ObserveFacingCommit(this, prev, m_logicForward, source);
 
         if (Vector3.Angle(prev, m_logicForward) > 0.5f)
         {
@@ -1017,7 +1480,7 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
 
     public override void LookAtDirection(Vector3 worldDirection, bool immediate = false)
     {
-        SetLogicForward(worldDirection, "Player.LookAtDirection");
+        RequestFacing(FacingLeaseOwner.Locomotion, worldDirection, "Player.LookAtDirection");
     }
 
     /// <summary>
@@ -1491,24 +1954,6 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
                 {
                     SetMoveDirection(resolvedVelocity.normalized);
                 }
-            }
-
-            // 234.5：FreeLocomotion 方向与逻辑朝向同 Tick 对齐；LockOn 仍消费目标方向。
-            // Action Facing Gate 继续独立授权，禁止 Presentation/Visual 反写 Gameplay Facing。
-            if (!ShouldSuppressLocomotionRotation()
-                && ActionRotationGate.IsAllowed(this, ActionRotationGate.Kind.Facing))
-            {
-                var resolvedForward = input.normalized;
-                var source = "Player.MoveByLocomotionIntent.FreeImmediate";
-                if (TryGetLockTargetPlanarForward(out var lockForward))
-                {
-                    resolvedForward = lockForward;
-                    source = "Player.MoveByLocomotionIntent.LockOnTarget";
-                }
-
-                ActionTurnProbe.Log(this, m_logicForward, resolvedForward, "Player.MoveByLocomotionIntent.ResolvedMotion");
-                SetLogicForward(resolvedForward, source);
-                MaybeLogLocomotionRotationEdge(LocomotionRotationMode.SnapAlways, immediate: true);
             }
         }
         else

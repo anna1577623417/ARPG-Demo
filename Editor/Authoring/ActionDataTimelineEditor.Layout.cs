@@ -162,6 +162,13 @@ public sealed partial class ActionDataTimelineEditor
                 new GUIContent("Main Clip"));
         }
 
+        EditorGUILayout.PropertyField(
+            _so.FindProperty(nameof(ActionDataSO.FacingPolicy)),
+            new GUIContent("Facing Policy"));
+        EditorGUILayout.HelpBox(
+            "Facing Policy 只决定进技能后角色脸朝哪，与 SkillGroup 的 Directional Input Frame 正交，不选槽。",
+            MessageType.Info);
+
         ActionTimelineEditorUI.CompactRowFloat(
             new[]
             {

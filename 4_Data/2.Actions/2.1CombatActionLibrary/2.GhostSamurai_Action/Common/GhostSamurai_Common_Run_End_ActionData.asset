@@ -42,6 +42,7 @@ MonoBehaviour:
   IsLocomotionRecovery: 1
   RecoveryMoveLockSeconds: 0
   RecoveryJumpLockSeconds: 0
+  FacingPolicy: 0
   EnableRotationInput: 0
   TransitionType: 2
   OverrideGrammar: 0
@@ -63,8 +64,17 @@ MonoBehaviour:
     MaxSpeed: 4
     MinDistance: 0.1
     MaxDistance: 2
+    FullSpeedStopDistance: 2
     MinDuration: 0.2
     MaxDuration: 0.8
+    MaxBrakeSeconds: 2
+    TapWindowSeconds: 0.15
+    TapPresentationSeconds: 0.15
+    TapStopDistance: 0.1
+    TapTailStartNormalized: 0.6
+    TapTailSeconds: 0.5466668
+    TapChainMax: 0
+    TapChainUnlimited: 1
     AffectX: 0
     AffectY: 0
     AffectZ: 1

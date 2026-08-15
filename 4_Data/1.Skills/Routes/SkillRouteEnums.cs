@@ -93,10 +93,14 @@ public enum DirectionalInputFrame : byte
     [InspectorName("Logic Projected (逻辑投影分槽)")]
     LogicProjected = 1,
 
-    /// <summary>209.4 OPEN — 角色系 stick 直读。</summary>
+    /// <summary>209.4 OPEN。T7 Play：与 BodyFixed 同一 ScreenStickRaw，勿新配。</summary>
+    [Obsolete("T7 Play 已证与 BodyFixed 同一 ScreenStickRaw。新资产请用 BodyFixed。")]
+    [InspectorName("Character Stick（已塌缩→Body Fixed）")]
     CharacterStick = 2,
 
-    /// <summary>209.4 OPEN — 世界 XZ 固定八向。</summary>
+    /// <summary>209.4 OPEN。T7 Play：与 BodyFixed 同一 ScreenStickRaw，勿新配。</summary>
+    [Obsolete("T7 Play 已证与 BodyFixed 同一 ScreenStickRaw。新资产请用 BodyFixed。")]
+    [InspectorName("World Stick（已塌缩→Body Fixed）")]
     WorldStick = 3,
 }
 

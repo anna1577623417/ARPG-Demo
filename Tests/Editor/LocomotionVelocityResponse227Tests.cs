@@ -289,7 +289,9 @@ public sealed class LocomotionVelocityResponse227Tests
         var visual = Read("3_Gameplay/Characters/Player/Presentation/VisualFacingDriver.cs");
 
         StringAssert.Contains("actionState.CurrentAction.IsLocomotionRecovery", player);
-        StringAssert.Contains("TurnCompensation.ImmediateCommit", player);
+        StringAssert.Contains("FacingCommitGate.Expire", player);
+        Assert.IsFalse(player.Contains("TurnCompensation.ImmediateCommit"));
+        Assert.IsFalse(player.Contains("MoveByLocomotionIntent.FreeImmediate"));
         Assert.IsFalse(player.Contains("TickTurnPreMoveGate"));
         Assert.IsFalse(locomotion.Contains("TickTurnPreMoveGate"));
         Assert.IsFalse(action.Contains("TickTurnPreMoveGate"));

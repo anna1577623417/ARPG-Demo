@@ -19,6 +19,7 @@ public sealed class MotionExecutor
     private Vector3 _startPos;
     private Vector3 _direction;
     private Vector3 _initialDirection;
+    private MotionFrameSnapshot _frame;
     private Vector3 _lastPos;
     private float _smoothedAnimSpeed = 1f;
     private bool _active;
@@ -58,6 +59,8 @@ public sealed class MotionExecutor
 
     public void SetStopContext(in StopRuntimeContext ctx) => _stopContext = ctx;
 
+    public MotionFrameSnapshot Frame => _frame;
+
     public void Begin(
         MotionProfileSO profile,
         float baseDuration,
@@ -68,11 +71,58 @@ public sealed class MotionExecutor
         ActionDataSO action = null,
         in StopRuntimeContext stopContext = default)
     {
+        Begin(
+            profile,
+            baseDuration,
+            MotionFrameSnapshot.Freeze(direction, MotionSpace.CharacterForward),
+            startPos,
+            baseAnimSpeed,
+            startNormalizedTime,
+            action,
+            in stopContext);
+    }
+
+    /// <summary>237 L6 — Begin 吃冻结 Frame。Tick 不得再取 live Transform。</summary>
+    public void Begin(
+        MotionProfileSO profile,
+        float baseDuration,
+        in MotionFrameSnapshot frame,
+        Vector3 startPos,
+        float baseAnimSpeed = 1f,
+        float startNormalizedTime = 0f,
+        ActionDataSO action = null,
+        in StopRuntimeContext stopContext = default)
+    {
+        if (_active)
+        {
+            DirectionAuthority237Probe.ObserveMotionFrameReplace(_debugOwner, _frame, frame);
+        }
+
         _playback = default;
         _profile = profile;
         _action = action;
         _baseDuration = Mathf.Max(0.0001f, baseDuration);
-        _direction = direction.sqrMagnitude > 0.0001f ? direction.normalized : Vector3.forward;
+
+        var resolved = frame;
+        if (stopContext.UseIntegratedBrake && stopContext.StopDirection.sqrMagnitude > 0.0001f)
+        {
+            resolved = MotionFrameSnapshot.Freeze(stopContext.StopDirection, frame.Space);
+        }
+
+        if (!resolved.IsValid || !resolved.Frozen)
+        {
+            DirectionAuthority237Probe.ObserveMotionFail(_debugOwner, "no_frame");
+            _frame = default;
+            _direction = Vector3.forward;
+            _initialDirection = _direction;
+            _active = false;
+            LastContribution = MotionContribution.Inactive;
+            LastWorldDelta = Vector3.zero;
+            return;
+        }
+
+        _frame = resolved;
+        _direction = resolved.Forward;
         _initialDirection = _direction;
         var startT = Mathf.Clamp01(startNormalizedTime);
         _elapsed = startT * _baseDuration;
@@ -87,14 +137,10 @@ public sealed class MotionExecutor
         _stopRemainingSpeed = stopContext.UseIntegratedBrake ? Mathf.Max(0f, stopContext.RemainingSpeed) : 0f;
         _stopPhysicsComplete = stopContext.UseIntegratedBrake
             && _stopRemainingSpeed <= StopIntegrator.DefaultSpeedEpsilon;
-        if (stopContext.UseIntegratedBrake && stopContext.StopDirection.sqrMagnitude > 0.0001f)
-        {
-            _direction = stopContext.StopDirection.normalized;
-            _initialDirection = _direction;
-        }
         _motionScale = _active && _stats != null ? Mathf.Max(0f, _stats.GetMotionScale(profile.ScaleType)) : 1f;
         LastContribution = MotionContribution.Inactive;
         LastWorldDelta = Vector3.zero;
+        DirectionAuthority237Probe.ObserveMotionFrame(_debugOwner, in _frame);
 
         if (_active && profile.GetYAxisConfig().YMotion == YMotionMode.GroundTargeted)
         {
@@ -315,6 +361,7 @@ public sealed class MotionExecutor
 
         var worldDelta = LocalDeltaToWorld(localDelta);
         LastWorldDelta = worldDelta;
+        DirectionAuthority237Probe.ObserveMotionStep(_debugOwner, localDelta, worldDelta);
         InputActionProbe.LogMotionBurst(_debugOwner, _action != null ? _action.name : "(noAction)", worldDelta, deltaTime);
         var desiredVelocity = worldDelta / deltaTime;
         _motor?.SetDesiredVelocity(desiredVelocity);
@@ -377,6 +424,13 @@ public sealed class MotionExecutor
 
     Vector3 LocalDeltaToWorld(Vector3 localDelta)
     {
+        if (_frame.IsValid && _frame.Frozen
+            && _profile != null
+            && _profile.MotionSpace != MotionSpace.LockTarget)
+        {
+            return _frame.Right * localDelta.x + _frame.Up * localDelta.y + _frame.Forward * localDelta.z;
+        }
+
         var right = GetCharacterRight();
         return right * localDelta.x + Vector3.up * localDelta.y + _direction * localDelta.z;
     }
@@ -415,6 +469,9 @@ public sealed class MotionExecutor
         _animSpeed?.SetSpeed(1f);
         _baseAnimSpeed = 1f;
         _smoothedAnimSpeed = 1f;
+        _frame = default;
+        _direction = Vector3.forward;
+        _initialDirection = Vector3.forward;
     }
 
     void LogAnimSpeed226Begin()

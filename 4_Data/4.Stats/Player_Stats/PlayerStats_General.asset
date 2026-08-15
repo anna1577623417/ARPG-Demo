@@ -16,9 +16,9 @@ MonoBehaviour:
   - Type: 0
     BaseValue: 3450
   - Type: 4
-    BaseValue: 2.4
+    BaseValue: 3.5
   - Type: 5
-    BaseValue: 5.5
+    BaseValue: 6
   - Type: 6
     BaseValue: 540
   - Type: 2
@@ -42,8 +42,8 @@ MonoBehaviour:
   _migrateStandaloneMaxStamina: 0
   usePlayerBaseStatsPreset: 1
   presetMaxHealth: 3450
-  presetWalkSpeed: 2.4
-  presetRunSpeed: 5.5
+  presetWalkSpeed: 3.5
+  presetRunSpeed: 6
   presetRotationSpeed: 540
   presetAttackPower: 13
   presetDefense: 11

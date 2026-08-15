@@ -1,4 +1,5 @@
 #if UNITY_EDITOR
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
@@ -145,9 +146,8 @@ public sealed class SkillGroupDefinitionInspector : Editor
         SessionState.SetBool(PrefSplitFrame, next);
         if (next)
         {
-            EditorGUILayout.PropertyField(
-                m_directionalInputFrame,
-                new GUIContent("Directional Input Frame", "WSAD → 八向 Route 槽"));
+            DrawInputFramePopup();
+            DrawInputFrameRuntimeHelp();
             EditorGUILayout.PropertyField(
                 m_useMotionCurveBasisOverride,
                 new GUIContent("Override Motion Curve Basis"));
@@ -164,11 +164,69 @@ public sealed class SkillGroupDefinitionInspector : Editor
                 "· Override Motion Curve Basis = ✓\n" +
                 "· Motion Curve Basis = Character Forward\n\n" +
                 "Slide 斜向（210.2）：Profile Motion Space = Displacement Aligned + Rotation = Align To Velocity。\n" +
-                "Logic Projected = 移动意图投影分槽（对脸 D 可能 Left 槽）。",
+                "Logic Projected = 相对 SnapshotBasisFacing 投影分槽（T7：相机约 90° 时 D 可走 Forward，与 BodyFixed Right 分叉）。\n" +
+                "Character Stick / World Stick 已塌缩为 Body Fixed；下拉只对新资产露出两个有效值。既有 int=2/3 仍可读，不写资产。",
                 MessageType.Info);
         }
 
         EndSection();
+    }
+
+    void DrawInputFramePopup()
+    {
+        int current = m_directionalInputFrame.intValue;
+        var labels = new List<GUIContent>(4);
+        var values = new List<int>(4);
+        labels.Add(new GUIContent("Body Fixed (屏感 Route · 本体分槽)"));
+        values.Add((int)DirectionalInputFrame.BodyFixed);
+        labels.Add(new GUIContent("Logic Projected (逻辑投影分槽)"));
+        values.Add((int)DirectionalInputFrame.LogicProjected);
+#pragma warning disable CS0618
+        if (current == (int)DirectionalInputFrame.CharacterStick)
+        {
+            labels.Add(new GUIContent("Character Stick（已塌缩→Body Fixed）"));
+            values.Add(current);
+        }
+        else if (current == (int)DirectionalInputFrame.WorldStick)
+        {
+            labels.Add(new GUIContent("World Stick（已塌缩→Body Fixed）"));
+            values.Add(current);
+        }
+#pragma warning restore CS0618
+
+        EditorGUILayout.IntPopup(
+            m_directionalInputFrame,
+            labels.ToArray(),
+            values.ToArray(),
+            new GUIContent("Directional Input Frame", "WSAD → 八向 Route 槽；新资产只选 BodyFixed / LogicProjected"));
+    }
+
+    void DrawInputFrameRuntimeHelp()
+    {
+        string runtime;
+        int frame = m_directionalInputFrame.intValue;
+        if (frame == (int)DirectionalInputFrame.LogicProjected)
+        {
+            runtime = "Runtime Source（Chord 窗内）：SnapshotBasisFacing。T7 Play：相机约 90° 时 D → Forward，与 BodyFixed Right 分叉。";
+        }
+#pragma warning disable CS0618
+        else if (frame == (int)DirectionalInputFrame.CharacterStick
+                 || frame == (int)DirectionalInputFrame.WorldStick)
+#pragma warning restore CS0618
+        {
+            runtime = "Runtime Source（Chord 窗内）：已塌缩 ScreenStickRaw，与 BodyFixed 同一公式。T7：WorldStick 大夹角 D 仍 Right；CharacterStick 90° 几何本样本未覆盖。不写资产。";
+        }
+        else
+        {
+            runtime = "Runtime Source（Chord 窗内）：ScreenStickRaw。屏感 D → Right 槽。";
+        }
+
+        EditorGUILayout.HelpBox(
+            "Configured vs Runtime（只读，不写字段）\n" +
+            runtime +
+            "\n持续移动过 Chord 窗再 Space → MotionForward 旁路，忽略本枚举（T8）。\n" +
+            "本字段只选 Route 槽，不改 Action FacingPolicy。",
+            MessageType.None);
     }
 
     void DrawNeutralSection()

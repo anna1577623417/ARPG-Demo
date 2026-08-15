@@ -1,0 +1,6 @@
+F:\Code\UnityProject\Core-Drive Action\Assets\GameMain\Scripts\.codex-build\237-ld\editor\URPWizard.dll
+F:\Code\UnityProject\Core-Drive Action\Assets\GameMain\Scripts\.codex-build\237-ld\editor\URPWizard.pdb
+F:\Code\UnityProject\Core-Drive Action\Assets\GameMain\Scripts\.codex-build\237-ld\editor-obj\URPWizard.csproj.AssemblyReference.cache
+F:\Code\UnityProject\Core-Drive Action\Assets\GameMain\Scripts\.codex-build\237-ld\editor-obj\URPWizard.csproj.CoreCompileInputs.cache
+F:\Code\UnityProject\Core-Drive Action\Assets\GameMain\Scripts\.codex-build\237-ld\editor-obj\URPWizard.dll
+F:\Code\UnityProject\Core-Drive Action\Assets\GameMain\Scripts\.codex-build\237-ld\editor-obj\URPWizard.pdb

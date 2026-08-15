@@ -1,7 +1,7 @@
 using UnityEngine;
 
 /// <summary>
-/// 234.5/235.2 — 普通 Locomotion 表现朝向同步 LogicForward；active Turn Lease 可短暂持有 Visual。
+/// 234.5/235.2/237.8 — 普通 Locomotion 表现朝向同步 Authority.PresentationFacing；active Turn Lease 可短暂持有 Visual。
 /// <para>挂在 VisualRoot（Animator 子物体）；Gameplay 只读 LogicForward，不读本组件 rotation。</para>
 /// </summary>
 [DefaultExecutionOrder(100)]
@@ -35,7 +35,10 @@ public sealed class VisualFacingDriver : MonoBehaviour
         }
 
         var visualYawBefore = transform.eulerAngles.y;
-        var logicForward = m_player.LogicForward;
+        var logicForward = m_player.PresentationFacing;
+        var leaseOwner = m_player.Orientation != null
+            ? m_player.Orientation.LeaseOwner
+            : FacingLeaseOwner.Locomotion;
         var logicYaw = logicForward.sqrMagnitude > 0.0001f
             ? Mathf.Atan2(logicForward.x, logicForward.z) * Mathf.Rad2Deg
             : float.NaN;
@@ -70,6 +73,21 @@ public sealed class VisualFacingDriver : MonoBehaviour
         var target = Quaternion.LookRotation(logicForward, Vector3.up);
         var deltaAngle = Quaternion.Angle(transform.rotation, target);
         transform.rotation = target;
+        DirectionAuthority237Probe.ObserveVisualAuth(m_player, leaseOwner);
+        DirectionAuthority237Probe.ObserveVisualWrite(
+            m_player,
+            visualYawBefore,
+            transform.eulerAngles.y,
+            logicYaw,
+            leaseOwner,
+            m_player.States != null && m_player.States.Current is PlayerActionState);
+        SkillGroupTurn237Probe.ObserveVisualSnap(
+            m_player,
+            visualYawBefore,
+            transform.eulerAngles.y,
+            logicYaw,
+            deltaAngle,
+            false);
         CameraTurn233Probe.ObserveVisual(
             m_player,
             visualYawBefore,

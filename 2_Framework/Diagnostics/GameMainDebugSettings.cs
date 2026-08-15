@@ -57,6 +57,12 @@ public static class GameMainDebugSettings
     /// <summary>235 — 即时逻辑转向后的 90/180 补偿性 Turn 表现时机、选片与播放专项探针。</summary>
     public static bool LocomotionTurnPresentation235Log { get; set; }
 
+    /// <summary>237 — WASD+Space 八向 SkillGroup 逻辑转向、ChordReframe 与姿势抢占专项探针。</summary>
+    public static bool SkillGroupTurn237Log { get; set; }
+
+    /// <summary>237.3 L0 — 方向意图 / 朝向权威合同探针。可与 SkillGroupTurn237Log 同开。</summary>
+    public static bool DirectionAuthority237Log { get; set; }
+
     // ─── Combat / Interrupt ───
     public static bool InterruptFlow { get; set; }
     public static bool ComboAirGate { get; set; }
@@ -121,6 +127,8 @@ public static class GameMainDebugSettings
         LocomotionMotion233Log = EditorPrefsGetBool(nameof(LocomotionMotion233Log));
         StopTap234Log = EditorPrefsGetBool(nameof(StopTap234Log));
         LocomotionTurnPresentation235Log = EditorPrefsGetBool(nameof(LocomotionTurnPresentation235Log));
+        SkillGroupTurn237Log = EditorPrefsGetBool(nameof(SkillGroupTurn237Log));
+        DirectionAuthority237Log = EditorPrefsGetBool(nameof(DirectionAuthority237Log));
         InterruptFlow = EditorPrefsGetBool(nameof(InterruptFlow));
         ComboAirGate = EditorPrefsGetBool(nameof(ComboAirGate));
         CombatHit = EditorPrefsGetBool(nameof(CombatHit));
@@ -163,6 +171,8 @@ public static class GameMainDebugSettings
         EditorPrefsSetBool(nameof(LocomotionMotion233Log), LocomotionMotion233Log);
         EditorPrefsSetBool(nameof(StopTap234Log), StopTap234Log);
         EditorPrefsSetBool(nameof(LocomotionTurnPresentation235Log), LocomotionTurnPresentation235Log);
+        EditorPrefsSetBool(nameof(SkillGroupTurn237Log), SkillGroupTurn237Log);
+        EditorPrefsSetBool(nameof(DirectionAuthority237Log), DirectionAuthority237Log);
         EditorPrefsSetBool(nameof(InterruptFlow), InterruptFlow);
         EditorPrefsSetBool(nameof(ComboAirGate), ComboAirGate);
         EditorPrefsSetBool(nameof(CombatHit), CombatHit);
@@ -203,6 +213,8 @@ public static class GameMainDebugSettings
         LocomotionMotion233Log = true;
         StopTap234Log = true;
         LocomotionTurnPresentation235Log = true;
+        SkillGroupTurn237Log = true;
+        DirectionAuthority237Log = true;
         InterruptFlow = true;
         ComboAirGate = true;
         CombatHit = true;
@@ -244,6 +256,8 @@ public static class GameMainDebugSettings
         LocomotionMotion233Log = false;
         StopTap234Log = false;
         LocomotionTurnPresentation235Log = false;
+        SkillGroupTurn237Log = false;
+        DirectionAuthority237Log = false;
         InterruptFlow = false;
         ComboAirGate = false;
         CombatHit = false;
@@ -294,6 +308,8 @@ public static class GameMainDebugSettings
         LocomotionMotion233Log = false;
         StopTap234Log = false;
         LocomotionTurnPresentation235Log = false;
+        SkillGroupTurn237Log = false;
+        DirectionAuthority237Log = false;
         InterruptFlow = false;
         ComboAirGate = false;
         CombatHit = false;

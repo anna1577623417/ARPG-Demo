@@ -124,6 +124,12 @@ public sealed class GameMainDebugSettingsWindow : EditorWindow
             Toggle(() => GameMainDebugSettings.LocomotionTurnPresentation235Log,
                 v => GameMainDebugSettings.LocomotionTurnPresentation235Log = v,
                 "Locomotion Turn Presentation 235", "[LocoTurn235] INPUT→DECIDE→SELECT→PLAY→END，有限边沿、无堆栈");
+            Toggle(() => GameMainDebugSettings.SkillGroupTurn237Log,
+                v => GameMainDebugSettings.SkillGroupTurn237Log = v,
+                "SkillGroup Turn 237", "[Turn237] WASD+Space 八向选路 / ImmediateCommit / Turn抢占 / 姿势硬贴");
+            Toggle(() => GameMainDebugSettings.DirectionAuthority237Log,
+                v => GameMainDebugSettings.DirectionAuthority237Log = v,
+                "Direction Authority 237 v3", "[DIR] rid / INPUT_EDGE / LOCO_CHANGE / DIR_ROUTE_PICK / FACING_REQ；Held 改向与 Selection Frame 取证，不改行为");
         });
 
         DrawSection("Combat / Intent", () =>

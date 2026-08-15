@@ -474,6 +474,7 @@ public sealed class SkillEntryService : IComboSessionHost, IGroupCooldownHost, I
         runtime?.OnEnter(in ctx);
         ObserveStageChangeAndNotifyPresentation();
         _combatGraph?.BindEntryAction(runtime?.Stage?.Definition?.Action);
+        _owner?.BindDirectionalActionEntryToAction();
 
         // 208.3 L2：Combo Session 写状态单点 — ComboSessionController.CommitOnRouteEntered
         _comboSession.CommitOnRouteEntered(slot);
@@ -558,6 +559,7 @@ public sealed class SkillEntryService : IComboSessionHost, IGroupCooldownHost, I
         var ctx = BuildContext();
         _activeRouteRuntime.OnExit(in ctx, wasInterrupted);
         _activeRouteRuntime = null;
+        _owner?.ClearFrozenDirectionalEntry();
         SkillRouteDebug.Log(
             _owner,
             SkillRouteDebug.CatRoute,

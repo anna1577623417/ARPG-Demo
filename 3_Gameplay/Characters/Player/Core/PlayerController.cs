@@ -210,6 +210,7 @@ public class PlayerController : EntityController
             fwd = Vector3.forward;
         }
 
+        var moveWasActive = player.InputContext.MoveActive;
         player.InputContext.TickMoveContext(
             rawInput,
             moveReleaseThreshold,
@@ -217,6 +218,44 @@ public class PlayerController : EntityController
             fwd,
             window,
             grace);
+        var worldDir = player.ResolveCameraRelativeWorldDirection(rawInput);
+        if (!moveWasActive && player.InputContext.MoveActive)
+        {
+            player.InputContext.TryGetMoveDownPlanarForward(out var basis);
+            var token = player.NotifyDirectionIntentDown(
+                rawInput,
+                worldDir,
+                basis,
+                ResolveMovementReferenceYaw());
+            SkillGroupTurn237Probe.ObserveDirDown(player, rawInput, basis, player.LogicForward);
+            DirectionAuthority237Probe.ObserveDown(
+                player,
+                rawInput,
+                worldDir,
+                basis,
+                player.DesiredFacing,
+                player.LogicForward,
+                token);
+            DirectionAuthority237Probe.ObserveIntent(player, token);
+            DirectionAuthority237Probe.ObserveGateOpen(player, token, player.FacingCommit.DelaySec);
+            DirectionAuthority237Probe.ObserveCtxOpen(player, player.ResolveDirectionalTiming());
+        }
+        else if (player.InputContext.MoveActive)
+        {
+            player.TickDesiredFacing(
+                rawInput,
+                worldDir,
+                moveReleaseThreshold);
+        }
+
+        player.RefreshLocomotionRuntimeContext(rawInput, worldDir);
+        DirectionAuthority237Probe.ObserveMoveTick(
+            player,
+            rawInput,
+            worldDir,
+            moveWasActive,
+            player.InputContext.MoveActive,
+            ResolveMovementReferenceYaw());
     }
 
     void SyncDirectionModifierBuffer(LocomotionTuningSO tuning)

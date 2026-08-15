@@ -84,6 +84,7 @@ public class PlayerAnimController : EntityAnimController
             return;
         }
 
+        SkillGroupTurn237Probe.ObserveTurnInterrupt(_player, reason, wasTurnVisual, wasTurnInfo);
         TurnProbe.LogInterrupt(_player, reason);
         var fromSub = _locoSub;
         if (IsTurnSub(fromSub) && _player != null)
