@@ -63,6 +63,9 @@ public static class GameMainDebugSettings
     /// <summary>237.3 L0 — 方向意图 / 朝向权威合同探针。可与 SkillGroupTurn237Log 同开。</summary>
     public static bool DirectionAuthority237Log { get; set; }
 
+    /// <summary>241.1 — AD/MP 的 YMotion / Gravity / GroundConstraint 三权配置穿线诊断。</summary>
+    public static bool YAxis241Log { get; set; }
+
     // ─── Combat / Interrupt ───
     public static bool InterruptFlow { get; set; }
     public static bool ComboAirGate { get; set; }
@@ -129,6 +132,7 @@ public static class GameMainDebugSettings
         LocomotionTurnPresentation235Log = EditorPrefsGetBool(nameof(LocomotionTurnPresentation235Log));
         SkillGroupTurn237Log = EditorPrefsGetBool(nameof(SkillGroupTurn237Log));
         DirectionAuthority237Log = EditorPrefsGetBool(nameof(DirectionAuthority237Log));
+        YAxis241Log = EditorPrefsGetBool(nameof(YAxis241Log));
         InterruptFlow = EditorPrefsGetBool(nameof(InterruptFlow));
         ComboAirGate = EditorPrefsGetBool(nameof(ComboAirGate));
         CombatHit = EditorPrefsGetBool(nameof(CombatHit));
@@ -173,6 +177,7 @@ public static class GameMainDebugSettings
         EditorPrefsSetBool(nameof(LocomotionTurnPresentation235Log), LocomotionTurnPresentation235Log);
         EditorPrefsSetBool(nameof(SkillGroupTurn237Log), SkillGroupTurn237Log);
         EditorPrefsSetBool(nameof(DirectionAuthority237Log), DirectionAuthority237Log);
+        EditorPrefsSetBool(nameof(YAxis241Log), YAxis241Log);
         EditorPrefsSetBool(nameof(InterruptFlow), InterruptFlow);
         EditorPrefsSetBool(nameof(ComboAirGate), ComboAirGate);
         EditorPrefsSetBool(nameof(CombatHit), CombatHit);
@@ -215,6 +220,7 @@ public static class GameMainDebugSettings
         LocomotionTurnPresentation235Log = true;
         SkillGroupTurn237Log = true;
         DirectionAuthority237Log = true;
+        YAxis241Log = true;
         InterruptFlow = true;
         ComboAirGate = true;
         CombatHit = true;
@@ -258,6 +264,7 @@ public static class GameMainDebugSettings
         LocomotionTurnPresentation235Log = false;
         SkillGroupTurn237Log = false;
         DirectionAuthority237Log = false;
+        YAxis241Log = false;
         InterruptFlow = false;
         ComboAirGate = false;
         CombatHit = false;
@@ -310,6 +317,7 @@ public static class GameMainDebugSettings
         LocomotionTurnPresentation235Log = false;
         SkillGroupTurn237Log = false;
         DirectionAuthority237Log = false;
+        YAxis241Log = false;
         InterruptFlow = false;
         ComboAirGate = false;
         CombatHit = false;

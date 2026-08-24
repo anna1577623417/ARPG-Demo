@@ -254,6 +254,8 @@ public static class MotionV2PresetFactory
         var profile = ScriptableObject.CreateInstance<MotionProfileSO>();
         profile.ApplyDefaultZeroAxisDisplacement();
         configure(profile);
+        // 241.2：V2 预设已经明确写入三权字段，不能继续落入旧 LegacyMapping。
+        profile.SetYAxisV2Configured(true);
         AssetDatabase.CreateAsset(profile, assetPath);
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();

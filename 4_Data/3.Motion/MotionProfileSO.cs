@@ -260,6 +260,19 @@ public class MotionProfileSO : ScriptableObject
 
     public bool UsesGroundTargetedLanding => GetYAxisConfig().YMotion == YMotionMode.GroundTargeted;
 
+    /// <summary>
+    /// 241 运行时诊断：Inspector 三权字段是否已经切换到 V2 配置源。
+    /// 只读暴露，不改变运行时裁决。
+    /// </summary>
+    public bool IsYAxisV2Configured => yAxisV2Configured;
+
+    /// <summary>241 运行时诊断：旧 Y 策略序列化值。</summary>
+    public byte LegacyYAxisPolicyRaw => legacyYPolicyRaw;
+
+    /// <summary>241 运行时诊断：Inspector 当前可见的三权字段值，不进行来源回退。</summary>
+    public MotionYAxisConfig GetVisibleYAxisConfig() =>
+        new MotionYAxisConfig(YMotion, Gravity, GroundConstraint);
+
 #if UNITY_EDITOR
     public void SetYAxisV2Configured(bool configured) => yAxisV2Configured = configured;
 #endif

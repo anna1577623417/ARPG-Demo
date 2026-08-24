@@ -57,7 +57,11 @@ public sealed class PlayerMotorAdapter : IMotorAdapter
 
     public void SetDesiredVelocity(Vector3 velocity) => _desiredVelocity = velocity;
 
-    public void SetMotionComposeContext(MotionYAxisConfig yAxisConfig) => _yAxisConfig = yAxisConfig;
+    public void SetMotionComposeContext(MotionYAxisConfig yAxisConfig)
+    {
+        _yAxisConfig = yAxisConfig;
+        YAxis241Probe.ObserveAdapterCache(_player, yAxisConfig);
+    }
 
     public float GetActualSpeed() => _player != null ? _player.Speed : 0f;
 

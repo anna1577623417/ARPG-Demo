@@ -263,17 +263,44 @@ public sealed partial class MotionProfileEditor : Editor
         if (EditorGUI.EndChangeCheck())
         {
             profile.SetYAxisV2Configured(true);
+            serializedObject.FindProperty("yAxisV2Configured").boolValue = true;
+            EditorUtility.SetDirty(profile);
         }
 
         if (!serializedObject.FindProperty("yAxisV2Configured").boolValue)
         {
             EditorGUILayout.HelpBox(
-                "yAxisV2Configured 未标记：修改上方 YMotion / Gravity / GroundConstraint 后将自动写入三权。",
+                $"当前 Runtime 仍走 LegacyMapping：{FormatYAxisConfig(profile.GetYAxisConfig())}。上方可见三权为 {FormatYAxisConfig(profile.GetVisibleYAxisConfig())}。",
                 MessageType.Info);
+
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                if (GUILayout.Button("激活当前三权为 Runtime 配置"))
+                {
+                    Undo.RecordObject(profile, "Activate Y Axis V2 Configuration");
+                    profile.SetYAxisV2Configured(true);
+                    serializedObject.FindProperty("yAxisV2Configured").boolValue = true;
+                    EditorUtility.SetDirty(profile);
+                }
+
+                EditorGUILayout.LabelField(
+                    "仅写入 V2 标记，不改三权字段",
+                    EditorStyles.miniLabel,
+                    GUILayout.Width(170f));
+            }
+        }
+        else
+        {
+            EditorGUILayout.HelpBox(
+                $"Runtime 配置来源：V2（{FormatYAxisConfig(profile.GetYAxisConfig())}）",
+                MessageType.None);
         }
 
         EditorGUILayout.EndFoldoutHeaderGroup();
     }
+
+    static string FormatYAxisConfig(MotionYAxisConfig config) =>
+        $"{config.YMotion} / {config.Gravity} / {config.GroundConstraint}";
 
     void DrawLandingSettingsSection(MotionProfileSO profile)
     {

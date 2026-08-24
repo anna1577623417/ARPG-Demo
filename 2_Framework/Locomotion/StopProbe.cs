@@ -22,9 +22,13 @@ public static class StopProbe
         var tPhys = StopIntegrator.PredictDuration(ctx.EntrySpeed, ctx.BrakeDeceleration);
         var message =
             $"{Prefix} BEGIN action={action.name} strategy={ctx.Strategy} entrySpeed={ctx.EntrySpeed:F2} " +
-            $"integrateDist={ctx.RuntimeDistance:F3} tPhys={tPhys:F3} runtimeDuration={ctx.RuntimeDuration:F3} " +
+            $"integrateDist={ctx.RuntimeDistance:F3} tPhys={tPhys:F3} physicsDuration={ctx.PhysicsDuration:F3} " +
+            $"physicsDurationCapped={ctx.PhysicsDurationCapped} " +
+            $"effectiveActionDuration={ctx.EffectiveActionDuration:F3} runtimeDuration={ctx.RuntimeDuration:F3} " +
             $"clearedVelocity=false a={ctx.BrakeDeceleration:F3} vRef={ctx.ReferenceGaitSpeed:F2} tier={ctx.SessionTier} " +
-            $"segWall={segWall:F3} baseAnim={ctx.BaseAnimSpeed:F3} dRefFallback={ctx.DerivedFromLegacyMaxDistance}";
+            $"segWall={segWall:F3} clipWindowWall={ctx.ClipWindowWallSeconds:F3} baseAnim={ctx.BaseAnimSpeed:F3} " +
+            $"durationAuthority={ctx.DurationAuthority} animSpeedAuthority={ctx.AnimSpeedAuthority} " +
+            $"syncResult={ctx.SyncResult} syncDelta={ctx.SyncDeltaSeconds:F4} dRefFallback={ctx.DerivedFromLegacyMaxDistance}";
         Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, player, "{0}", message);
     }
 
@@ -49,7 +53,7 @@ public static class StopProbe
             : (actualDistance > 0.001f ? 1f : 0f);
         var maxDrift = Mathf.Max(durDrift, distDrift);
         var prefix = maxDrift > 0.05f ? WarnPrefix : Prefix;
-        var tailTag = expectedWallDuration < ctx.RuntimeDuration - 0.001f ? " tail" : string.Empty;
+        var tailTag = expectedWallDuration < ctx.EffectiveActionDuration - 0.001f ? " tail" : string.Empty;
 
         Debug.LogFormat(
             LogType.Log,
@@ -57,7 +61,8 @@ public static class StopProbe
             player,
             "{0}",
             $"{prefix} EXIT{tailTag} action={action.name} actualElapsed={actualWallElapsed:F3} expectedDur={expectedWallDuration:F3} " +
-            $"actualDistance={actualDistance:F2} expectedDistance={expectedDistance:F2} drift={maxDrift * 100f:F1}%");
+            $"actualDistance={actualDistance:F2} expectedDistance={expectedDistance:F2} drift={maxDrift * 100f:F1}% " +
+            $"syncResult={ctx.SyncResult} syncDelta={ctx.SyncDeltaSeconds:F4}");
     }
 
     // ═══ 182.3 每帧 Tick 探针 ═══ —— 仅在 nt 跨越 [0.25/0.5/0.75/1.0] 桶时打，整个 Action 期间最多 4 行

@@ -31,7 +31,7 @@ public sealed partial class ActionDataInspector
         if (inheritPhysicsDuration)
         {
             EditorGUILayout.HelpBox(
-                "InheritPhysics：Action 寿命=积分租约。点按/StartAbort 从 Clip 尾以倍率 1 起播；Loop 对齐满段 Clip。Action.Duration 仍作动画基准。",
+                "InheritPhysics：默认 LegacyLease 仍由积分租约控制；若 Stop 时钟与动画同步区选择 PhysicsStop + AutoFit/FixedOverride，则有效 Action 时长与 End Clip 速率由 Stop 合同接管。",
                 MessageType.Info);
         }
 
@@ -66,7 +66,7 @@ public sealed partial class ActionDataInspector
         if (inheritPhysicsAnim)
         {
             EditorGUILayout.HelpBox(
-                "InheritPhysics：静态 AnimSpeed 被 ReferenceDuration/runtimeDuration 覆盖；SpeedOverTime 曲线倍率仍生效。",
+                "InheritPhysics：默认静态 AnimSpeed 被 ReferenceDuration/runtimeDuration 覆盖；238.1 可在 Stop 时钟与动画同步区选择 AutoFit 或 FixedOverride；SpeedOverTime 曲线倍率仍生效。",
                 MessageType.Info);
         }
 

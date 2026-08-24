@@ -51,10 +51,15 @@ public sealed partial class ActionDataTimelineEditor
             {
                 using (new EditorGUILayout.HorizontalScope())
                 {
-                    EditorGUILayout.LabelField("runtimeDuration", $"{ctx.RuntimeDuration:F3}s", GUILayout.Width(180f));
+                    EditorGUILayout.LabelField("physicsDuration", $"{ctx.PhysicsDuration:F3}s", GUILayout.Width(150f));
+                    EditorGUILayout.LabelField("effectiveDuration", $"{ctx.EffectiveActionDuration:F3}s", GUILayout.Width(170f));
                     EditorGUILayout.LabelField("runtimeDistance", $"{ctx.RuntimeDistance:F2}m", GUILayout.Width(160f));
                     EditorGUILayout.LabelField("a", $"{ctx.BrakeDeceleration:F2}", GUILayout.Width(120f));
                 }
+                EditorGUILayout.LabelField(
+                    $"时长权威={ctx.DurationAuthority} · AnimSpeed={ctx.AnimSpeedAuthority} · " +
+                    $"ClipWindow={ctx.ClipWindowWallSeconds:F3}s · Sync={ctx.SyncResult} Δ={ctx.SyncDeltaSeconds:F4}s",
+                    EditorStyles.miniLabel);
             }
 
             DrawStopDeductionChart(_action, s_stopPreviewEntrySpeed);
@@ -80,7 +85,12 @@ public sealed partial class ActionDataTimelineEditor
             return;
         }
 
-        var dRef = inherit.FullSpeedStopDistance > 0.0001f ? inherit.FullSpeedStopDistance : inherit.MaxDistance;
+        var dRef = inherit.ContinuousTuningMode == ContinuousStopTuningMode.FullSpeedDuration
+            && inherit.FullSpeedStopDuration > 0.0001f
+            ? 0.5f * maxSpeed * inherit.FullSpeedStopDuration
+            : (inherit.FullSpeedStopDistance > 0.0001f
+                ? inherit.FullSpeedStopDistance
+                : inherit.MaxDistance);
         var maxDist = Mathf.Max(0.01f, dRef);
         var maxDur = 0.01f;
         if (StopIntegrator.TryDeriveDeceleration(maxSpeed, dRef, out var aRef))

@@ -1,4 +1,4 @@
-> 最后更新：2026-08-15 01:28
+> 最后更新：2026-08-24 01:47
 
 # Codex 专属落盘与日常开发规则
 
@@ -15,6 +15,16 @@
 - 目录职责以 Note 根目录的 `TREE.md` 为准。
 - 需求大类目录名为 **`01_需求与迭代`**（不再使用 `01_需求与范围`）。
 - 提醒类内容只在对话中回复，不为提醒单独创建文件。
+
+## CodeMap 优先扫描与施工路由（20-codemap-first-scan）
+
+- 代码施工、代码分析、调用链梳理和架构评审，优先审查：`F:\Code\Note\3.Core-Drive_Action\3D ARPG\12_版本与发布\06_CodeMap代码地图`。
+- 固定顺序：`0.CodeMap方法论.md` / `1.初级CodeMap制作计划书.md`（首次或规则变化时）→ `10.SystemOverview.md` → `11.DependencyGraph.md` → 相关 `20_Modules\{Module}.md` → Map 指向的源码入口、消费者和测试。
+- 默认只在 `F:\Code\UnityProject\Core-Drive Action\Assets\GameMain\Scripts` 内按类型/方法/字段用 `rg` 定点读取；不得先对工程盘、Note 盘或整个 Unity 工程做递归扫描。
+- CodeMap 未命中或与现码冲突时，按“相关模块目录 → 相邻消费者/测试 → Scripts 根内符号搜索”有界扩展；仍无法定位才报告更宽扫描的必要性，并记录原因和未扫描范围。
+- CodeMap 是静态路由，不替代源码事实和编译/测试/Play 验证；冲突以现码为准，并记录地图过期与回写范围。入口、依赖方向、数据所有权、禁止项、风险或测试映射变化时，同一 Landing 回写对应 CodeMap。
+- 施工前必须记录：`CodeMap files consulted`、`Affected Modules`、权威单点、共享类型、`Must not touch`、`Migration needed?`（Affected ≥3 时先写 Migration Plan）、源码定点路径和待回写 Map 文件。
+- 完整规则见 `.cursor/rules/20-codemap-first-scan.mdc`。
 
 ## 显式【需求】落位（规则 17）
 

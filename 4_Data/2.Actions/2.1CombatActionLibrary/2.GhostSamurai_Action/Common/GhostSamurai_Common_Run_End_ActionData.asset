@@ -60,11 +60,13 @@ MonoBehaviour:
   EnableStopFeature: 1
   StopStrategy: 1
   InheritPhysics:
+    ContinuousTuningMode: 0
     MinSpeed: 1
     MaxSpeed: 4
     MinDistance: 0.1
     MaxDistance: 2
-    FullSpeedStopDistance: 2
+    FullSpeedStopDistance: 4
+    FullSpeedStopDuration: 0.7
     MinDuration: 0.2
     MaxDuration: 0.8
     MaxBrakeSeconds: 2
@@ -78,7 +80,12 @@ MonoBehaviour:
     AffectX: 0
     AffectY: 0
     AffectZ: 1
-  ReferenceDuration: 0.8
+  ReferenceDuration: 0.4
+  StopPresentation:
+    DurationAuthority: 1
+    AnimSpeedAuthority: 0
+    FixedAnimSpeed: 1
+    RequireSynchronization: 0
   LinearDecayDuration: 0.15
   ExpDecayHalfLife: 0.25
   FixedDecelDuration: 0.3

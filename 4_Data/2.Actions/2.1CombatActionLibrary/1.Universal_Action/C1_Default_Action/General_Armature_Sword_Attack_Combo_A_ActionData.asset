@@ -12,6 +12,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: dc44221e6d158b148ad988016a948ef4, type: 3}
   m_Name: General_Armature_Sword_Attack_Combo_A_ActionData
   m_EditorClassIdentifier: 
+  MoveAuthority: 2
+  RotateAuthority: 2
+  LockMoveDuringPlay: 1
+  LockRotateDuringPlay: 1
+  AuthorityPriorityOverride: -1
+  CombatTrack: []
+  ContactEvents: []
+  WindowAuthoringVersion: 0
   MainClip: {fileID: 3625414872004886998, guid: 30e0c6f0ba714704faaf6b4df5acca56,
     type: 3}
   CrossfadeTime: 0.08
@@ -32,12 +40,53 @@ MonoBehaviour:
   InterruptStability: 10
   AllowSelfInterrupt: 0
   IsContinuousLocomotion: 0
+  IsLocomotionRecovery: 0
+  RecoveryMoveLockSeconds: -1
+  RecoveryJumpLockSeconds: -1
+  FacingPolicy: 0
+  EnableRotationInput: 0
+  TransitionType: 0
+  OverrideGrammar: 0
+  GrammarOverride:
+    OwnsPresentation: 0
+    ConsumesDirectionChange: 0
+    ConsumesMomentumChange: 0
+    BlocksOtherTransitions: 0
+  MotionDriverMode: 2
   UseClipRootMotion: 0
   CanRotateDuringLocomotion: 1
   CanMoveDuringLocomotion: 1
   LeftFootSupportClip: {fileID: 0}
   RightFootSupportClip: {fileID: 0}
-  ExitVelocityPolicy: 0
+  EnableStopFeature: 0
+  StopStrategy: 1
+  InheritPhysics:
+    ContinuousTuningMode: 0
+    MinSpeed: 1
+    MaxSpeed: 8
+    MinDistance: 0.2
+    MaxDistance: 2.5
+    FullSpeedStopDistance: 0
+    FullSpeedStopDuration: 0
+    MinDuration: 0.1
+    MaxDuration: 0.45
+    MaxBrakeSeconds: 0
+    TapWindowSeconds: 0.15
+    TapPresentationSeconds: 0.15
+    TapStopDistance: 0.1
+    TapTailStartNormalized: 0
+    TapTailSeconds: 0
+    TapChainMax: 0
+    TapChainUnlimited: 1
+    AffectX: 0
+    AffectY: 0
+    AffectZ: 1
+  ReferenceDuration: 0.25
+  StopPresentation:
+    DurationAuthority: 0
+    AnimSpeedAuthority: 0
+    FixedAnimSpeed: 1
+    RequireSynchronization: 0
   LinearDecayDuration: 0.15
   ExpDecayHalfLife: 0.25
   FixedDecelDuration: 0.3
@@ -50,20 +99,22 @@ MonoBehaviour:
   - 0
   StepIntervalSec: 0.08
   SlideMaxResidualSpeed: 0
-  TapWindowSec: 0
-  EndTailNormalizedStart: 0
-  TapPairedEndAction: {fileID: 0}
   MotionProfile: {fileID: 11400000, guid: 7f368a4aa2cc6994ca33a011756ffd5e, type: 2}
   Windows:
-  - NormalizedStart: 0.8
+  - _windowId: 
+    DisplayName: 
+    NormalizedStart: 0.8
     NormalizedEnd: 1
     WindowSlotMask: 0
     RuntimeEvents: []
     InterruptibleByCategories: 1
     MinIncomingPriority: 0
     AllowSelfInterrupt: 0
+    AllowFacingInput: 0
+    AllowMoveInput: 0
     incomingAbilityGate: 0
     _legacyDirectStateTagMask: 0
+  DefenseClips: []
   TeleportTriggers: []
   TimelineMarkers: []
   PreviewTimeMarkers:
@@ -71,3 +122,21 @@ MonoBehaviour:
   - 0.5
   - 0.75
   - 1
+  MovementMode: 0
+  EnableStrideMatching: 1
+  ReferenceDistance: 0
+  MinPlaybackSpeed: 0.6
+  MaxPlaybackSpeed: 1.4
+  AutoTierSwitch: 1
+  DesignedSpeed: 0
+  TransitionTag: 1
+  OverrideIncomingTransition: 0
+  OverrideBlendDuration: 0.1
+  OverrideTransitionMode: 0
+  OverrideEaseCurve:
+    serializedVersion: 2
+    m_Curve: []
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  OverrideDesignerNote: 

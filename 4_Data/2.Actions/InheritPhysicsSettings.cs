@@ -7,6 +7,9 @@ using UnityEngine;
 [Serializable]
 public struct InheritPhysicsSettings
 {
+    [Tooltip("连续 Stop 的主调参方式。FullSpeedDistance 保持旧资产语义；FullSpeedDuration 用满速收停时间反推 D_ref。")]
+    public ContinuousStopTuningMode ContinuousTuningMode;
+
     [HideInInspector]
     public float MinSpeed;
 
@@ -24,6 +27,10 @@ public struct InheritPhysicsSettings
     [Tooltip("满速停止距离 D_ref（米）。>0 时作为积分标定；0 = 未填，回退 MaxDistance。")]
     [Min(0f)]
     public float FullSpeedStopDistance;
+
+    [Tooltip("满速停止时长 T_ref（秒）。仅 ContinuousTuningMode=FullSpeedDuration 生效；0 = 回退 D_ref。")]
+    [Min(0f)]
+    public float FullSpeedStopDuration;
 
     [HideInInspector]
     public float MinDuration;
@@ -73,11 +80,13 @@ public struct InheritPhysicsSettings
 
     public static InheritPhysicsSettings Default => new()
     {
+        ContinuousTuningMode = ContinuousStopTuningMode.FullSpeedDistance,
         MinSpeed = 1f,
         MaxSpeed = 8f,
         MinDistance = 0.2f,
         MaxDistance = 2.5f,
         FullSpeedStopDistance = 0f,
+        FullSpeedStopDuration = 0f,
         MinDuration = 0.10f,
         MaxDuration = 0.45f,
         MaxBrakeSeconds = 0f,

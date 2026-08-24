@@ -32,6 +32,7 @@ public sealed partial class ActionDataInspector : Editor
         nameof(ActionDataSO.StopStrategy),
         nameof(ActionDataSO.InheritPhysics),
         nameof(ActionDataSO.ReferenceDuration),
+        nameof(ActionDataSO.StopPresentation),
         // 198.x — Tail Segment / TapWindowSec 字段已删除
         // 198.x — ExitVelocityPolicy 字段已删除（167.1 旧机制完全退役）
         nameof(ActionDataSO.LinearDecayDuration),
@@ -75,8 +76,8 @@ public sealed partial class ActionDataInspector : Editor
         DrawGrammarSection(action);
         DrawStopAuthoringSection(action);
         DrawTimelineSection(action);
-        DrawCombatTrackSection(action);
         DrawTimeAuthoritySection(action);
+        DrawCombatTrackSection(action);
         serializedObject.ApplyModifiedProperties();
     }
 

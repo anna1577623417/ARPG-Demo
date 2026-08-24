@@ -6,6 +6,11 @@ using UnityEngine;
 /// </summary>
 public static class StopMotionRuntime
 {
+    static int s_lastSyncRejectActionId;
+    static StopDurationAuthority s_lastSyncRejectDurationAuthority;
+    static StopAnimSpeedAuthority s_lastSyncRejectAnimSpeedAuthority;
+    static bool s_lastSyncRejectHasClipWindow;
+
     /// <summary>
     /// 234.6.3 — Clip 尾时钟。短租约默认从尾段起播且倍率 1；
     /// authorSpecified 时用 Segment 拖条写入的 Clip nt（可为 0，表示从 Clip 头起播）。
@@ -17,10 +22,18 @@ public static class StopMotionRuntime
         out float startNormalized,
         out float animSpeed,
         float authorStartNormalized = 0f,
-        bool authorSpecified = false)
+        bool authorSpecified = false,
+        bool fitWholeWindow = false)
     {
         var lease = Mathf.Max(0.001f, leaseSeconds);
         var wall = Mathf.Max(0f, segmentWallSeconds);
+        if (fitWholeWindow)
+        {
+            startNormalized = authorSpecified ? Mathf.Clamp01(authorStartNormalized) : 0f;
+            animSpeed = wall > 0.0001f ? wall / lease : 1f;
+            return;
+        }
+
         if (authorSpecified)
         {
             startNormalized = Mathf.Clamp01(authorStartNormalized);
@@ -136,15 +149,23 @@ public static class StopMotionRuntime
         bool chained)
     {
         var s = action.InheritPhysics;
+        var presentation = action.StopPresentation;
         var derivedFromLegacy = false;
         var dRef = s.FullSpeedStopDistance;
+        var vRef = referenceGaitSpeed > 0.0001f ? referenceGaitSpeed : s.MaxSpeed;
+        if (s.ContinuousTuningMode == ContinuousStopTuningMode.FullSpeedDuration
+            && s.FullSpeedStopDuration > 0.0001f
+            && vRef > 0.0001f)
+        {
+            dRef = 0.5f * vRef * s.FullSpeedStopDuration;
+        }
+
         if (dRef <= 0.0001f)
         {
             dRef = s.MaxDistance;
             derivedFromLegacy = dRef > 0.0001f;
         }
 
-        var vRef = referenceGaitSpeed > 0.0001f ? referenceGaitSpeed : s.MaxSpeed;
         if (vRef <= 0.0001f)
         {
             return StopRuntimeContext.Disabled;
@@ -163,6 +184,7 @@ public static class StopMotionRuntime
         float a;
         float physicsDistance;
         float physicsDuration;
+        var physicsDurationCapped = false;
         float remainingSpeed;
         var segmentWall = ActionTimeAuthority.ResolveSegmentWallSeconds(action);
         var logical = action.ResolveLogicalDurationSeconds();
@@ -194,6 +216,7 @@ public static class StopMotionRuntime
                 : (2f * dRef / vRef);
             if (tUncap > tMax && tMax > 0.0001f && vUsed > StopIntegrator.DefaultSpeedEpsilon)
             {
+                physicsDurationCapped = true;
                 physicsDuration = tMax;
                 a = vUsed / tMax;
                 physicsDistance = 0.5f * vUsed * tMax;
@@ -207,17 +230,96 @@ public static class StopMotionRuntime
             remainingSpeed = vUsed;
         }
 
-        var dur = shortLease
+        var legacyDuration = shortLease
             ? Mathf.Max(0.001f, physicsDuration, tailSec)
             : Mathf.Max(0.001f, physicsDuration, segmentWall, logical);
+        var durationAuthority = presentation.DurationAuthority;
+        var animSpeedAuthority = presentation.AnimSpeedAuthority;
+        var dur = durationAuthority switch
+        {
+            StopDurationAuthority.PhysicsStop => Mathf.Max(0.001f, physicsDuration),
+            StopDurationAuthority.ActionDefault => Mathf.Max(0.001f, logical),
+            _ => legacyDuration,
+        };
+
         var clockAuthorNt = shortLease && authorTail ? authorStartNt : 0f;
-        ResolvePresentationClock(
-            dur,
-            segmentWall,
-            out var startNt,
-            out var animSpeed,
-            clockAuthorNt,
-            shortLease && authorTail);
+        var authorClock = shortLease && authorTail;
+        var clockWall = authorClock ? tailSec : segmentWall;
+        float startNt;
+        float animSpeed;
+        var useLegacyPresentationClock = durationAuthority == StopDurationAuthority.LegacyLease
+            && animSpeedAuthority == StopAnimSpeedAuthority.InheritAction;
+        if (useLegacyPresentationClock)
+        {
+            ResolvePresentationClock(
+                dur,
+                segmentWall,
+                out startNt,
+                out animSpeed,
+                clockAuthorNt,
+                authorClock);
+        }
+        else
+        {
+            startNt = authorClock ? clockAuthorNt : 0f;
+            animSpeed = animSpeedAuthority switch
+            {
+                StopAnimSpeedAuthority.AutoFitEffectiveDuration =>
+                    ActionAnimSpeedAuthority.ResolveClipAnimSpeedForDuration(action, dur, clockWall),
+                StopAnimSpeedAuthority.FixedOverride => presentation.ResolveFixedAnimSpeed(),
+                _ when action.ClipAnimSpeedMode == ActionAnimSpeedMode.AutoFitDuration =>
+                    ActionAnimSpeedAuthority.ResolveClipAnimSpeedForDuration(action, dur, clockWall),
+                _ => action.ResolveEffectiveAnimSpeed(),
+            };
+
+            if (animSpeedAuthority == StopAnimSpeedAuthority.AutoFitEffectiveDuration)
+            {
+                // AutoFit must play the selected window rather than silently trim to its tail.
+                ResolvePresentationClock(
+                    dur,
+                    clockWall,
+                    out startNt,
+                    out _,
+                    clockAuthorNt,
+                    authorClock,
+                    fitWholeWindow: true);
+                animSpeed = ActionAnimSpeedAuthority.ResolveClipAnimSpeedForDuration(action, dur, clockWall);
+            }
+        }
+
+        var hasClipWindow = action.MainClip != null && clockWall > 0.0001f;
+        var actualClipDuration = hasClipWindow && animSpeed > 0.0001f
+            ? clockWall / animSpeed
+            : dur;
+        var syncDelta = actualClipDuration - dur;
+        var syncResult = StopSyncResult.NotRequested;
+        var strictEligible = durationAuthority == StopDurationAuthority.PhysicsStop
+            && hasClipWindow
+            && (animSpeedAuthority == StopAnimSpeedAuthority.AutoFitEffectiveDuration
+                || animSpeedAuthority == StopAnimSpeedAuthority.FixedOverride);
+        if (presentation.RequireSynchronization)
+        {
+            if (strictEligible && Mathf.Abs(syncDelta) <= 0.005f)
+            {
+                syncResult = StopSyncResult.Synchronized;
+            }
+            else
+            {
+                var requestedSyncDelta = syncDelta;
+                syncResult = StopSyncResult.Rejected;
+                animSpeed = ActionAnimSpeedAuthority.ResolveClipAnimSpeedForDuration(action, dur, clockWall);
+                syncDelta = (hasClipWindow && animSpeed > 0.0001f
+                    ? clockWall / animSpeed
+                    : dur) - dur;
+                LogSyncRejected(
+                    action,
+                    durationAuthority,
+                    animSpeedAuthority,
+                    requestedSyncDelta,
+                    syncDelta,
+                    hasClipWindow);
+            }
+        }
 
         var mask = new Vector3(s.AffectX ? 1f : 0f, s.AffectY ? 1f : 0f, s.AffectZ ? 1f : 0f);
         var dir = stopDirection.sqrMagnitude > 0.0001f ? stopDirection : Vector3.forward;
@@ -228,6 +330,9 @@ public static class StopMotionRuntime
             useAuthorFixed: false,
             useRuntimeDuration: true,
             runtimeDuration: dur,
+            physicsDuration: physicsDuration,
+            effectiveActionDuration: dur,
+            clipWindowWallSeconds: clockWall,
             runtimeDistance: physicsDistance,
             baseAnimSpeed: animSpeed,
             entrySpeed: vEntry,
@@ -243,7 +348,46 @@ public static class StopMotionRuntime
             presentationStartNormalized: startNt,
             chainIndex: chainIndex,
             chained: chained,
-            authorTail: shortLease && authorTail);
+            authorTail: authorClock,
+            durationAuthority: durationAuthority,
+            animSpeedAuthority: animSpeedAuthority,
+            syncResult: syncResult,
+            syncDeltaSeconds: syncDelta,
+            physicsDurationCapped: physicsDurationCapped);
+    }
+
+    static void LogSyncRejected(
+        ActionDataSO action,
+        StopDurationAuthority durationAuthority,
+        StopAnimSpeedAuthority animSpeedAuthority,
+        float requestedSyncDelta,
+        float fallbackSyncDelta,
+        bool hasClipWindow)
+    {
+        var actionId = action != null ? action.GetInstanceID() : 0;
+        if (actionId == s_lastSyncRejectActionId
+            && durationAuthority == s_lastSyncRejectDurationAuthority
+            && animSpeedAuthority == s_lastSyncRejectAnimSpeedAuthority
+            && hasClipWindow == s_lastSyncRejectHasClipWindow)
+        {
+            return;
+        }
+
+        s_lastSyncRejectActionId = actionId;
+        s_lastSyncRejectDurationAuthority = durationAuthority;
+        s_lastSyncRejectAnimSpeedAuthority = animSpeedAuthority;
+        s_lastSyncRejectHasClipWindow = hasClipWindow;
+        Debug.LogFormat(
+            LogType.Warning,
+            LogOption.NoStacktrace,
+            action,
+            "[StopSync238] REJECT action={0} durationAuthority={1} animSpeedAuthority={2} requestedDelta={3:F4} fallbackDelta={4:F4} hasClipWindow={5} fallback=AutoFit",
+            action != null ? action.name : "null",
+            durationAuthority,
+            animSpeedAuthority,
+            requestedSyncDelta,
+            fallbackSyncDelta,
+            hasClipWindow);
     }
 
     /// <summary>InheritPhysics：曲线归一化节奏 × runtimeDistance。</summary>

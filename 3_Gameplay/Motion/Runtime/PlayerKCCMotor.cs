@@ -440,7 +440,10 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
             IsActive = !_gravitySuspended,
         };
 
+        YAxis241Probe.ObserveMotorIn(_player, yAxisConfig, gravityContrib.Vy, wasGroundedAtMotorStart);
         var velocity = gameplayWorldVelocity;
+        var composedVy = gameplayWorldVelocity.y;
+        var constrainedVy = gameplayWorldVelocity.y;
         var gameplayDrivenVy = false;
         if (useMotionComposer)
         {
@@ -456,12 +459,16 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
                 in yAxisConfig,
                 log: MotionXYZDebug.ShouldLogMotionSample,
                 logContext: _player);
+            composedVy = velocity.y;
+            YAxis241Probe.ObserveComposer(_player, yAxisConfig, composedVy);
             if (MotionXYZDebug.ShouldLogMotionSample)
             {
                 MotionXYZDebug.MarkMotionSampleLogged();
             }
 
             MotionGroundConstraint.ApplyClamp(ref velocity, in yAxisConfig, wasGroundedAtMotorStart);
+            constrainedVy = velocity.y;
+            YAxis241Probe.ObserveConstraint(_player, yAxisConfig, constrainedVy);
 
             gameplayDrivenVy = yAxisConfig.YMotion == YMotionMode.GroundTargeted
                 || yAxisConfig.YMotion == YMotionMode.Curve && (
@@ -556,6 +563,19 @@ public sealed class PlayerKCCMotor : MonoBehaviour, IPlayerMotor
             gameplayDrivenVy ? "ApplyMotorFromGameplay[Y-driven]" : "ApplyMotorFromGameplay",
             probePositionBefore, probeVelocityBefore, solvedDelta);
         var reportedSolvedDelta = motorSettings != null ? solvedDelta : plannedDelta;
+        var actualDelta = transform.position - probePositionBefore;
+        YAxis241Probe.ObserveMotorResult(
+            _player,
+            yAxisConfig,
+            gravityContrib.Vy,
+            composedVy,
+            constrainedVy,
+            plannedDelta,
+            reportedSolvedDelta,
+            actualDelta,
+            wasGroundedAtMotorStart,
+            _isGrounded,
+            gameplayDrivenVy);
         LocomotionPositionSettlement227Probe.ReportMotorSettlement(
             _player,
             gameplayDrivenVy ? "ApplyMotorFromGameplay[Y-driven]" : "ApplyMotorFromGameplay",

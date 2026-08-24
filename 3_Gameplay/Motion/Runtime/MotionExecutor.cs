@@ -141,6 +141,7 @@ public sealed class MotionExecutor
         LastContribution = MotionContribution.Inactive;
         LastWorldDelta = Vector3.zero;
         DirectionAuthority237Probe.ObserveMotionFrame(_debugOwner, in _frame);
+        YAxis241Probe.Begin(_debugOwner, _action, _profile, startT);
 
         if (_active && profile.GetYAxisConfig().YMotion == YMotionMode.GroundTargeted)
         {
@@ -196,6 +197,12 @@ public sealed class MotionExecutor
                     $"OPEN axisCurves missing — zero delta (profile={_profile.name})");
             }
 
+            YAxis241Probe.ObserveExecutor(
+                _debugOwner,
+                currT,
+                Vector3.zero,
+                Vector3.zero,
+                _profile.GetYAxisConfig());
             _motor?.SetDesiredVelocity(Vector3.zero);
             _motor?.SetMotionComposeContext(_profile.GetYAxisConfig());
             TickAnimSpeed(currT);
@@ -363,6 +370,7 @@ public sealed class MotionExecutor
         LastWorldDelta = worldDelta;
         DirectionAuthority237Probe.ObserveMotionStep(_debugOwner, localDelta, worldDelta);
         InputActionProbe.LogMotionBurst(_debugOwner, _action != null ? _action.name : "(noAction)", worldDelta, deltaTime);
+        YAxis241Probe.ObserveExecutor(_debugOwner, currT, localDelta, worldDelta, yAxisConfig);
         var desiredVelocity = worldDelta / deltaTime;
         _motor?.SetDesiredVelocity(desiredVelocity);
         _motor?.SetMotionComposeContext(yAxisConfig);
@@ -458,6 +466,7 @@ public sealed class MotionExecutor
     {
         LogAnimSpeed226End();
         LogAnimSpeed228End();
+        YAxis241Probe.End(_debugOwner);
         _playback = default;
         _active = false;
         LastContribution = MotionContribution.Inactive;

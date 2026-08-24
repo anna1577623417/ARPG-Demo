@@ -64,6 +64,7 @@ public sealed partial class ActionDataInspector
         // 198.x — MotionProfile 字段不再二次渲染：直接复用顶部 Action 默认 Inspector 的 MotionProfile 字段。
         // 仅保留 Stop 关联性 warning。
         DrawMotionProfileStopWarning(action, strategy, stopEnabled);
+        DrawStopPresentationSettings();
 
         switch (strategy)
         {
@@ -99,6 +100,11 @@ public sealed partial class ActionDataInspector
                         "MotionProfile 策略：完整 ZXY 位移 + AnimSpeedCurve 仍生效；与未开 Stop 的 Motion Action 一致。",
                         MessageType.Info);
                 }
+
+                // TapStop 配置属于 Action 的 Stop Authoring 数据，不随 IP/MP 位移策略切换；Snap 才隐藏。
+                DrawTapStopSettings(
+                    serializedObject.FindProperty(nameof(ActionDataSO.InheritPhysics)),
+                    "点按 TapStop 配置（IP / MP 共用）");
 
                 break;
         }
@@ -198,8 +204,36 @@ public sealed partial class ActionDataInspector
             MessageType.None);
 
         EditorGUILayout.LabelField("输入字段", EditorStyles.miniBoldLabel);
-        EditorGUILayout.PropertyField(inheritProp.FindPropertyRelative(nameof(InheritPhysicsSettings.FullSpeedStopDistance)),
-            new GUIContent("满速停止距离 D_ref", "积分标定。0 = 未填，运行时回退 MaxDistance"));
+        var tuningModeProp = inheritProp.FindPropertyRelative(nameof(InheritPhysicsSettings.ContinuousTuningMode));
+        var durationProp = inheritProp.FindPropertyRelative(nameof(InheritPhysicsSettings.FullSpeedStopDuration));
+        if (tuningModeProp != null)
+        {
+            EditorGUILayout.PropertyField(
+                tuningModeProp,
+                new GUIContent("连续 Stop 主调参", "FullSpeedDistance 保持旧距离语义；FullSpeedDuration 用满速收停时间反推 D_ref"));
+        }
+        var tuningMode = tuningModeProp != null
+            ? (ContinuousStopTuningMode)tuningModeProp.enumValueIndex
+            : ContinuousStopTuningMode.FullSpeedDistance;
+        if (tuningMode == ContinuousStopTuningMode.FullSpeedDistance)
+        {
+            EditorGUILayout.PropertyField(
+                inheritProp.FindPropertyRelative(nameof(InheritPhysicsSettings.FullSpeedStopDistance)),
+                new GUIContent("满速停止距离 D_ref", "积分标定。0 = 未填，运行时回退 MaxDistance"));
+        }
+        else if (durationProp != null)
+        {
+            EditorGUILayout.PropertyField(
+                durationProp,
+                new GUIContent("满速停止时间 T_ref", "PhysicsStop 下作为满速标定；运行时 D_ref=0.5×V_ref×T_ref"));
+            var maxSpeedProp = inheritProp.FindPropertyRelative(nameof(InheritPhysicsSettings.MaxSpeed));
+            var vRef = maxSpeedProp != null ? Mathf.Max(0f, maxSpeedProp.floatValue) : 0f;
+            var tRef = Mathf.Max(0f, durationProp.floatValue);
+            using (new EditorGUI.DisabledScope(true))
+            {
+                EditorGUILayout.FloatField("推导 D_ref（按 Editor V_max）", 0.5f * vRef * tRef);
+            }
+        }
         EditorGUILayout.PropertyField(inheritProp.FindPropertyRelative(nameof(InheritPhysicsSettings.MaxSpeed)),
             new GUIContent("参考满速 V_max 回退", "Play 使用松开时的 WalkSpeed/RunSpeed；此处仅 Editor 未传 gait 时回退"));
         EditorGUILayout.PropertyField(inheritProp.FindPropertyRelative(nameof(InheritPhysicsSettings.MaxDistance)),
@@ -207,16 +241,7 @@ public sealed partial class ActionDataInspector
         EditorGUILayout.PropertyField(inheritProp.FindPropertyRelative(nameof(InheritPhysicsSettings.MaxBrakeSeconds)),
             new GUIContent("最大刹车时间 T_max", "0 = 运行时用 2·D_ref/V_max。只约束 Loop 物理段"));
 
-        EditorGUILayout.Space(2f);
-        EditorGUILayout.LabelField("点按离散配方", EditorStyles.miniBoldLabel);
-        EditorGUILayout.PropertyField(inheritProp.FindPropertyRelative(nameof(InheritPhysicsSettings.TapWindowSeconds)),
-            new GUIContent("点按判定窗", "heldSec≤此值走 Tap。0 = 0.15"));
-        EditorGUILayout.PropertyField(inheritProp.FindPropertyRelative(nameof(InheritPhysicsSettings.TapPresentationSeconds)),
-            new GUIContent("点按表现租约 T_tap", "Tap 不吃满段 Clip 墙钟。0 = 0.15"));
-        EditorGUILayout.PropertyField(inheritProp.FindPropertyRelative(nameof(InheritPhysicsSettings.TapStopDistance)),
-            new GUIContent("点按固定位移", "与入场速度无关。0 = 运行时 0.1m"));
-        StopTapTailSegmentEditor.Draw(serializedObject, inheritProp, serializedObject.targetObject as ActionDataSO);
-        DrawTapChainUnlimitedToggle(inheritProp);
+        DrawTapStopSettings(inheritProp, "点按 TapStop 配置（IP / MP 共用）");
 
         EditorGUILayout.Space(2f);
         EditorGUILayout.LabelField("位移轴向", EditorStyles.miniBoldLabel);
@@ -226,6 +251,31 @@ public sealed partial class ActionDataInspector
             new GUIContent("Y · 垂直", "一般不勾选"));
         EditorGUILayout.PropertyField(inheritProp.FindPropertyRelative(nameof(InheritPhysicsSettings.AffectZ)),
             new GUIContent("Z · 前后", "Run/Walk 急停默认勾选"));
+    }
+
+    static void DrawTapStopSettings(SerializedProperty inheritProp, string heading)
+    {
+        if (inheritProp == null)
+        {
+            return;
+        }
+
+        EditorGUILayout.Space(2f);
+        EditorGUILayout.LabelField(heading, EditorStyles.miniBoldLabel);
+        EditorGUILayout.PropertyField(
+            inheritProp.FindPropertyRelative(nameof(InheritPhysicsSettings.TapWindowSeconds)),
+            new GUIContent("点按判定窗", "heldSec≤此值走 Tap。0 = 0.15"));
+        EditorGUILayout.PropertyField(
+            inheritProp.FindPropertyRelative(nameof(InheritPhysicsSettings.TapPresentationSeconds)),
+            new GUIContent("点按表现租约 T_tap", "Tap 不吃满段 Clip 墙钟。0 = 0.15"));
+        EditorGUILayout.PropertyField(
+            inheritProp.FindPropertyRelative(nameof(InheritPhysicsSettings.TapStopDistance)),
+            new GUIContent("点按固定位移", "与入场速度无关。0 = 运行时 0.1m"));
+        StopTapTailSegmentEditor.Draw(
+            inheritProp.serializedObject,
+            inheritProp,
+            inheritProp.serializedObject.targetObject as ActionDataSO);
+        DrawTapChainUnlimitedToggle(inheritProp);
     }
 
     static void DrawTapChainUnlimitedToggle(SerializedProperty inheritProp)
@@ -261,6 +311,43 @@ public sealed partial class ActionDataInspector
         }
     }
 
+    void DrawStopPresentationSettings()
+    {
+        var presentationProp = serializedObject.FindProperty(nameof(ActionDataSO.StopPresentation));
+        if (presentationProp == null)
+        {
+            return;
+        }
+
+        EditorGUILayout.Space(2f);
+        EditorGUILayout.LabelField("Stop 时钟与动画同步（238.1）", EditorStyles.miniBoldLabel);
+        var durationProp = presentationProp.FindPropertyRelative(nameof(StopPresentationSettings.DurationAuthority));
+        var animSpeedProp = presentationProp.FindPropertyRelative(nameof(StopPresentationSettings.AnimSpeedAuthority));
+        var fixedSpeedProp = presentationProp.FindPropertyRelative(nameof(StopPresentationSettings.FixedAnimSpeed));
+        var strictProp = presentationProp.FindPropertyRelative(nameof(StopPresentationSettings.RequireSynchronization));
+        if (durationProp != null)
+        {
+            EditorGUILayout.PropertyField(durationProp, new GUIContent("Stop 时长权威"));
+        }
+        if (animSpeedProp != null)
+        {
+            EditorGUILayout.PropertyField(animSpeedProp, new GUIContent("End 动画速率权威"));
+        }
+        if (fixedSpeedProp != null && animSpeedProp != null
+            && (StopAnimSpeedAuthority)animSpeedProp.enumValueIndex == StopAnimSpeedAuthority.FixedOverride)
+        {
+            EditorGUILayout.PropertyField(
+                fixedSpeedProp,
+                new GUIContent("固定 End AnimSpeed", "仅 FixedOverride 使用；严格同步失败时运行时回退 AutoFit"));
+        }
+        if (strictProp != null)
+        {
+            EditorGUILayout.PropertyField(
+                strictProp,
+                new GUIContent("要求严格同步", "仅 PhysicsStop + AutoFit/FixedOverride 进入严格同步门禁"));
+        }
+    }
+
     static void DrawInheritPhysicsRuntimePreview(ActionDataSO action)
     {
         if (action == null || !action.EnableStopFeature)
@@ -283,8 +370,15 @@ public sealed partial class ActionDataInspector
             EditorGUILayout.FloatField("Preview Entry Speed (Editor only)", previewSpeed);
             EditorGUILayout.FloatField("a (m/s²)", ctx.BrakeDeceleration);
             EditorGUILayout.FloatField("predictedDistance", ctx.RuntimeDistance);
-            EditorGUILayout.FloatField("runtimeDuration (presentation lease)", ctx.RuntimeDuration);
+            EditorGUILayout.FloatField("physicsDuration", ctx.PhysicsDuration);
+            EditorGUILayout.Toggle("physicsDuration capped", ctx.PhysicsDurationCapped);
+            EditorGUILayout.FloatField("effectiveActionDuration", ctx.EffectiveActionDuration);
+            EditorGUILayout.FloatField("clipWindowWallSeconds", ctx.ClipWindowWallSeconds);
             EditorGUILayout.FloatField("baseAnimSpeed @ preview", ctx.BaseAnimSpeed);
+            EditorGUILayout.TextField("durationAuthority", ctx.DurationAuthority.ToString());
+            EditorGUILayout.TextField("animSpeedAuthority", ctx.AnimSpeedAuthority.ToString());
+            EditorGUILayout.TextField("syncResult", ctx.SyncResult.ToString());
+            EditorGUILayout.FloatField("syncDeltaSeconds", ctx.SyncDeltaSeconds);
             EditorGUILayout.Toggle("D_ref 来自 MaxDistance 回退", ctx.DerivedFromLegacyMaxDistance);
             var tapCtx = StopMotionRuntime.Build(
                 action,
@@ -299,6 +393,14 @@ public sealed partial class ActionDataInspector
             EditorGUILayout.FloatField("Tap AnimSpeed", tapCtx.BaseAnimSpeed);
             EditorGUILayout.FloatField("Tap Clip startNt", tapCtx.PresentationStartNormalized);
             EditorGUILayout.TextField("Tap tailMode", tapCtx.AuthorTail ? "Author" : "Auto");
+        }
+
+        if (ctx.SyncResult == StopSyncResult.Rejected)
+        {
+            EditorGUILayout.HelpBox(
+                $"严格同步拒绝：有效时长 {ctx.EffectiveActionDuration:F3}s，Clip 窗口 {ctx.ClipWindowWallSeconds:F3}s，" +
+                $"最终差值 {ctx.SyncDeltaSeconds:F4}s。运行时会回退 AutoFit；请调整 FixedOverride 或 Stop 时长。",
+                MessageType.Warning);
         }
 
         DrawInheritPhysicsGaitTable(action, vRef);

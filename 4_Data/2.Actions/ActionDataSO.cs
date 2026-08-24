@@ -214,9 +214,12 @@ public partial class ActionDataSO : ScriptableObject
     [Tooltip("InheritPhysics：入场速度恒定减速度积分。D=v²/(2a)。")]
     public InheritPhysicsSettings InheritPhysics = InheritPhysicsSettings.Default;
 
-    [Tooltip("InheritPhysics：baseAnimSpeed = ReferenceDuration / runtimeDuration。")]
+    [Tooltip("InheritPhysics 兼容字段：LegacyLease 下 baseAnimSpeed 仍沿用 ReferenceDuration / runtimeDuration；PhysicsStop/AutoFit 可由 Stop 时钟合同接管。")]
     [Range(0.05f, 2f)]
     public float ReferenceDuration = 0.25f;
+
+    [Tooltip("238.1：Stop 对 Action Duration 与 Clip AnimSpeed 的显式覆盖。默认 LegacyLease + InheritAction 保持旧资产行为。")]
+    public StopPresentationSettings StopPresentation = StopPresentationSettings.Default;
 
     // 198.x — Tail Segment / TapWindowSec 子特性已删除。
     // 原设计：玩家短按方向键松手 → WalkEnd 从 TailSegmentStart 跳进只播末段。

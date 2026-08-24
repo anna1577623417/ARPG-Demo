@@ -50,7 +50,7 @@ MonoBehaviour:
   EnableTieredLanding: 0
   LandingMediumThreshold: 2
   LandingHeavyThreshold: 5
-  RunInputMode: 0
+  RunInputMode: 1
   AbilityContextWindowSec: 0.1
   ClearPlanarVelocityOnDirectionalCommit: 1
   DirectionGraceSec: 0.12

@@ -45,6 +45,27 @@ public static class ActionAnimSpeedAuthority
     }
 
     /// <summary>
+    /// 238.1 — 已确定运行期时长后求 Clip 窗口基准倍率。
+    /// Clip.length 只作为倍率分子，不参与反推 Stop 物理时长，也不做 AutoFit 上限 Clamp。
+    /// </summary>
+    public static float ResolveClipAnimSpeedForDuration(
+        ActionDataSO action,
+        float effectiveDuration,
+        float clipWindowWallSeconds = -1f)
+    {
+        if (action == null)
+        {
+            return 1f;
+        }
+
+        var duration = Mathf.Max(0.001f, effectiveDuration);
+        var wall = clipWindowWallSeconds >= 0f
+            ? clipWindowWallSeconds
+            : ActionTimeAuthority.ResolveSegmentWallSeconds(action);
+        return wall > 0.0001f ? Mathf.Max(MinSpeed, wall / duration) : 1f;
+    }
+
+    /// <summary>
     /// MotionProfile SpeedOverTime 因子。
     /// 【226】Free/AutoFit 均可叠加；Curve 且 ∫≠1 时策略1拒绝曲线（返回 1）并打 OPEN Log。
     /// </summary>

@@ -130,6 +130,9 @@ public sealed class GameMainDebugSettingsWindow : EditorWindow
             Toggle(() => GameMainDebugSettings.DirectionAuthority237Log,
                 v => GameMainDebugSettings.DirectionAuthority237Log = v,
                 "Direction Authority 237 v3", "[DIR] rid / INPUT_EDGE / LOCO_CHANGE / DIR_ROUTE_PICK / FACING_REQ；Held 改向与 Selection Frame 取证，不改行为");
+            Toggle(() => GameMainDebugSettings.YAxis241Log,
+                v => GameMainDebugSettings.YAxis241Log = v,
+                "Y Axis 241 / AD-MP 三权", "[Y241] AD/MP 资产身份 + V2/Legacy 来源 + YMotion/Gravity/GroundConstraint 穿线与最终结果");
         });
 
         DrawSection("Combat / Intent", () =>
@@ -192,7 +195,7 @@ public sealed class GameMainDebugSettingsWindow : EditorWindow
     static void ToggleHud(System.Func<bool> get, System.Action<bool> set, string label, string tooltip)
     {
         EditorGUI.BeginChangeCheck();
-        var next = EditorGUILayout.Toggle(new GUIContent(label, tooltip), get());
+        var next = EditorGUILayout.ToggleLeft(new GUIContent(label, tooltip), get());
         if (EditorGUI.EndChangeCheck())
         {
             set(next);
@@ -204,7 +207,9 @@ public sealed class GameMainDebugSettingsWindow : EditorWindow
     static void Toggle(System.Func<bool> get, System.Action<bool> set, string label, string tooltip)
     {
         EditorGUI.BeginChangeCheck();
-        var next = EditorGUILayout.Toggle(new GUIContent(label, tooltip), get());
+        // ToggleLeft removes the fixed Inspector label column. Long diagnostic labels
+        // no longer run underneath the checkbox on narrow Log Settings windows.
+        var next = EditorGUILayout.ToggleLeft(new GUIContent(label, tooltip), get());
         if (EditorGUI.EndChangeCheck())
         {
             set(next);

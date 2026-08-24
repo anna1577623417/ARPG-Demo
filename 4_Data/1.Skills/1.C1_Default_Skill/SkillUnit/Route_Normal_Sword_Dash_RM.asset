@@ -15,7 +15,11 @@ MonoBehaviour:
   routeId: Route_Normal_Sword_Dash_RM
   icon: {fileID: 21300000, guid: d73faddfc2dcc594f83c9041a83bedfa, type: 3}
   displayName: 
+  presentationId: 
   showOnHud: 1
+  showPolicy: 0
+  presentationAsset: {fileID: 0}
+  description: {fileID: 0}
   priority: 5
   cooldownPolicy: 1
   baseCooldownSeconds: 1
@@ -44,4 +48,5 @@ MonoBehaviour:
   overrideIcon: 0
   overrideCost: 0
   abilityGateRules:
-  - {fileID: 11400000, guid: f1a2b3c4d5e6789012345678abcdef01, type: 2}
+  - {fileID: 11400000, guid: 55f9ab640a46e004e9dbbfe99b06e93d, type: 2}
+  singleAction: 1

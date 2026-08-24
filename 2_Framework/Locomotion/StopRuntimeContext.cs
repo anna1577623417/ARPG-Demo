@@ -12,6 +12,10 @@ public readonly struct StopRuntimeContext
     public bool UseAuthorFixed { get; }
     public bool UseRuntimeDuration { get; }
     public float RuntimeDuration { get; }
+    public float PhysicsDuration { get; }
+    public bool PhysicsDurationCapped { get; }
+    public float EffectiveActionDuration { get; }
+    public float ClipWindowWallSeconds { get; }
     public float RuntimeDistance { get; }
     public float BaseAnimSpeed { get; }
     public float EntrySpeed { get; }
@@ -28,6 +32,10 @@ public readonly struct StopRuntimeContext
     public int ChainIndex { get; }
     public bool Chained { get; }
     public bool AuthorTail { get; }
+    public StopDurationAuthority DurationAuthority { get; }
+    public StopAnimSpeedAuthority AnimSpeedAuthority { get; }
+    public StopSyncResult SyncResult { get; }
+    public float SyncDeltaSeconds { get; }
 
     public static StopRuntimeContext Disabled => default;
 
@@ -53,7 +61,15 @@ public readonly struct StopRuntimeContext
         float presentationStartNormalized = 0f,
         int chainIndex = 0,
         bool chained = false,
-        bool authorTail = false)
+        bool authorTail = false,
+        StopDurationAuthority durationAuthority = StopDurationAuthority.LegacyLease,
+        StopAnimSpeedAuthority animSpeedAuthority = StopAnimSpeedAuthority.InheritAction,
+        StopSyncResult syncResult = StopSyncResult.NotRequested,
+        float syncDeltaSeconds = 0f,
+        float physicsDuration = -1f,
+        float effectiveActionDuration = -1f,
+        float clipWindowWallSeconds = 0f,
+        bool physicsDurationCapped = false)
     {
         IsActive = isActive;
         Strategy = strategy;
@@ -61,6 +77,10 @@ public readonly struct StopRuntimeContext
         UseAuthorFixed = useAuthorFixed;
         UseRuntimeDuration = useRuntimeDuration;
         RuntimeDuration = runtimeDuration;
+        PhysicsDuration = physicsDuration >= 0f ? physicsDuration : runtimeDuration;
+        PhysicsDurationCapped = physicsDurationCapped;
+        EffectiveActionDuration = effectiveActionDuration >= 0f ? effectiveActionDuration : runtimeDuration;
+        ClipWindowWallSeconds = Mathf.Max(0f, clipWindowWallSeconds);
         RuntimeDistance = runtimeDistance;
         BaseAnimSpeed = baseAnimSpeed;
         EntrySpeed = entrySpeed;
@@ -77,6 +97,10 @@ public readonly struct StopRuntimeContext
         ChainIndex = Mathf.Max(0, chainIndex);
         Chained = chained;
         AuthorTail = authorTail;
+        DurationAuthority = durationAuthority;
+        AnimSpeedAuthority = animSpeedAuthority;
+        SyncResult = syncResult;
+        SyncDeltaSeconds = syncDeltaSeconds;
     }
 
     public StopRuntimeContext WithBrakeTick(float remainingSpeed, bool physicsComplete)
@@ -103,6 +127,14 @@ public readonly struct StopRuntimeContext
             PresentationStartNormalized,
             ChainIndex,
             Chained,
-            AuthorTail);
+            AuthorTail,
+            DurationAuthority,
+            AnimSpeedAuthority,
+            SyncResult,
+            SyncDeltaSeconds,
+            PhysicsDuration,
+            EffectiveActionDuration,
+            ClipWindowWallSeconds,
+            PhysicsDurationCapped);
     }
 }
