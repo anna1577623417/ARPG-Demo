@@ -413,6 +413,26 @@ public sealed class SkillEntryRouteResolveTests
             current, 0.5f, in intent, incoming));
     }
 
+    [Test]
+    public void AirborneActionGatePolicy_OnlyAirborneLocomotionPresentationSkipsActionWindow()
+    {
+        Assert.IsFalse(AirborneActionGatePolicy.RequiresAirInterruptGate(isGrounded: true));
+        Assert.IsTrue(AirborneActionGatePolicy.RequiresAirInterruptGate(isGrounded: false));
+
+        Assert.IsTrue(AirborneActionGatePolicy.IsAirborneLocomotionPresentationCarrier(
+            isGrounded: false,
+            isLocomotionOnlyAction: true,
+            currentIntentCategory: ActionIntentCategory.Locomotion));
+        Assert.IsFalse(AirborneActionGatePolicy.IsAirborneLocomotionPresentationCarrier(
+            isGrounded: false,
+            isLocomotionOnlyAction: false,
+            currentIntentCategory: ActionIntentCategory.Combat));
+        Assert.IsFalse(AirborneActionGatePolicy.IsAirborneLocomotionPresentationCarrier(
+            isGrounded: true,
+            isLocomotionOnlyAction: true,
+            currentIntentCategory: ActionIntentCategory.Locomotion));
+    }
+
     static NormalRouteDefinition CreateNormalRoute(string suffix)
     {
         var route = ScriptableObject.CreateInstance<NormalRouteDefinition>();

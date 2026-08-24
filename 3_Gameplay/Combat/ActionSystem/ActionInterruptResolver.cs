@@ -29,6 +29,10 @@ public static class ActionInterruptResolver
     {
         if (action == null || action.Windows == null || action.Windows.Count == 0)
         {
+            AbilityGate242Probe.LogActionWindow(
+                player, action, incomingAction, normalizedTime, in incomingIntent,
+                ResolveIncomingCategory(in incomingIntent, incomingAction), false,
+                "no-action-or-windows");
             LogInterruptDeny(player, action, normalizedTime, in incomingIntent, incomingAction, "no-action-or-windows");
             return false;
         }
@@ -36,6 +40,9 @@ public static class ActionInterruptResolver
         var incomingCategory = ResolveIncomingCategory(in incomingIntent, incomingAction);
         if (incomingCategory == ActionCategory.IdleFallback)
         {
+            AbilityGate242Probe.LogActionWindow(
+                player, action, incomingAction, normalizedTime, in incomingIntent,
+                incomingCategory, false, "idle-fallback");
             LogInterruptDeny(player, action, normalizedTime, in incomingIntent, incomingAction, "idle-fallback");
             return false;
         }
@@ -45,16 +52,25 @@ public static class ActionInterruptResolver
 
         if (!isSelf && incomingPriority > action.InterruptStability)
         {
+            AbilityGate242Probe.LogActionWindow(
+                player, action, incomingAction, normalizedTime, in incomingIntent,
+                incomingCategory, true, "hard-priority");
             LogInterrupt(player, true, "hard-priority", incomingCategory, incomingPriority);
             return true;
         }
 
         if (IsCategoryAllowedAtWindow(action, normalizedTime, incomingCategory, incomingPriority, isSelf, player))
         {
+            AbilityGate242Probe.LogActionWindow(
+                player, action, incomingAction, normalizedTime, in incomingIntent,
+                incomingCategory, true, "window+category");
             LogInterrupt(player, true, "window+category", incomingCategory, incomingPriority);
             return true;
         }
 
+        AbilityGate242Probe.LogActionWindow(
+            player, action, incomingAction, normalizedTime, in incomingIntent,
+            incomingCategory, false, "window-miss");
         LogInterruptDeny(player, action, Mathf.Clamp01(normalizedTime), in incomingIntent, incomingAction, "window-miss");
         return false;
     }

@@ -964,11 +964,53 @@ public sealed class PlayerActionState : PlayerState
         }
 
         var incomingAction = IntentRouter.PeekActionDataForRouting(player, in intent);
+        var incomingCategory = ActionInterruptResolver.ResolveIncomingCategory(in intent, incomingAction);
+
+        // 242.2：JumpStart 等 Locomotion 表现 Action 会暂时占用 ActionState，但物理上仍在空中。
+        // 不得因此绕过角色画像 L1，更不得让该表现 Action 的空窗口成为第三道技能门禁。
+        if (GameplayIntent.TryIntentKindToSlot(intent.Kind, out _)
+            && AirborneActionGatePolicy.RequiresAirInterruptGate(ctx.IsGrounded))
+        {
+            var hardFloor = player.States != null
+                ? player.States.AirborneHardFloorBlock
+                : ActionCategory.None;
+            var airDecision = AirInterruptResolver.Evaluate(player, incomingCategory, hardFloor);
+            AbilityGate242Probe.LogAirGate(
+                player,
+                in intent,
+                incomingAction,
+                incomingCategory,
+                in airDecision,
+                hardFloor,
+                source: "ActionState");
+
+            if (airDecision.Code != AirInterruptResolver.Verdict.Allow)
+            {
+                return false;
+            }
+
+            if (AirborneActionGatePolicy.IsAirborneLocomotionPresentationCarrier(
+                    ctx.IsGrounded,
+                    m_isLocomotionOnlyAction,
+                    m_action != null ? m_action.IntentCategory : ActionIntentCategory.Combat))
+            {
+                AbilityGate242Probe.LogActionWindow(
+                    player,
+                    m_action,
+                    incomingAction,
+                    m_prevNormalizedTime,
+                    in intent,
+                    incomingCategory,
+                    allow: true,
+                    reason: "not-applicable-airborne-locomotion-carrier");
+                player.SkillEntries?.NotifyRouteExited(wasInterrupted: true);
+                return IntentRouter.Route(player, in intent, forceActionReentry: true);
+            }
+        }
 
         // 184.3 — Recovery 表现 Action：跳过 ActionWindow 闸门，主动战斗 Intent 直接打断
         if (m_action != null && m_action.IsLocomotionRecovery)
         {
-            var incomingCategory = ActionInterruptResolver.ResolveIncomingCategory(in intent, incomingAction);
             if (incomingCategory == ActionCategory.IdleFallback)
             {
                 return false;

@@ -46,6 +46,7 @@ public static class AbilityGateService
 
         {
 
+            AbilityGate242Probe.LogRouteGate(logPlayer, route, in ctx, allow: false, reason);
             LogRouteGate(logPlayer, route, allow: false, reason, ctx.IsAirborne);
 
             return false;
@@ -60,6 +61,7 @@ public static class AbilityGateService
 
             : "no rules";
 
+        AbilityGate242Probe.LogRouteGate(logPlayer, route, in ctx, allow: true, reason);
         if (route.AbilityGateRules != null && route.AbilityGateRules.Length > 0)
 
         {
@@ -105,6 +107,7 @@ public static class AbilityGateService
         {
 
             reason = "no ability map";
+            AbilityGate242Probe.LogFlowGate(logPlayer, slot, ability, null, in ctx, allow: true, reason);
 
             return true;
 
@@ -117,6 +120,7 @@ public static class AbilityGateService
         {
 
             reason = "no binding";
+            AbilityGate242Probe.LogFlowGate(logPlayer, slot, ability, rule, in ctx, allow: true, reason);
 
             return true;
 
@@ -129,6 +133,7 @@ public static class AbilityGateService
         {
 
             reason = FormatDenyReason(rule);
+            AbilityGate242Probe.LogFlowGate(logPlayer, slot, ability, rule, in ctx, allow: false, reason);
 
             LogFlowGate(logPlayer, slot, ability, allow: false, reason, ctx.IsAirborne);
 
@@ -139,6 +144,7 @@ public static class AbilityGateService
 
 
         reason = "ok";
+        AbilityGate242Probe.LogFlowGate(logPlayer, slot, ability, rule, in ctx, allow: true, reason);
 
         LogFlowGate(logPlayer, slot, ability, allow: true, reason, ctx.IsAirborne);
 

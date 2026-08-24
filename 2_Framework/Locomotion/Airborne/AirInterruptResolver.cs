@@ -4,7 +4,8 @@ using UnityEngine;
 /// 168.3 — 空中状态可中断闸门 L1 解析器。
 ///
 /// ═══ 职责 ═══
-///   · 唯一入口：<see cref="PlayerAirborneState.TryConsumeGameplayIntent"/>
+///   · 消费入口：物理空中的 <see cref="PlayerAirborneState.TryConsumeGameplayIntent"/> 与
+///     <see cref="PlayerActionState.TryConsumeGameplayIntent"/>（后者仅 Skill Intent）
 ///   · 输入：Player + incoming ActionCategory + 系统硬下限 mask
 ///   · 输出：Phase + Verdict（Allow / HardFloorBlock / LoadoutBlock / LoadoutMissing）
 ///

@@ -58,7 +58,7 @@ MonoBehaviour:
   LeftFootSupportClip: {fileID: 0}
   RightFootSupportClip: {fileID: 0}
   EnableStopFeature: 1
-  StopStrategy: 1
+  StopStrategy: 0
   InheritPhysics:
     ContinuousTuningMode: 0
     MinSpeed: 1

@@ -34,7 +34,7 @@ MonoBehaviour:
   BakeMaxAnimSpeed: 1.15
   IntentCategory: 1
   GraphParticipation: -1
-  Category: 1
+  Category: 3
   InterruptPriority: 10
   InterruptStability: 10
   AllowSelfInterrupt: 0

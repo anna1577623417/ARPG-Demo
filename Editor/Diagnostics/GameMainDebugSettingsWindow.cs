@@ -75,6 +75,9 @@ public sealed class GameMainDebugSettingsWindow : EditorWindow
                 "Skill Route Roll4", "[SkillRoute][Roll4]");
             Toggle(() => GameMainDebugSettings.SkillAbility, v => GameMainDebugSettings.SkillAbility = v,
                 "Skill Ability Gate", "[Ability]");
+            Toggle(() => GameMainDebugSettings.AbilityGate242Log,
+                v => GameMainDebugSettings.AbilityGate242Log = v,
+                "Ability Gate 242 / Double Gate", "[Ability242] Transition → Air L1 → Route L2 → ActionWindow → State");
             Toggle(() => GameMainDebugSettings.DirectionalInputDiagLog,
                 v => GameMainDebugSettings.DirectionalInputDiagLog = v,
                 "Directional Input Diag (213.1)", "[DirInput213] Space/Shift+WASD 全链路 + WARN");

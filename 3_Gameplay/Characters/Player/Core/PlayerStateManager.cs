@@ -35,6 +35,8 @@ public class PlayerStateManager : EntityStateManager<Player>, IEntityIntentArbit
     [SerializeField] TurnSettings turnSettings = TurnSettings.Default;
 
     public TurnSettings LocomotionTurnSettings => turnSettings;
+    /// <summary>242.2：所有物理空中状态共用的系统级硬下限；画像 L1 本身仍由 Loadout 提供。</summary>
+    public ActionCategory AirborneHardFloorBlock => airborneHardFloorBlock;
 
     public IIntentHost IntentHost => Entity;
     public ISkillHost SkillHost => Entity;
@@ -92,6 +94,7 @@ public class PlayerStateManager : EntityStateManager<Player>, IEntityIntentArbit
 
     public void LogResolveBlocked(in GameplayIntent intent, in ArbitrationDecision decision)
     {
+        AbilityGate242Probe.LogStateResult(Entity, in intent, decision.Route, "Resolve", false, decision.Reason);
         if (decision.DiscardIntent)
         {
             InputActionProbe.LogIntentDropped(Entity, intent.Kind.ToString(), "SkillEntry.Resolve", $"no-route-discard sem={intent.Semantic}");
@@ -107,16 +110,19 @@ public class PlayerStateManager : EntityStateManager<Player>, IEntityIntentArbit
 
     public void LogRouteRejected(in GameplayIntent intent, SkillRouteRuntime route, string reason)
     {
+        AbilityGate242Probe.LogStateResult(Entity, in intent, route, "RoutePolicy", false, reason);
         InputActionProbe.LogIntentDropped(Entity, intent.Kind.ToString(), "Route.Policy", reason);
     }
 
     public void LogCommitBlocked(in GameplayIntent intent, SkillRouteRuntime route, string reason)
     {
+        AbilityGate242Probe.LogStateResult(Entity, in intent, route, "Commit", false, reason);
         InputActionProbe.LogIntentDropped(Entity, intent.Kind.ToString(), "Action.Commit", reason);
     }
 
     public void LogStateGateBlocked(in GameplayIntent intent, SkillRouteRuntime route, string reason)
     {
+        AbilityGate242Probe.LogStateResult(Entity, in intent, route, "StateGate", false, reason);
         if (GameMainDebugSettings.IntentArbitration || GameMainDebugSettings.InterruptFlow)
         {
             Debug.Log($"[IntentArb] BLOCK by State gate | state={Current.StateId} | intent={intent.Kind} hold={intent.HoldDurationSeconds:F3} (intent stays queued)", this);
@@ -143,6 +149,7 @@ public class PlayerStateManager : EntityStateManager<Player>, IEntityIntentArbit
 
     public void LogConsumed(in GameplayIntent intent, SkillRouteRuntime route, string reason)
     {
+        AbilityGate242Probe.LogStateResult(Entity, in intent, route, "Consumed", true, reason);
         if (GameMainDebugSettings.IntentArbitration || GameMainDebugSettings.InterruptFlow)
         {
             var consumedNote = intent.Kind == GameplayIntentKind.Move ? " → Locomotion" : string.Empty;

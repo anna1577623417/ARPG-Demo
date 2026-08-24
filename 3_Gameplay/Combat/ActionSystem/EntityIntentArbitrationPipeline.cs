@@ -201,9 +201,22 @@ public static class EntityIntentArbitrationPipeline
             var frameContext = port.BuildFrameContext(deltaTime);
             if (!TransitionResolver.CanOfferIntent(in frameContext, in intent, out var transitionReason))
             {
+                AbilityGate242Probe.LogIntentOffer(
+                    port.Entity,
+                    in intent,
+                    in frameContext,
+                    allow: false,
+                    transitionReason);
                 port.LogTransitionBlocked(in intent, transitionReason);
                 break;
             }
+
+            AbilityGate242Probe.LogIntentOffer(
+                port.Entity,
+                in intent,
+                in frameContext,
+                allow: true,
+                reason: "pass");
 
             var lane = ActionIntentRouting.ResolveLane(in intent, pendingAction: null);
             if (lane == ActionIntentCategory.Combat)

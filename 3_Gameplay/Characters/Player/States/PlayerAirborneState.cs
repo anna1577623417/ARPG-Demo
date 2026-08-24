@@ -46,6 +46,14 @@ public sealed class PlayerAirborneState : PlayerState
 
         // 168.3 L1 — Loadout 空中可中断
         var r = AirInterruptResolver.Evaluate(player, incomingCategory, m_hardFloorBlock);
+        AbilityGate242Probe.LogAirGate(
+            player,
+            in intent,
+            incomingAction,
+            incomingCategory,
+            in r,
+            m_hardFloorBlock,
+            source: "AirborneState");
         LogAirIntrIfFlipped(player, in r, intent.Kind, incomingCategory);
 
         if (r.Code != AirInterruptResolver.Verdict.Allow)

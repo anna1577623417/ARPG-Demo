@@ -13,6 +13,8 @@ public static class GameMainDebugSettings
     public static bool SkillRouteDodge4 { get; set; }
     public static bool SkillRouteRoll4 { get; set; }
     public static bool SkillAbility { get; set; }
+    /// <summary>242.1 — Ability Gate 双重门禁分层取证。</summary>
+    public static bool AbilityGate242Log { get; set; }
     public static bool DodgeChord8Log { get; set; }
     public static bool HoldMotionDodgeLog { get; set; }
 
@@ -106,6 +108,7 @@ public static class GameMainDebugSettings
         SkillRouteDodge4 = EditorPrefsGetBool(nameof(SkillRouteDodge4));
         SkillRouteRoll4 = EditorPrefsGetBool(nameof(SkillRouteRoll4));
         SkillAbility = EditorPrefsGetBool(nameof(SkillAbility));
+        AbilityGate242Log = EditorPrefsGetBool(nameof(AbilityGate242Log));
         DodgeChord8Log = EditorPrefsGetBool(nameof(DodgeChord8Log))
                          || UnityEditor.EditorPrefs.GetBool("Core-Drive/DodgeChord8Probe/EnableLog", false);
         HoldMotionDodgeLog = EditorPrefsGetBool(nameof(HoldMotionDodgeLog))
@@ -156,6 +159,7 @@ public static class GameMainDebugSettings
         EditorPrefsSetBool(nameof(SkillRouteDodge4), SkillRouteDodge4);
         EditorPrefsSetBool(nameof(SkillRouteRoll4), SkillRouteRoll4);
         EditorPrefsSetBool(nameof(SkillAbility), SkillAbility);
+        EditorPrefsSetBool(nameof(AbilityGate242Log), AbilityGate242Log);
         EditorPrefsSetBool(nameof(DodgeChord8Log), DodgeChord8Log);
         EditorPrefsSetBool(nameof(HoldMotionDodgeLog), HoldMotionDodgeLog);
         EditorPrefsSetBool(nameof(DirectionalInputDiagLog), DirectionalInputDiagLog);
@@ -199,6 +203,7 @@ public static class GameMainDebugSettings
         SkillRouteDodge4 = true;
         SkillRouteRoll4 = true;
         SkillAbility = true;
+        AbilityGate242Log = true;
         DodgeChord8Log = true;
         HoldMotionDodgeLog = true;
         DirectionalInputDiagLog = true;
@@ -243,6 +248,7 @@ public static class GameMainDebugSettings
         SkillRouteDodge4 = false;
         SkillRouteRoll4 = false;
         SkillAbility = false;
+        AbilityGate242Log = false;
         DodgeChord8Log = false;
         HoldMotionDodgeLog = false;
         DirectionalInputDiagLog = false;
@@ -296,6 +302,7 @@ public static class GameMainDebugSettings
         SkillRouteDodge4 = false;
         SkillRouteRoll4 = false;
         SkillAbility = false;
+        AbilityGate242Log = false;
         DodgeChord8Log = false;
         HoldMotionDodgeLog = false;
         DirectionalInputDiagLog = false;
