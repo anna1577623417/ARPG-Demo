@@ -42,6 +42,7 @@ MonoBehaviour:
   IsLocomotionRecovery: 0
   RecoveryMoveLockSeconds: -1
   RecoveryJumpLockSeconds: -1
+  FacingPolicy: 0
   EnableRotationInput: 0
   TransitionType: 0
   OverrideGrammar: 0
@@ -50,7 +51,7 @@ MonoBehaviour:
     ConsumesDirectionChange: 0
     ConsumesMomentumChange: 0
     BlocksOtherTransitions: 0
-  MotionDriverMode: 0
+  MotionDriverMode: 2
   UseClipRootMotion: 0
   CanRotateDuringLocomotion: 1
   CanMoveDuringLocomotion: 1
@@ -59,16 +60,32 @@ MonoBehaviour:
   EnableStopFeature: 0
   StopStrategy: 1
   InheritPhysics:
+    ContinuousTuningMode: 0
     MinSpeed: 1
     MaxSpeed: 8
     MinDistance: 0.2
     MaxDistance: 2.5
+    FullSpeedStopDistance: 0
+    FullSpeedStopDuration: 0
     MinDuration: 0.1
     MaxDuration: 0.45
+    MaxBrakeSeconds: 0
+    TapWindowSeconds: 0.15
+    TapPresentationSeconds: 0.15
+    TapStopDistance: 0.1
+    TapTailStartNormalized: 0
+    TapTailSeconds: 0
+    TapChainMax: 0
+    TapChainUnlimited: 1
     AffectX: 0
     AffectY: 0
     AffectZ: 1
   ReferenceDuration: 0.25
+  StopPresentation:
+    DurationAuthority: 0
+    AnimSpeedAuthority: 0
+    FixedAnimSpeed: 1
+    RequireSynchronization: 0
   LinearDecayDuration: 0.15
   ExpDecayHalfLife: 0.25
   FixedDecelDuration: 0.3

@@ -41,6 +41,9 @@ public static class GameMainDebugSettings
     /// <summary>227.5.1.1 — Idle→Run / Jump 卡壳异常专用探针；与主链核心 Log 独立开关。</summary>
     public static bool AnimTransition227BugLog { get; set; }
 
+    /// <summary>243.6 — Anim Transition Graph 合同/仲裁/Plan 的有限边沿 Trace。</summary>
+    public static bool AnimTransitionGraph243Log { get; set; }
+
     /// <summary>227 — Jump/RunStart 与 WASD 位置结算、Motor 外写入、显式 Teleport 专项探针。</summary>
     public static bool LocomotionTransition227BugLog { get; set; }
 
@@ -127,6 +130,7 @@ public static class GameMainDebugSettings
         AnimSpeed228Log = EditorPrefsGetBool(nameof(AnimSpeed228Log));
         AnimTransition227Log = EditorPrefsGetBool(nameof(AnimTransition227Log));
         AnimTransition227BugLog = EditorPrefsGetBool(nameof(AnimTransition227BugLog));
+        AnimTransitionGraph243Log = EditorPrefsGetBool(nameof(AnimTransitionGraph243Log));
         LocomotionTransition227BugLog = EditorPrefsGetBool(nameof(LocomotionTransition227BugLog));
         CameraTurn233Log = EditorPrefsGetBool(nameof(CameraTurn233Log));
         CharacterTurnDisplacement233Log = EditorPrefsGetBool(nameof(CharacterTurnDisplacement233Log));
@@ -173,6 +177,7 @@ public static class GameMainDebugSettings
         EditorPrefsSetBool(nameof(AnimSpeed228Log), AnimSpeed228Log);
         EditorPrefsSetBool(nameof(AnimTransition227Log), AnimTransition227Log);
         EditorPrefsSetBool(nameof(AnimTransition227BugLog), AnimTransition227BugLog);
+        EditorPrefsSetBool(nameof(AnimTransitionGraph243Log), AnimTransitionGraph243Log);
         EditorPrefsSetBool(nameof(LocomotionTransition227BugLog), LocomotionTransition227BugLog);
         EditorPrefsSetBool(nameof(CameraTurn233Log), CameraTurn233Log);
         EditorPrefsSetBool(nameof(CharacterTurnDisplacement233Log), CharacterTurnDisplacement233Log);
@@ -217,6 +222,7 @@ public static class GameMainDebugSettings
         AnimSpeed228Log = true;
         AnimTransition227Log = true;
         AnimTransition227BugLog = true;
+        AnimTransitionGraph243Log = true;
         LocomotionTransition227BugLog = true;
         CameraTurn233Log = true;
         CharacterTurnDisplacement233Log = true;
@@ -262,6 +268,7 @@ public static class GameMainDebugSettings
         AnimSpeed228Log = false;
         AnimTransition227Log = false;
         AnimTransition227BugLog = false;
+        AnimTransitionGraph243Log = false;
         LocomotionTransition227BugLog = false;
         CameraTurn233Log = false;
         CharacterTurnDisplacement233Log = false;
@@ -316,6 +323,7 @@ public static class GameMainDebugSettings
         AnimSpeed228Log = false;
         AnimTransition227Log = false;
         AnimTransition227BugLog = false;
+        AnimTransitionGraph243Log = false;
         LocomotionTransition227BugLog = false;
         CameraTurn233Log = false;
         CharacterTurnDisplacement233Log = false;

@@ -179,6 +179,28 @@ public sealed class AnimationTransitionServiceTests
         Assert.AreEqual(TransitionResolveLayer.Default, p.Layer);
     }
 
+    [Test]
+    public void Resolve_ContextDelegatesToSafetyResolverWithoutLegacyActionLookup()
+    {
+        var request = new AnimationPlayRequest(
+            99UL, 42, 10UL, 2UL, AnimationRequestDomain.Reaction, "reaction.hit", "Hit", null,
+            AnimationLoopPolicy.Finite, 1f, 0f, AnimationRequestPriority.Critical,
+            AnimationInterruptPolicy.Force, 99UL, "reaction", AnimationRequestSourceKind.Graph,
+            0U, 0UL, 0UL);
+        var source = new AnimationPresentationState243("idle", "logic-root", 0f, 0f, false, 0, "base");
+        var context = new TransitionContext(
+            in request, in source, "logic-root", 0f, false,
+            TransitionMode.CrossFade, RootTranslationChannelMode.Preserve, 0.2f, 0f,
+            AnimationPhaseMatchMode.Off, true, false, "reaction/hit", "hash");
+        var svc = new AnimationTransitionService(_matrix, null, _config);
+
+        var plan = svc.Resolve(in context);
+
+        Assert.AreEqual(TransitionMode.Snap, plan.TransitionMode);
+        Assert.AreEqual(AnimationTransitionFallbackReason.None, plan.FallbackReason);
+        Assert.IsTrue(plan.ShouldSubmitPlayback);
+    }
+
     // ─── PoseCost & 推荐 Blend ──────────────────────────────
 
     [Test]

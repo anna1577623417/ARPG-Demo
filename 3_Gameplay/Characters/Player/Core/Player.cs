@@ -130,6 +130,8 @@ public class Player : Entity<Player>, IEntity, IIntentHost, IImpulseReceiver, ID
     public PlayerStateManager States => m_stateManager;
     public IAirCycleReadPort AirCycle => m_airCycle;
     public AirCycleSnapshot CurrentAirCycle => m_airCycle.CurrentAirCycle;
+    /// <summary>243.9 observation-only view. Zero explicitly means that no Action lease is active.</summary>
+    public uint ActiveActionLeaseVersion => m_hasActiveActionLease ? m_activeActionLease.Version : 0u;
     public SkillEntryService SkillEntries => m_skillComponent?.Service;
     public SkillEntryLoadoutSO SkillEntryLoadout => skillEntryLoadout;
 

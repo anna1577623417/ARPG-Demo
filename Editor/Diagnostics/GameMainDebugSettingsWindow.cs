@@ -109,6 +109,8 @@ public sealed class GameMainDebugSettingsWindow : EditorWindow
                 "Anim Transition 227", "[AnimTransition227] 边沿核心事件：RESOLVE/REQUEST/BEGIN/50%/END/SUPERSEDE");
             Toggle(() => GameMainDebugSettings.AnimTransition227BugLog, v => GameMainDebugSettings.AnimTransition227BugLog = v,
                 "Anim Transition 227 Bug", "[AnimTransition227Bug] 同 Clip 拦截/过渡抢占/空中基线分流");
+            Toggle(() => GameMainDebugSettings.AnimTransitionGraph243Log, v => GameMainDebugSettings.AnimTransitionGraph243Log = v,
+                "Anim Transition Graph 243", "[AnimTransition243] OBSERVE/REQUEST/ARBITER/PLAN/HANDOFF/STALE/FALLBACK；有限边沿、无堆栈");
             Toggle(() => GameMainDebugSettings.LocomotionTransition227BugLog,
                 v => GameMainDebugSettings.LocomotionTransition227BugLog = v,
                 "Locomotion 227 Bug", "[Locomotion227Bug] Jump/RunStart + WASD 位置结算、Motor 后二次写入与显式 Teleport");

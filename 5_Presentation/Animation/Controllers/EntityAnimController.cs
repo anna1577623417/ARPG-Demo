@@ -19,11 +19,26 @@ public abstract class EntityAnimController : MonoBehaviour {
     private bool _isTransitioning;
     private AnimationClip _currentClipAsset;
     private string _lastPlaySource = "-";
+    private ReferenceTransitionPlanExecutor243 _transitionPlanExecutor244;
 
     private Animator _animator;
 
     public string CurrentClipName { get; private set; } = "";
     public bool IsGraphValid => _graph.IsValid();
+
+    /// <summary>244.9 L4 — Single plan-to-writer route. Callers still choose their domain gate upstream.</summary>
+    public bool TryExecuteTransitionPlan244(
+        in TransitionPlan plan,
+        in AnimationPlayRequest request,
+        out ReferenceTransitionPlanExecutionResult243 result)
+    {
+        if (_transitionPlanExecutor244 == null)
+        {
+            _transitionPlanExecutor244 = new ReferenceTransitionPlanExecutor243(this, GetInstanceID());
+        }
+
+        return _transitionPlanExecutor244.TryExecute(in plan, in request, out result);
+    }
 
     /// <summary>227.5.1 探针用实例 Id（Player 侧可覆盖为 Entity.GetInstanceID）。</summary>
     protected virtual int GetAnimProbeInstanceId() => GetInstanceID();

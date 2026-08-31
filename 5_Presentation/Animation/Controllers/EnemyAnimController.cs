@@ -9,6 +9,27 @@ public sealed class EnemyAnimController : EntityAnimController, IActionPresentat
 
     public bool IsReady => IsGraphValid;
 
+    /// <summary>244.9 L8 — Enemy domain handoff hook; old event path remains Legacy until gate evidence is GREEN.</summary>
+    public bool TryExecuteEnemyPlan244(
+        in AnimationPresentationCoordinatorResult244 result,
+        AnimationPipelineMode mode,
+        out ReferenceTransitionPlanExecutionResult243 execution)
+    {
+        if (!AnimationPresentationExecutionGate244.TrySelect(
+                mode, in result, out var plan, out _, out _))
+        {
+            execution = new ReferenceTransitionPlanExecutionResult243(
+                result.Arbitration.NextState.LastRequestId,
+                result.Arbitration.NextState.EntityInstanceId,
+                ReferenceTransitionPlanExecutionDisposition243.PlanDoesNotSubmit,
+                false);
+            return false;
+        }
+
+        var request = result.ProductionSnapshot.CurrentRequest;
+        return TryExecuteTransitionPlan244(in plan, in request, out execution);
+    }
+
     protected override void Awake()
     {
         base.Awake();

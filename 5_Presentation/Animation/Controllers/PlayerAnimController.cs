@@ -74,6 +74,48 @@ public class PlayerAnimController : EntityAnimController
         && _turnCompensationActive
         && IsTurnSub(_locoSub);
 
+    /// <summary>244.9 L5 — W1 handoff hook. Domain gates decide the source; this method owns no Graph state.</summary>
+    public bool TryExecuteLocomotionPlan244(
+        in AnimationPresentationCoordinatorResult244 result,
+        AnimationPipelineMode mode,
+        out ReferenceTransitionPlanExecutionResult243 execution)
+    {
+        if (!AnimationPresentationExecutionGate244.TrySelect(
+                mode, in result, out var plan, out _, out _))
+        {
+            execution = new ReferenceTransitionPlanExecutionResult243(
+                result.Arbitration.NextState.LastRequestId,
+                result.Arbitration.NextState.EntityInstanceId,
+                ReferenceTransitionPlanExecutionDisposition243.PlanDoesNotSubmit,
+                false);
+            return false;
+        }
+
+        var request = result.ProductionSnapshot.CurrentRequest;
+        return TryExecuteTransitionPlan244(in plan, in request, out execution);
+    }
+
+    /// <summary>244.9 L7 — Airborne/Action handoff hook; domain selection remains upstream.</summary>
+    public bool TryExecuteAirborneActionPlan244(
+        in AnimationPresentationCoordinatorResult244 result,
+        AnimationPipelineMode mode,
+        out ReferenceTransitionPlanExecutionResult243 execution)
+    {
+        if (!AnimationPresentationExecutionGate244.TrySelect(
+                mode, in result, out var plan, out _, out _))
+        {
+            execution = new ReferenceTransitionPlanExecutionResult243(
+                result.Arbitration.NextState.LastRequestId,
+                result.Arbitration.NextState.EntityInstanceId,
+                ReferenceTransitionPlanExecutionDisposition243.PlanDoesNotSubmit,
+                false);
+            return false;
+        }
+
+        var request = result.ProductionSnapshot.CurrentRequest;
+        return TryExecuteTransitionPlan244(in plan, in request, out execution);
+    }
+
     /// <summary>184.1 W5 — 任何主动 Intent 打断 Turn 切片（短 CrossFade）。</summary>
     public void InterruptTurnIfAny(string reason = null)
     {

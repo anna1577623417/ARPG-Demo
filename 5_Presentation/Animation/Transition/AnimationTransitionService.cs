@@ -25,6 +25,14 @@ public sealed class AnimationTransitionService
     public TransitionConfigSO Config => _config;
 
     /// <summary>
+    /// 243.9 L6 — Runtime-plan overload. The 243.6 safety resolver owns the full deterministic
+    /// plan contract; this service deliberately does not repeat the legacy ActionDataSO layers.
+    /// Calling this method has no playback side effect.
+    /// </summary>
+    public TransitionPlan Resolve(in TransitionContext context) =>
+        AnimationTransitionSafetyResolver.Resolve(in context);
+
+    /// <summary>
     /// 178.1 §3 — 四层降级解析。永不返回无效结果（兜底 Default）。
     /// </summary>
     public TransitionParams Resolve(ActionDataSO from, ActionDataSO to)
